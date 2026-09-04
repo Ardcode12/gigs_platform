@@ -1,7 +1,7 @@
 import React from 'react';
-import { TouchableOpacity, Text, View, StyleSheet } from 'react-native';
+import { TouchableOpacity, Text, ActivityIndicator, StyleSheet } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import { COLORS, RADIUS, SPACING, FONT_SIZE, FONT_WEIGHT, SHADOWS } from '../theme';
+import { COLORS, RADIUS, SPACING, FONT_SIZE, FONT_WEIGHT } from '../theme';
 
 const IconButton = ({
   icon,
@@ -13,7 +13,8 @@ const IconButton = ({
   variant = 'filled', // filled | outline | ghost
   fullWidth = false,
   disabled = false,
-  iconPack, // optional override
+  style,
+  loading = false,
 }) => {
   const sizeMap = {
     sm: { iconSize: 18, fontSize: FONT_SIZE.sm, padding: SPACING.sm, minH: 36 },
@@ -55,6 +56,7 @@ const IconButton = ({
   };
 
   const vs = getVariantStyle();
+  const isDisabled = disabled || loading;
 
   return (
     <TouchableOpacity
@@ -63,23 +65,30 @@ const IconButton = ({
         { minHeight: minH, paddingHorizontal: padding * 1.5, paddingVertical: padding },
         vs.container,
         fullWidth && styles.fullWidth,
+        style,
       ]}
       onPress={onPress}
-      disabled={disabled}
+      disabled={isDisabled}
       activeOpacity={0.7}
     >
-      {icon && (
-        <MaterialCommunityIcons
-          name={icon}
-          size={iconSize}
-          color={vs.iconColor}
-          style={label ? { marginRight: SPACING.sm } : {}}
-        />
-      )}
-      {label && (
-        <Text style={[styles.label, { color: vs.text, fontSize }]} numberOfLines={1}>
-          {label}
-        </Text>
+      {loading ? (
+        <ActivityIndicator size="small" color={vs.iconColor} />
+      ) : (
+        <>
+          {icon && (
+            <MaterialCommunityIcons
+              name={icon}
+              size={iconSize}
+              color={vs.iconColor}
+              style={label ? { marginRight: SPACING.sm } : {}}
+            />
+          )}
+          {label && (
+            <Text style={[styles.label, { color: vs.text, fontSize }]} numberOfLines={1}>
+              {label}
+            </Text>
+          )}
+        </>
       )}
     </TouchableOpacity>
   );

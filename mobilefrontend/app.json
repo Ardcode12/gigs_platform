@@ -1,0 +1,53 @@
+{
+  "expo": {
+    "name": "WORKMAT Worker",
+    "slug": "workmat-worker",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "scheme": "workmat",
+    "userInterfaceStyle": "light",
+    "backgroundColor": "#F1F5F9",
+    "splash": {
+      "resizeMode": "contain",
+      "backgroundColor": "#1B6EF5"
+    },
+    "assetBundlePatterns": [
+      "**/*"
+    ],
+    "ios": {
+      "bundleIdentifier": "com.workmat.worker",
+      "supportsTablet": false,
+      "infoPlist": {
+        "NSLocationWhenInUseUsageDescription": "Your location is used to show how far away a job is and to give the customer an accurate arrival time."
+      }
+    },
+    "android": {
+      "package": "com.workmat.worker",
+      "adaptiveIcon": {
+        "backgroundColor": "#1B6EF5"
+      },
+      "permissions": [
+        "ACCESS_COARSE_LOCATION",
+        "ACCESS_FINE_LOCATION"
+      ],
+      "config": {
+        "googleMaps": {
+          "apiKey": "REPLACE_WITH_GOOGLE_MAPS_ANDROID_KEY"
+        }
+      }
+    },
+    "web": {
+      "bundler": "metro"
+    },
+    "plugins": [
+      "expo-asset",
+      [
+        "expo-location",
+        {
+          "locationAlwaysAndWhenInUsePermission": "Your location is used to show how far away a job is and to give the customer an accurate arrival time."
+        }
+      ],
+      "expo-font"
+    ]
+  }
+}

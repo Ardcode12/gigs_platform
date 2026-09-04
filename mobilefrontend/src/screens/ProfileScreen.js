@@ -1,4 +1,5 @@
-import React from 'react';
+import React, { useState } from 'react';
+import { useNavigation } from '@react-navigation/native';
 import {
   View,
   Text,
@@ -6,29 +7,54 @@ import {
   ScrollView,
   TouchableOpacity,
   StatusBar,
+  Alert,
+  RefreshControl,
 } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { COLORS, SPACING, RADIUS, FONT_SIZE, FONT_WEIGHT, SHADOWS } from '../theme';
 import Card from '../components/Card';
 import StatusBadge from '../components/StatusBadge';
-import { WORKER } from '../data/mockData';
+import RatingStars from '../components/RatingStars';
+import LoadingState from '../components/LoadingState';
+import { useAuth } from '../context/AuthContext';
+import { initialsOf } from '../utils/format';
 
+/** Spec-wide: the worker's own record, plus the way out to Ratings (#11) and Notifications (#12). */
 const ProfileScreen = () => {
-  const renderStars = (rating) => {
-    const full = Math.floor(rating);
-    const half = rating % 1 >= 0.5;
-    const stars = [];
-    for (let i = 0; i < 5; i++) {
-      if (i < full) {
-        stars.push(<MaterialCommunityIcons key={i} name="star" size={20} color="#FBBF24" />);
-      } else if (i === full && half) {
-        stars.push(<MaterialCommunityIcons key={i} name="star-half-full" size={20} color="#FBBF24" />);
-      } else {
-        stars.push(<MaterialCommunityIcons key={i} name="star-outline" size={20} color="#D1D5DB" />);
-      }
+  const navigation = useNavigation();
+  const { worker, signOut, refreshWorker } = useAuth();
+  const [refreshing, setRefreshing] = useState(false);
+
+  const reload = async () => {
+    setRefreshing(true);
+    try {
+      await refreshWorker();
+    } catch {
+      // Nothing to say — the cached profile is still on screen.
+    } finally {
+      setRefreshing(false);
     }
-    return stars;
   };
+
+  const confirmLogout = () =>
+    Alert.alert('Log out?', 'You will need your worker code and password to sign in again.', [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Log out', style: 'destructive', onPress: () => signOut() },
+    ]);
+
+  if (!worker) {
+    return (
+      <View style={styles.container}>
+        <StatusBar barStyle="light-content" backgroundColor={COLORS.primary} />
+        <View style={styles.header}>
+          <Text style={styles.headerTitle}>Profile</Text>
+        </View>
+        <LoadingState message="Loading your profile…" />
+      </View>
+    );
+  }
+
+  const memberYear = worker.member_since ? new Date(worker.member_since).getFullYear() : '—';
 
   return (
     <View style={styles.container}>
@@ -37,29 +63,39 @@ const ProfileScreen = () => {
       {/* Header */}
       <View style={styles.header}>
         <Text style={styles.headerTitle}>Profile</Text>
-        <TouchableOpacity style={styles.settingsBtn}>
-          <MaterialCommunityIcons name="cog-outline" size={22} color={COLORS.white} />
-        </TouchableOpacity>
+        <StatusBadge
+          label={worker.is_available ? 'Available' : 'Offline'}
+          color={worker.is_available ? 'success' : 'neutral'}
+          size="sm"
+        />
       </View>
 
       {/* Profile Hero */}
       <View style={styles.heroSection}>
         <View style={styles.avatarLarge}>
-          <Text style={styles.avatarLargeText}>
-            {WORKER.name.split(' ').map(n => n[0]).join('')}
-          </Text>
+          <Text style={styles.avatarLargeText}>{initialsOf(worker.name)}</Text>
         </View>
-        <Text style={styles.heroName}>{WORKER.name}</Text>
-        <View style={styles.heroSkills}>
-          {WORKER.skills.map((skill, i) => (
-            <View key={i} style={styles.skillPill}>
-              <Text style={styles.skillPillText}>{skill}</Text>
-            </View>
-          ))}
-        </View>
+        <Text style={styles.heroName}>{worker.name}</Text>
+        <Text style={styles.heroCode}>{worker.worker_code}</Text>
+        {worker.skills.length > 0 && (
+          <View style={styles.heroSkills}>
+            {worker.skills.map((skill) => (
+              <View key={skill} style={styles.skillPill}>
+                <Text style={styles.skillPillText}>{skill}</Text>
+              </View>
+            ))}
+          </View>
+        )}
         <View style={styles.ratingRow}>
-          {renderStars(WORKER.rating)}
-          <Text style={styles.ratingValue}>{WORKER.rating}</Text>
+          <RatingStars
+            rating={worker.rating_avg}
+            size={20}
+            showValue
+            valueStyle={{ color: COLORS.white }}
+          />
+          <Text style={styles.ratingCount}>
+            ({worker.rating_count} {worker.rating_count === 1 ? 'review' : 'reviews'})
+          </Text>
         </View>
       </View>
 
@@ -67,19 +103,22 @@ const ProfileScreen = () => {
         style={styles.body}
         contentContainerStyle={styles.bodyContent}
         showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={reload} tintColor={COLORS.primary} />
+        }
       >
         {/* Stats Row */}
         <View style={styles.statsRow}>
           <Card style={styles.statCard}>
-            <Text style={styles.statValue}>{WORKER.completedJobs}</Text>
+            <Text style={styles.statValue}>{worker.completed_jobs}</Text>
             <Text style={styles.statLabel}>Jobs Done</Text>
           </Card>
           <Card style={styles.statCard}>
-            <Text style={styles.statValue}>{WORKER.rating}</Text>
+            <Text style={styles.statValue}>{worker.rating_avg.toFixed(1)}</Text>
             <Text style={styles.statLabel}>Rating</Text>
           </Card>
           <Card style={styles.statCard}>
-            <Text style={styles.statValue}>{WORKER.memberSince.split(' ')[1]}</Text>
+            <Text style={styles.statValue}>{memberYear}</Text>
             <Text style={styles.statLabel}>Since</Text>
           </Card>
         </View>
@@ -94,7 +133,7 @@ const ProfileScreen = () => {
             </View>
             <View style={styles.infoContent}>
               <Text style={styles.infoLabel}>Phone Number</Text>
-              <Text style={styles.infoValue}>{WORKER.phone}</Text>
+              <Text style={styles.infoValue}>{worker.phone}</Text>
             </View>
           </View>
 
@@ -104,7 +143,7 @@ const ProfileScreen = () => {
             </View>
             <View style={styles.infoContent}>
               <Text style={styles.infoLabel}>City</Text>
-              <Text style={styles.infoValue}>{WORKER.city}</Text>
+              <Text style={styles.infoValue}>{worker.city ?? 'Not set'}</Text>
             </View>
           </View>
 
@@ -113,8 +152,8 @@ const ProfileScreen = () => {
               <MaterialCommunityIcons name="card-account-details" size={20} color="#B45309" />
             </View>
             <View style={styles.infoContent}>
-              <Text style={styles.infoLabel}>Aadhar Number</Text>
-              <Text style={styles.infoValue}>{WORKER.aadhar}</Text>
+              <Text style={styles.infoLabel}>Aadhaar Number</Text>
+              <Text style={styles.infoValue}>{worker.aadhaar_masked ?? 'Not on file'}</Text>
             </View>
           </View>
 
@@ -123,46 +162,59 @@ const ProfileScreen = () => {
               <MaterialCommunityIcons name="account-group" size={20} color={COLORS.info} />
             </View>
             <View style={styles.infoContent}>
-              <Text style={styles.infoLabel}>Cooperative</Text>
-              <Text style={styles.infoValue}>{WORKER.cooperative}</Text>
+              <Text style={styles.infoLabel}>Society</Text>
+              <Text style={styles.infoValue}>{worker.society_name ?? '—'}</Text>
             </View>
           </View>
         </Card>
 
+        <Text style={styles.infoNote}>
+          Your code, phone number and society are set by the society. Ask them to change these.
+        </Text>
+
         {/* Action Buttons */}
-        <TouchableOpacity style={styles.menuItem} activeOpacity={0.7}>
-          <View style={[styles.menuIcon, { backgroundColor: COLORS.primaryLight }]}>
-            <MaterialCommunityIcons name="pencil" size={20} color={COLORS.primary} />
-          </View>
-          <Text style={styles.menuLabel}>Edit Profile</Text>
-          <MaterialCommunityIcons name="chevron-right" size={22} color={COLORS.textTertiary} />
-        </TouchableOpacity>
-
-        <TouchableOpacity style={styles.menuItem} activeOpacity={0.7}>
-          <View style={[styles.menuIcon, { backgroundColor: COLORS.successLight }]}>
-            <MaterialCommunityIcons name="file-document" size={20} color={COLORS.success} />
-          </View>
-          <Text style={styles.menuLabel}>Documents</Text>
-          <MaterialCommunityIcons name="chevron-right" size={22} color={COLORS.textTertiary} />
-        </TouchableOpacity>
-
-        <TouchableOpacity style={styles.menuItem} activeOpacity={0.7}>
+        <TouchableOpacity
+          style={styles.menuItem}
+          activeOpacity={0.7}
+          onPress={() => navigation.navigate('Ratings')}
+        >
           <View style={[styles.menuIcon, { backgroundColor: COLORS.warningLight }]}>
-            <MaterialCommunityIcons name="help-circle" size={20} color="#B45309" />
+            <MaterialCommunityIcons name="star" size={20} color="#B45309" />
           </View>
-          <Text style={styles.menuLabel}>Help & Support</Text>
+          <Text style={styles.menuLabel}>Ratings & Feedback</Text>
           <MaterialCommunityIcons name="chevron-right" size={22} color={COLORS.textTertiary} />
         </TouchableOpacity>
 
-        <TouchableOpacity style={styles.menuItem} activeOpacity={0.7}>
+        {/* Notifications live on the Home stack — that's where its tap targets are. */}
+        <TouchableOpacity
+          style={styles.menuItem}
+          activeOpacity={0.7}
+          onPress={() => navigation.navigate('HomeTab', { screen: 'Notifications' })}
+        >
           <View style={[styles.menuIcon, { backgroundColor: COLORS.infoLight }]}>
-            <MaterialCommunityIcons name="translate" size={20} color={COLORS.info} />
+            <MaterialCommunityIcons name="bell-outline" size={20} color={COLORS.info} />
           </View>
-          <Text style={styles.menuLabel}>Language</Text>
+          <Text style={styles.menuLabel}>Notifications</Text>
           <MaterialCommunityIcons name="chevron-right" size={22} color={COLORS.textTertiary} />
         </TouchableOpacity>
 
-        <TouchableOpacity style={[styles.menuItem, styles.logoutItem]} activeOpacity={0.7}>
+        <TouchableOpacity
+          style={styles.menuItem}
+          activeOpacity={0.7}
+          onPress={() => navigation.navigate('ChangePassword')}
+        >
+          <View style={[styles.menuIcon, { backgroundColor: COLORS.primaryLight }]}>
+            <MaterialCommunityIcons name="lock-reset" size={20} color={COLORS.primary} />
+          </View>
+          <Text style={styles.menuLabel}>Change Password</Text>
+          <MaterialCommunityIcons name="chevron-right" size={22} color={COLORS.textTertiary} />
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={[styles.menuItem, styles.logoutItem]}
+          activeOpacity={0.7}
+          onPress={confirmLogout}
+        >
           <View style={[styles.menuIcon, { backgroundColor: COLORS.dangerLight }]}>
             <MaterialCommunityIcons name="logout" size={20} color={COLORS.danger} />
           </View>
@@ -197,14 +249,6 @@ const styles = StyleSheet.create({
     fontWeight: FONT_WEIGHT.bold,
     color: COLORS.white,
   },
-  settingsBtn: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: 'rgba(255,255,255,0.15)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
   heroSection: {
     backgroundColor: COLORS.primary,
     alignItems: 'center',
@@ -233,6 +277,13 @@ const styles = StyleSheet.create({
     color: COLORS.white,
     marginTop: SPACING.md,
   },
+  heroCode: {
+    fontSize: FONT_SIZE.sm,
+    color: 'rgba(255,255,255,0.75)',
+    fontWeight: FONT_WEIGHT.semibold,
+    letterSpacing: 1,
+    marginTop: 2,
+  },
   heroSkills: {
     flexDirection: 'row',
     flexWrap: 'wrap',
@@ -257,10 +308,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginTop: SPACING.md,
   },
-  ratingValue: {
-    fontSize: FONT_SIZE.lg,
-    fontWeight: FONT_WEIGHT.bold,
-    color: COLORS.white,
+  ratingCount: {
+    fontSize: FONT_SIZE.sm,
+    color: 'rgba(255,255,255,0.8)',
+    fontWeight: FONT_WEIGHT.medium,
     marginLeft: SPACING.sm,
   },
   body: {
@@ -292,7 +343,7 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
   infoCard: {
-    marginBottom: SPACING.lg,
+    marginBottom: SPACING.md,
   },
   infoTitle: {
     fontSize: FONT_SIZE.lg,
@@ -330,6 +381,13 @@ const styles = StyleSheet.create({
     color: COLORS.textPrimary,
     fontWeight: FONT_WEIGHT.semibold,
     marginTop: 2,
+  },
+  infoNote: {
+    fontSize: FONT_SIZE.xs,
+    color: COLORS.textTertiary,
+    lineHeight: 17,
+    marginBottom: SPACING.lg,
+    paddingHorizontal: SPACING.xs,
   },
   menuItem: {
     flexDirection: 'row',

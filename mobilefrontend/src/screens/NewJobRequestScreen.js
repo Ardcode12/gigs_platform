@@ -1,4 +1,5 @@
-import React from 'react';
+import React, { useCallback, useState } from 'react';
+import { useNavigation, useRoute } from '@react-navigation/native';
 import {
   View,
   Text,
@@ -6,38 +7,139 @@ import {
   ScrollView,
   TouchableOpacity,
   StatusBar,
-  Image,
+  ActivityIndicator,
+  Alert,
+  RefreshControl,
 } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { COLORS, SPACING, RADIUS, FONT_SIZE, FONT_WEIGHT, SHADOWS } from '../theme';
 import Card from '../components/Card';
 import StatusBadge from '../components/StatusBadge';
-import { NEW_JOB_REQUEST } from '../data/mockData';
+import Avatar from '../components/Avatar';
+import RatingStars from '../components/RatingStars';
+import LoadingState from '../components/LoadingState';
+import EmptyState from '../components/EmptyState';
+import useApi from '../hooks/useApi';
+import { useSocketEvent, WS_EVENTS } from '../context/SocketContext';
+import { getJob, acceptJob, rejectJob } from '../api/jobs';
+import { requestCall } from '../api/chat';
+import { formatRupees, formatDistance, formatEta, timeAgo } from '../utils/format';
+import { JOB_STATUS, STATUS_LABEL, STATUS_TONE } from '../constants/jobSteps';
 
-const NewJobRequestScreen = ({ navigation }) => {
-  const job = NEW_JOB_REQUEST;
+/**
+ * Spec #3, #7 and #9 in one screen.
+ *
+ * For a `requested` job this is the offer — accept or reject at the bottom. For
+ * any other status the same layout is the read-only job detail view, so there is
+ * one place that renders a job and it always looks the same.
+ */
+const NewJobRequestScreen = () => {
+  const navigation = useNavigation();
+  const { jobId } = useRoute().params ?? {};
+  const [acting, setActing] = useState(null); // 'accept' | 'reject' | 'call'
 
-  const renderStars = (rating) => {
-    const full = Math.floor(rating);
-    const half = rating % 1 >= 0.5;
-    const stars = [];
-    for (let i = 0; i < 5; i++) {
-      if (i < full) {
-        stars.push(
-          <MaterialCommunityIcons key={i} name="star" size={16} color="#FBBF24" />
-        );
-      } else if (i === full && half) {
-        stars.push(
-          <MaterialCommunityIcons key={i} name="star-half-full" size={16} color="#FBBF24" />
-        );
-      } else {
-        stars.push(
-          <MaterialCommunityIcons key={i} name="star-outline" size={16} color="#D1D5DB" />
-        );
-      }
+  const request = useApi(useCallback(() => getJob(jobId), [jobId]), [jobId]);
+
+  useSocketEvent([WS_EVENTS.JOB_UPDATE, WS_EVENTS.EXTRA_AMOUNT_DECISION], (event) => {
+    if (event.payload?.job_id === jobId) request.refetch();
+  });
+
+  const job = request.data;
+  const isOffer = job?.status === JOB_STATUS.REQUESTED;
+
+  const handleAccept = async () => {
+    setActing('accept');
+    try {
+      await acceptJob(jobId);
+      navigation.replace('CurrentJob', { jobId });
+    } catch (error) {
+      // 409 here means another worker claimed it first — worth saying plainly.
+      Alert.alert('Could not accept', error.message, [
+        { text: 'OK', onPress: () => navigation.goBack() },
+      ]);
+    } finally {
+      setActing(null);
     }
-    return stars;
   };
+
+  const confirmReject = () => {
+    Alert.alert(
+      'Reject this job?',
+      'It will be removed from your requests.',
+      [
+        { text: 'Keep it', style: 'cancel' },
+        { text: 'Reject', style: 'destructive', onPress: doReject },
+      ],
+      { cancelable: true },
+    );
+  };
+
+  const doReject = async () => {
+    setActing('reject');
+    try {
+      await rejectJob(jobId);
+      navigation.goBack();
+    } catch (error) {
+      Alert.alert('Could not reject', error.message);
+    } finally {
+      setActing(null);
+    }
+  };
+
+  const handleRequestCall = async () => {
+    setActing('call');
+    try {
+      await requestCall(jobId);
+      Alert.alert(
+        'Call requested',
+        'The customer has been asked to call you. Your number stays private — the app never shares either side’s number.',
+      );
+    } catch (error) {
+      Alert.alert('Could not send the request', error.message);
+    } finally {
+      setActing(null);
+    }
+  };
+
+  if (request.loading && !job) {
+    return (
+      <View style={styles.container}>
+        <StatusBar barStyle="dark-content" backgroundColor={COLORS.white} />
+        <View style={styles.header}>
+          <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
+            <MaterialCommunityIcons name="arrow-left" size={24} color={COLORS.textPrimary} />
+          </TouchableOpacity>
+          <Text style={styles.headerTitle}>Job Details</Text>
+          <View style={{ width: 40 }} />
+        </View>
+        <LoadingState message="Loading job…" />
+      </View>
+    );
+  }
+
+  if (!job) {
+    return (
+      <View style={styles.container}>
+        <View style={styles.header}>
+          <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
+            <MaterialCommunityIcons name="arrow-left" size={24} color={COLORS.textPrimary} />
+          </TouchableOpacity>
+          <Text style={styles.headerTitle}>Job Details</Text>
+          <View style={{ width: 40 }} />
+        </View>
+        <EmptyState
+          tone="error"
+          title="Couldn't load this job"
+          message={request.error?.message}
+          actionLabel="Try again"
+          onAction={request.reload}
+        />
+      </View>
+    );
+  }
+
+  const distance = formatDistance(job.location.distance_km);
+  const eta = formatEta(job.location.eta_min);
 
   return (
     <View style={styles.container}>
@@ -48,7 +150,7 @@ const NewJobRequestScreen = ({ navigation }) => {
         <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
           <MaterialCommunityIcons name="arrow-left" size={24} color={COLORS.textPrimary} />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>New Job Request</Text>
+        <Text style={styles.headerTitle}>{isOffer ? 'New Job Request' : 'Job Details'}</Text>
         <View style={{ width: 40 }} />
       </View>
 
@@ -56,16 +158,33 @@ const NewJobRequestScreen = ({ navigation }) => {
         style={styles.body}
         contentContainerStyle={styles.bodyContent}
         showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl
+            refreshing={request.refreshing}
+            onRefresh={request.refetch}
+            tintColor={COLORS.primary}
+          />
+        }
       >
-        {/* Service Type Badge */}
+        {/* Service Type */}
         <View style={styles.serviceTypeRow}>
           <View style={styles.serviceIconWrap}>
-            <MaterialCommunityIcons name={job.serviceIcon} size={28} color={COLORS.primary} />
+            <MaterialCommunityIcons
+              name={job.service_icon || 'wrench'}
+              size={28}
+              color={COLORS.primary}
+            />
           </View>
-          <View style={{ marginLeft: SPACING.md }}>
-            <Text style={styles.serviceType}>{job.serviceType}</Text>
-            <Text style={styles.requestTime}>Requested {job.requestedAt}</Text>
+          <View style={{ marginLeft: SPACING.md, flex: 1 }}>
+            <Text style={styles.serviceType}>{job.service_type}</Text>
+            <Text style={styles.requestTime}>Requested {timeAgo(job.requested_at)}</Text>
           </View>
+          {!isOffer && (
+            <StatusBadge
+              label={STATUS_LABEL[job.status] ?? job.status}
+              color={STATUS_TONE[job.status] ?? 'neutral'}
+            />
+          )}
         </View>
 
         {/* Customer Info */}
@@ -75,20 +194,36 @@ const NewJobRequestScreen = ({ navigation }) => {
             <Text style={styles.sectionLabelText}>Customer</Text>
           </View>
           <View style={styles.customerRow}>
-            <View style={styles.customerAvatar}>
-              <Text style={styles.customerAvatarText}>
-                {job.customer.name.split(' ').map(n => n[0]).join('')}
-              </Text>
-            </View>
+            <Avatar name={job.customer.name} uri={job.customer.photo_url} size={48} />
             <View style={{ flex: 1, marginLeft: SPACING.md }}>
               <Text style={styles.customerName}>{job.customer.name}</Text>
               <View style={styles.ratingRow}>
-                {renderStars(job.customer.rating)}
-                <Text style={styles.ratingText}>{job.customer.rating}</Text>
+                <RatingStars
+                  rating={job.customer.rating_avg}
+                  size={16}
+                  showValue
+                  showCount
+                  count={job.customer.rating_count}
+                />
               </View>
             </View>
           </View>
         </Card>
+
+        {/* Work details (spec #3) */}
+        {!!job.work_details && (
+          <Card style={styles.card}>
+            <View style={styles.sectionLabel}>
+              <MaterialCommunityIcons
+                name="clipboard-text-outline"
+                size={18}
+                color={COLORS.textSecondary}
+              />
+              <Text style={styles.sectionLabelText}>Work Details</Text>
+            </View>
+            <Text style={styles.workDetails}>{job.work_details}</Text>
+          </Card>
+        )}
 
         {/* Location */}
         <Card style={styles.card}>
@@ -97,26 +232,36 @@ const NewJobRequestScreen = ({ navigation }) => {
             <Text style={styles.sectionLabelText}>Service Location</Text>
           </View>
           <Text style={styles.locationAddress}>{job.location.address}</Text>
-          <Text style={styles.locationLandmark}>{job.location.landmark}</Text>
+          {!!job.location.landmark && (
+            <Text style={styles.locationLandmark}>{job.location.landmark}</Text>
+          )}
 
-          {/* Map Preview Placeholder */}
-          <View style={styles.mapPreview}>
+          {/* Tapping opens the real map (spec #4) */}
+          <TouchableOpacity
+            style={styles.mapPreview}
+            activeOpacity={0.85}
+            onPress={() => navigation.navigate('JobLocation', { jobId })}
+          >
             <View style={styles.mapPlaceholder}>
               <MaterialCommunityIcons name="map" size={40} color={COLORS.primary} />
-              <Text style={styles.mapText}>Map Preview</Text>
+              <Text style={styles.mapText}>Open map & navigate</Text>
             </View>
-          </View>
+          </TouchableOpacity>
 
           <View style={styles.distanceRow}>
             <View style={styles.distanceItem}>
-              <MaterialCommunityIcons name="map-marker-distance" size={20} color={COLORS.primary} />
-              <Text style={styles.distanceValue}>{job.location.distance}</Text>
+              <MaterialCommunityIcons
+                name="map-marker-distance"
+                size={20}
+                color={COLORS.primary}
+              />
+              <Text style={styles.distanceValue}>{distance ?? '—'}</Text>
               <Text style={styles.distanceLabel}>Distance</Text>
             </View>
             <View style={styles.distanceDivider} />
             <View style={styles.distanceItem}>
               <MaterialCommunityIcons name="clock-outline" size={20} color={COLORS.primary} />
-              <Text style={styles.distanceValue}>{job.location.estimatedTime}</Text>
+              <Text style={styles.distanceValue}>{eta ?? '—'}</Text>
               <Text style={styles.distanceLabel}>Est. Time</Text>
             </View>
           </View>
@@ -128,42 +273,70 @@ const NewJobRequestScreen = ({ navigation }) => {
             <MaterialCommunityIcons name="wrench" size={18} color={COLORS.textSecondary} />
             <Text style={styles.sectionLabelText}>Required Services</Text>
           </View>
-          {job.services.map((service, index) => (
-            <View key={index} style={styles.serviceRow}>
+          {job.services.map((service) => (
+            <View key={service.id} style={styles.serviceRow}>
               <View style={styles.serviceDot} />
               <Text style={styles.serviceName}>{service.name}</Text>
-              <Text style={styles.servicePrice}>₹{service.price}</Text>
+              <Text style={styles.servicePrice}>{formatRupees(service.price)}</Text>
             </View>
           ))}
           <View style={styles.totalRow}>
-            <Text style={styles.totalLabel}>Base Estimated Amount</Text>
-            <Text style={styles.totalValue}>₹{job.baseAmount}</Text>
+            <Text style={styles.totalLabel}>
+              {isOffer ? 'Base Estimated Amount' : 'Base Amount'}
+            </Text>
+            <Text style={styles.totalValue}>{formatRupees(job.amounts.base_amount)}</Text>
           </View>
+          {job.amounts.extra_amount > 0 && (
+            <View style={styles.extraRow}>
+              <Text style={styles.extraLabel}>Approved extra</Text>
+              <Text style={styles.extraValue}>+{formatRupees(job.amounts.extra_amount)}</Text>
+            </View>
+          )}
+          {job.amounts.extra_amount > 0 && (
+            <View style={styles.totalRow}>
+              <Text style={styles.totalLabel}>Total</Text>
+              <Text style={styles.totalValue}>{formatRupees(job.amounts.total_amount)}</Text>
+            </View>
+          )}
         </Card>
 
-        {/* Action Buttons */}
+        {/* Communicate before booking (spec #5) */}
         <Card style={styles.card}>
           <View style={styles.actionRow}>
             <TouchableOpacity
               style={styles.actionBtn}
-              onPress={() => navigation.navigate('Chat')}
+              onPress={() => navigation.navigate('Chat', { jobId })}
             >
               <View style={[styles.actionIconWrap, { backgroundColor: COLORS.primaryLight }]}>
                 <MaterialCommunityIcons name="chat-outline" size={22} color={COLORS.primary} />
+                {job.unread_messages > 0 && (
+                  <View style={styles.unreadDot}>
+                    <Text style={styles.unreadText}>{job.unread_messages}</Text>
+                  </View>
+                )}
               </View>
               <Text style={styles.actionLabel}>Chat</Text>
             </TouchableOpacity>
 
-            <TouchableOpacity style={styles.actionBtn}>
+            <TouchableOpacity
+              style={styles.actionBtn}
+              onPress={handleRequestCall}
+              disabled={acting === 'call'}
+            >
               <View style={[styles.actionIconWrap, { backgroundColor: COLORS.successLight }]}>
-                <MaterialCommunityIcons name="phone-outline" size={22} color={COLORS.success} />
+                {acting === 'call' ? (
+                  <ActivityIndicator size="small" color={COLORS.success} />
+                ) : (
+                  <MaterialCommunityIcons name="phone-outline" size={22} color={COLORS.success} />
+                )}
               </View>
               <Text style={styles.actionLabel}>Request{'\n'}Call</Text>
             </TouchableOpacity>
 
             <TouchableOpacity
-              style={styles.actionBtn}
-              onPress={() => navigation.navigate('RequestExtraAmount')}
+              style={[styles.actionBtn, isOffer && styles.actionDisabled]}
+              disabled={isOffer}
+              onPress={() => navigation.navigate('RequestExtraAmount', { jobId })}
             >
               <View style={[styles.actionIconWrap, { backgroundColor: COLORS.warningLight }]}>
                 <MaterialCommunityIcons name="cash-plus" size={22} color="#B45309" />
@@ -171,29 +344,53 @@ const NewJobRequestScreen = ({ navigation }) => {
               <Text style={styles.actionLabel}>Extra{'\n'}Amount</Text>
             </TouchableOpacity>
           </View>
+
+          <View style={styles.privacyNote}>
+            <MaterialCommunityIcons name="shield-lock-outline" size={14} color={COLORS.textTertiary} />
+            <Text style={styles.privacyText}>
+              Phone numbers stay hidden. Chat here, or ask the customer to call you.
+            </Text>
+          </View>
         </Card>
 
         <View style={{ height: SPACING.xxl }} />
       </ScrollView>
 
-      {/* Bottom Buttons */}
-      <View style={styles.bottomBar}>
-        <TouchableOpacity
-          style={[styles.bottomBtn, styles.rejectBtn]}
-          onPress={() => navigation.goBack()}
-          activeOpacity={0.8}
-        >
-          <MaterialCommunityIcons name="close" size={22} color={COLORS.danger} />
-          <Text style={styles.rejectText}>Reject</Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={[styles.bottomBtn, styles.acceptBtn]}
-          activeOpacity={0.8}
-        >
-          <MaterialCommunityIcons name="check" size={22} color={COLORS.white} />
-          <Text style={styles.acceptText}>Accept Job</Text>
-        </TouchableOpacity>
-      </View>
+      {/* Accept / Reject (spec #7) — only while the job is still an offer */}
+      {isOffer && (
+        <View style={styles.bottomBar}>
+          <TouchableOpacity
+            style={[styles.bottomBtn, styles.rejectBtn]}
+            onPress={confirmReject}
+            disabled={!!acting}
+            activeOpacity={0.8}
+          >
+            {acting === 'reject' ? (
+              <ActivityIndicator size="small" color={COLORS.danger} />
+            ) : (
+              <>
+                <MaterialCommunityIcons name="close" size={22} color={COLORS.danger} />
+                <Text style={styles.rejectText}>Reject</Text>
+              </>
+            )}
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.bottomBtn, styles.acceptBtn]}
+            onPress={handleAccept}
+            disabled={!!acting}
+            activeOpacity={0.8}
+          >
+            {acting === 'accept' ? (
+              <ActivityIndicator size="small" color={COLORS.white} />
+            ) : (
+              <>
+                <MaterialCommunityIcons name="check" size={22} color={COLORS.white} />
+                <Text style={styles.acceptText}>Accept Job</Text>
+              </>
+            )}
+          </TouchableOpacity>
+        </View>
+      )}
     </View>
   );
 };
@@ -275,19 +472,6 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
   },
-  customerAvatar: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    backgroundColor: COLORS.primaryLight,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  customerAvatarText: {
-    fontSize: FONT_SIZE.lg,
-    fontWeight: FONT_WEIGHT.bold,
-    color: COLORS.primary,
-  },
   customerName: {
     fontSize: FONT_SIZE.lg,
     fontWeight: FONT_WEIGHT.bold,
@@ -298,11 +482,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginTop: 4,
   },
-  ratingText: {
-    fontSize: FONT_SIZE.sm,
-    color: COLORS.textSecondary,
-    fontWeight: FONT_WEIGHT.semibold,
-    marginLeft: 6,
+  workDetails: {
+    fontSize: FONT_SIZE.md,
+    color: COLORS.textPrimary,
+    lineHeight: 22,
   },
   locationAddress: {
     fontSize: FONT_SIZE.md,
@@ -402,6 +585,21 @@ const styles = StyleSheet.create({
     fontWeight: FONT_WEIGHT.extrabold,
     color: COLORS.primary,
   },
+  extraRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginTop: SPACING.sm,
+  },
+  extraLabel: {
+    fontSize: FONT_SIZE.sm,
+    color: COLORS.textSecondary,
+  },
+  extraValue: {
+    fontSize: FONT_SIZE.md,
+    fontWeight: FONT_WEIGHT.semibold,
+    color: COLORS.textSuccess,
+  },
   actionRow: {
     flexDirection: 'row',
     justifyContent: 'space-around',
@@ -409,6 +607,9 @@ const styles = StyleSheet.create({
   actionBtn: {
     alignItems: 'center',
     flex: 1,
+  },
+  actionDisabled: {
+    opacity: 0.4,
   },
   actionIconWrap: {
     width: 52,
@@ -424,6 +625,38 @@ const styles = StyleSheet.create({
     fontWeight: FONT_WEIGHT.medium,
     textAlign: 'center',
     lineHeight: 18,
+  },
+  unreadDot: {
+    position: 'absolute',
+    top: -2,
+    right: -2,
+    minWidth: 18,
+    height: 18,
+    paddingHorizontal: 4,
+    borderRadius: 9,
+    backgroundColor: COLORS.danger,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  unreadText: {
+    color: COLORS.white,
+    fontSize: 10,
+    fontWeight: FONT_WEIGHT.bold,
+  },
+  privacyNote: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    marginTop: SPACING.lg,
+    paddingTop: SPACING.md,
+    borderTopWidth: 1,
+    borderTopColor: COLORS.borderLight,
+  },
+  privacyText: {
+    flex: 1,
+    marginLeft: SPACING.xs,
+    fontSize: FONT_SIZE.xs,
+    color: COLORS.textTertiary,
+    lineHeight: 16,
   },
   bottomBar: {
     flexDirection: 'row',

@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+import React, { useCallback, useState } from 'react';
+import { useNavigation } from '@react-navigation/native';
 import {
   View,
   Text,
@@ -7,17 +8,120 @@ import {
   TouchableOpacity,
   Switch,
   StatusBar,
+  RefreshControl,
+  Alert,
 } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import { COLORS, SPACING, RADIUS, FONT_SIZE, FONT_WEIGHT, SHADOWS } from '../theme';
+import { COLORS, SPACING, RADIUS, FONT_SIZE, FONT_WEIGHT } from '../theme';
 import Card from '../components/Card';
 import StatusBadge from '../components/StatusBadge';
-import { WORKER, TODAYS_JOBS, EARNINGS, NEW_JOB_REQUEST } from '../data/mockData';
+import Avatar from '../components/Avatar';
+import LoadingState from '../components/LoadingState';
+import EmptyState from '../components/EmptyState';
+import useApi from '../hooks/useApi';
+import useLocation from '../hooks/useLocation';
+import { useAuth } from '../context/AuthContext';
+import { useSocketEvent, WS_EVENTS } from '../context/SocketContext';
+import { setAvailability } from '../api/worker';
+import { getRequests, getCurrentJob, getHistory } from '../api/jobs';
+import { getSummary } from '../api/earnings';
+import { getUnreadCount } from '../api/notifications';
+import { formatRupees, formatTime } from '../utils/format';
+import { JOB_STEPS, STATUS_LABEL, STATUS_TONE, JOB_STATUS } from '../constants/jobSteps';
 
-const HomeScreen = ({ navigation }) => {
-  const [isAvailable, setIsAvailable] = useState(WORKER.isAvailable);
+const greeting = () => {
+  const hour = new Date().getHours();
+  if (hour < 12) return 'Good Morning 👋';
+  if (hour < 17) return 'Good Afternoon 👋';
+  return 'Good Evening 👋';
+};
 
-  const pendingRequests = 2;
+const HomeScreen = () => {
+  const navigation = useNavigation();
+  const { worker, patchWorker } = useAuth();
+  const [toggling, setToggling] = useState(false);
+  const isAvailable = worker?.is_available ?? false;
+
+  // A position is what lets the API compute distance and ETA for every job.
+  const { request: requestLocation } = useLocation();
+
+  const dashboard = useApi(
+    useCallback(
+      () =>
+        Promise.all([
+          getRequests(),
+          getCurrentJob(),
+          getSummary('today'),
+          getHistory({ limit: 10 }),
+          getUnreadCount(),
+        ]).then(([requests, current, earnings, history, unread]) => ({
+          requests,
+          current,
+          earnings,
+          history,
+          unread: unread.unread,
+        })),
+      [],
+    ),
+    [],
+  );
+
+  // Anything that changes the dashboard arrives as one of these.
+  useSocketEvent(
+    [
+      WS_EVENTS.NEW_JOB_REQUEST,
+      WS_EVENTS.JOB_UPDATE,
+      WS_EVENTS.PAYMENT_UPDATE,
+      WS_EVENTS.EXTRA_AMOUNT_DECISION,
+      WS_EVENTS.CHAT_MESSAGE,
+    ],
+    () => dashboard.refetch(),
+  );
+
+  const handleToggleAvailability = async (next) => {
+    // Optimistic: the switch should not lag behind the thumb.
+    patchWorker({ is_available: next });
+    setToggling(true);
+    try {
+      const result = await setAvailability(next);
+      patchWorker({ is_available: result.is_available });
+      if (next) requestLocation();
+      dashboard.refetch();
+    } catch (error) {
+      patchWorker({ is_available: !next });
+      Alert.alert('Could not update availability', error.message);
+    } finally {
+      setToggling(false);
+    }
+  };
+
+  if (dashboard.loading && !dashboard.data) {
+    return (
+      <View style={styles.container}>
+        <StatusBar barStyle="light-content" backgroundColor={COLORS.primary} />
+        <LoadingState message="Loading your day…" />
+      </View>
+    );
+  }
+
+  if (dashboard.error && !dashboard.data) {
+    return (
+      <View style={styles.container}>
+        <EmptyState
+          tone="error"
+          title="Can't reach the server"
+          message={dashboard.error.message}
+          actionLabel="Try again"
+          onAction={dashboard.reload}
+        />
+      </View>
+    );
+  }
+
+  const { requests = [], current, earnings, history = [], unread = 0 } = dashboard.data ?? {};
+  const pendingRequests = requests.length;
+  const currentStepLabel =
+    current?.current_step != null ? JOB_STEPS[current.current_step] : STATUS_LABEL[current?.status];
 
   return (
     <View style={styles.container}>
@@ -27,22 +131,28 @@ const HomeScreen = ({ navigation }) => {
       <View style={styles.header}>
         <View style={styles.headerContent}>
           <View style={styles.headerLeft}>
-            <View style={styles.avatar}>
-              <Text style={styles.avatarText}>
-                {WORKER.name.split(' ').map(n => n[0]).join('')}
-              </Text>
-              <View style={[styles.onlineDot, { backgroundColor: isAvailable ? COLORS.online : COLORS.offline }]} />
-            </View>
+            <Avatar
+              name={worker?.name}
+              uri={worker?.photo_url}
+              size={48}
+              backgroundColor="rgba(255,255,255,0.25)"
+              color={COLORS.white}
+              online={isAvailable}
+            />
             <View style={styles.headerInfo}>
-              <Text style={styles.greeting}>Good Afternoon 👋</Text>
-              <Text style={styles.workerName}>{WORKER.name}</Text>
+              <Text style={styles.greeting}>{greeting()}</Text>
+              <Text style={styles.workerName}>{worker?.name}</Text>
             </View>
           </View>
-          <TouchableOpacity style={styles.notificationBtn}>
+          <TouchableOpacity
+            style={styles.notificationBtn}
+            onPress={() => navigation.navigate('Notifications')}
+            activeOpacity={0.7}
+          >
             <MaterialCommunityIcons name="bell-outline" size={24} color={COLORS.white} />
-            {pendingRequests > 0 && (
+            {unread > 0 && (
               <View style={styles.notifBadge}>
-                <Text style={styles.notifBadgeText}>{pendingRequests}</Text>
+                <Text style={styles.notifBadgeText}>{unread > 9 ? '9+' : unread}</Text>
               </View>
             )}
           </TouchableOpacity>
@@ -67,7 +177,8 @@ const HomeScreen = ({ navigation }) => {
           </View>
           <Switch
             value={isAvailable}
-            onValueChange={setIsAvailable}
+            onValueChange={handleToggleAvailability}
+            disabled={toggling}
             trackColor={{ false: COLORS.border, true: '#86EFAC' }}
             thumbColor={isAvailable ? COLORS.success : COLORS.offline}
             style={{ transform: [{ scaleX: 1.2 }, { scaleY: 1.2 }] }}
@@ -79,12 +190,19 @@ const HomeScreen = ({ navigation }) => {
         style={styles.body}
         contentContainerStyle={styles.bodyContent}
         showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl
+            refreshing={dashboard.refreshing}
+            onRefresh={dashboard.refetch}
+            tintColor={COLORS.primary}
+          />
+        }
       >
         {/* New Job Requests */}
         {pendingRequests > 0 && (
           <TouchableOpacity
             activeOpacity={0.85}
-            onPress={() => navigation.navigate('NewJobRequest')}
+            onPress={() => navigation.navigate('JobRequests')}
           >
             <Card style={styles.requestCard}>
               <View style={styles.requestCardInner}>
@@ -93,7 +211,9 @@ const HomeScreen = ({ navigation }) => {
                 </View>
                 <View style={styles.requestInfo}>
                   <Text style={styles.requestTitle}>New Job Requests</Text>
-                  <Text style={styles.requestSubtext}>{pendingRequests} requests waiting</Text>
+                  <Text style={styles.requestSubtext}>
+                    {pendingRequests} {pendingRequests === 1 ? 'request' : 'requests'} waiting
+                  </Text>
                 </View>
                 <View style={styles.requestBadge}>
                   <Text style={styles.requestBadgeText}>{pendingRequests}</Text>
@@ -104,93 +224,164 @@ const HomeScreen = ({ navigation }) => {
           </TouchableOpacity>
         )}
 
+        {!isAvailable && (
+          <Card variant="warning" style={styles.offlineCard}>
+            <View style={styles.offlineRow}>
+              <MaterialCommunityIcons name="sleep" size={22} color={COLORS.warning} />
+              <Text style={styles.offlineText}>
+                You&apos;re marked unavailable, so new job requests won&apos;t reach you. Flip the
+                switch above when you&apos;re ready.
+              </Text>
+            </View>
+          </Card>
+        )}
+
         {/* Stats Row */}
         <View style={styles.statsRow}>
           <Card style={styles.statCard}>
             <View style={[styles.statIconWrap, { backgroundColor: COLORS.successLight }]}>
               <MaterialCommunityIcons name="currency-inr" size={22} color={COLORS.success} />
             </View>
-            <Text style={styles.statValue}>₹{EARNINGS.today.toLocaleString('en-IN')}</Text>
-            <Text style={styles.statLabel}>Today's Earnings</Text>
+            <Text style={styles.statValue}>{formatRupees(earnings?.total)}</Text>
+            <Text style={styles.statLabel}>Today&apos;s Earnings</Text>
           </Card>
           <Card style={styles.statCard}>
             <View style={[styles.statIconWrap, { backgroundColor: COLORS.primaryLight }]}>
               <MaterialCommunityIcons name="briefcase-check" size={22} color={COLORS.primary} />
             </View>
-            <Text style={styles.statValue}>{EARNINGS.todayJobs}</Text>
-            <Text style={styles.statLabel}>Today's Jobs</Text>
+            <Text style={styles.statValue}>{earnings?.jobs ?? 0}</Text>
+            <Text style={styles.statLabel}>Today&apos;s Jobs</Text>
           </Card>
         </View>
 
         {/* Current Job Quick View */}
-        <TouchableOpacity
-          activeOpacity={0.85}
-          onPress={() => navigation.navigate('CurrentJob')}
-        >
-          <Card style={styles.currentJobCard}>
-            <View style={styles.currentJobHeader}>
-              <StatusBadge label="IN PROGRESS" color="warning" size="sm" />
-              <Text style={styles.currentJobTime}>2:15 PM</Text>
-            </View>
-            <View style={styles.currentJobBody}>
-              <View style={[styles.serviceIconCircle, { backgroundColor: COLORS.infoLight }]}>
-                <MaterialCommunityIcons name="water-pump" size={24} color={COLORS.info} />
+        {current ? (
+          <TouchableOpacity
+            activeOpacity={0.85}
+            onPress={() => navigation.navigate('CurrentJob', { jobId: current.id })}
+          >
+            <Card style={styles.currentJobCard}>
+              <View style={styles.currentJobHeader}>
+                <StatusBadge
+                  label={(STATUS_LABEL[current.status] ?? '').toUpperCase()}
+                  color={STATUS_TONE[current.status] ?? 'warning'}
+                  size="sm"
+                />
+                <Text style={styles.currentJobTime}>{formatTime(current.accepted_at)}</Text>
               </View>
-              <View style={{ flex: 1, marginLeft: SPACING.md }}>
-                <Text style={styles.currentJobService}>Plumbing</Text>
-                <Text style={styles.currentJobCustomer}>Amit Patel</Text>
-                <View style={styles.currentJobLocation}>
-                  <MaterialCommunityIcons name="map-marker" size={14} color={COLORS.textSecondary} />
-                  <Text style={styles.currentJobAddress} numberOfLines={1}>Banjara Hills, Hyderabad</Text>
+              <View style={styles.currentJobBody}>
+                <View style={[styles.serviceIconCircle, { backgroundColor: COLORS.infoLight }]}>
+                  <MaterialCommunityIcons
+                    name={current.service_icon || 'wrench'}
+                    size={24}
+                    color={COLORS.info}
+                  />
+                </View>
+                <View style={{ flex: 1, marginLeft: SPACING.md }}>
+                  <Text style={styles.currentJobService}>{current.service_type}</Text>
+                  <Text style={styles.currentJobCustomer}>{current.customer.name}</Text>
+                  <View style={styles.currentJobLocation}>
+                    <MaterialCommunityIcons
+                      name="map-marker"
+                      size={14}
+                      color={COLORS.textSecondary}
+                    />
+                    <Text style={styles.currentJobAddress} numberOfLines={1}>
+                      {current.location.address}
+                    </Text>
+                  </View>
+                </View>
+                <View style={styles.currentJobAmount}>
+                  <Text style={styles.currentJobAmountText}>
+                    {formatRupees(current.amounts.total_amount)}
+                  </Text>
                 </View>
               </View>
-              <View style={styles.currentJobAmount}>
-                <Text style={styles.currentJobAmountText}>₹850</Text>
+              <View style={styles.currentJobFooter}>
+                <View style={styles.currentJobStep}>
+                  <View style={styles.stepDot} />
+                  <Text style={styles.stepText}>{currentStepLabel}</Text>
+                </View>
+                <View style={styles.viewBtn}>
+                  <Text style={styles.viewBtnText}>View Details</Text>
+                  <MaterialCommunityIcons name="arrow-right" size={16} color={COLORS.primary} />
+                </View>
               </View>
-            </View>
-            <View style={styles.currentJobFooter}>
-              <View style={styles.currentJobStep}>
-                <View style={styles.stepDot} />
-                <Text style={styles.stepText}>Arrived</Text>
-              </View>
-              <View style={styles.viewBtn}>
-                <Text style={styles.viewBtnText}>View Details</Text>
-                <MaterialCommunityIcons name="arrow-right" size={16} color={COLORS.primary} />
-              </View>
-            </View>
+            </Card>
+          </TouchableOpacity>
+        ) : (
+          <Card style={styles.noJobCard}>
+            <MaterialCommunityIcons
+              name="clipboard-check-outline"
+              size={28}
+              color={COLORS.textTertiary}
+            />
+            <Text style={styles.noJobTitle}>No job in progress</Text>
+            <Text style={styles.noJobText}>
+              {pendingRequests > 0
+                ? 'Open the requests above to pick up your next job.'
+                : 'You&apos;ll see a job here as soon as you accept one.'}
+            </Text>
           </Card>
-        </TouchableOpacity>
+        )}
 
-        {/* Today's Completed Jobs */}
+        {/* Recent Jobs */}
         <View style={styles.sectionHeader}>
-          <Text style={styles.sectionTitle}>Today's Jobs</Text>
-          <TouchableOpacity>
+          <Text style={styles.sectionTitle}>Recent Jobs</Text>
+          <TouchableOpacity onPress={() => navigation.navigate('JobsTab')}>
             <Text style={styles.seeAllText}>See All</Text>
           </TouchableOpacity>
         </View>
 
-        {TODAYS_JOBS.map((job) => (
-          <Card key={job.id} style={styles.jobItem}>
-            <View style={styles.jobItemRow}>
-              <View style={[
-                styles.jobStatusDot,
-                { backgroundColor: job.status === 'completed' ? COLORS.success : COLORS.warning }
-              ]} />
-              <View style={{ flex: 1, marginLeft: SPACING.md }}>
-                <Text style={styles.jobItemService}>{job.service}</Text>
-                <Text style={styles.jobItemCustomer}>{job.customer} · {job.time}</Text>
-              </View>
-              <View style={styles.jobItemRight}>
-                <Text style={styles.jobItemAmount}>₹{job.amount}</Text>
-                <StatusBadge
-                  label={job.status === 'completed' ? 'Done' : 'Active'}
-                  color={job.status === 'completed' ? 'success' : 'warning'}
-                  size="sm"
-                />
-              </View>
-            </View>
+        {history.length === 0 ? (
+          <Card style={styles.jobItem}>
+            <Text style={styles.noJobText}>No jobs yet. Your history will build up here.</Text>
           </Card>
-        ))}
+        ) : (
+          history.map((job) => (
+            <Card key={job.id} style={styles.jobItem}>
+              <TouchableOpacity
+                style={styles.jobItemRow}
+                activeOpacity={0.7}
+                onPress={() =>
+                  navigation.navigate(
+                    job.status === JOB_STATUS.COMPLETED ? 'JobRequest' : 'CurrentJob',
+                    { jobId: job.id },
+                  )
+                }
+              >
+                <View
+                  style={[
+                    styles.jobStatusDot,
+                    {
+                      backgroundColor:
+                        job.status === JOB_STATUS.COMPLETED
+                          ? COLORS.success
+                          : job.status === JOB_STATUS.REJECTED ||
+                            job.status === JOB_STATUS.CANCELLED
+                          ? COLORS.danger
+                          : COLORS.warning,
+                    },
+                  ]}
+                />
+                <View style={{ flex: 1, marginLeft: SPACING.md }}>
+                  <Text style={styles.jobItemService}>{job.service_type}</Text>
+                  <Text style={styles.jobItemCustomer}>
+                    {job.customer_name} · {formatTime(job.completed_at || job.requested_at)}
+                  </Text>
+                </View>
+                <View style={styles.jobItemRight}>
+                  <Text style={styles.jobItemAmount}>{formatRupees(job.total_amount)}</Text>
+                  <StatusBadge
+                    label={STATUS_LABEL[job.status] ?? job.status}
+                    color={STATUS_TONE[job.status] ?? 'neutral'}
+                    size="sm"
+                  />
+                </View>
+              </TouchableOpacity>
+            </Card>
+          ))
+        )}
 
         <View style={{ height: 100 }} />
       </ScrollView>
@@ -220,31 +411,9 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
   },
-  avatar: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    backgroundColor: 'rgba(255,255,255,0.25)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  avatarText: {
-    color: COLORS.white,
-    fontSize: FONT_SIZE.lg,
-    fontWeight: FONT_WEIGHT.bold,
-  },
-  onlineDot: {
-    position: 'absolute',
-    bottom: 0,
-    right: 0,
-    width: 14,
-    height: 14,
-    borderRadius: 7,
-    borderWidth: 2,
-    borderColor: COLORS.primary,
-  },
   headerInfo: {
     marginLeft: SPACING.md,
+    flexShrink: 1,
   },
   greeting: {
     color: 'rgba(255,255,255,0.8)',
@@ -268,8 +437,9 @@ const styles = StyleSheet.create({
     position: 'absolute',
     top: 6,
     right: 6,
-    width: 18,
+    minWidth: 18,
     height: 18,
+    paddingHorizontal: 3,
     borderRadius: 9,
     backgroundColor: COLORS.danger,
     alignItems: 'center',
@@ -292,6 +462,8 @@ const styles = StyleSheet.create({
   availLeft: {
     flexDirection: 'row',
     alignItems: 'center',
+    flex: 1,
+    marginRight: SPACING.md,
   },
   availLabel: {
     color: COLORS.white,
@@ -354,6 +526,20 @@ const styles = StyleSheet.create({
     color: COLORS.danger,
     fontSize: FONT_SIZE.md,
     fontWeight: FONT_WEIGHT.bold,
+  },
+  offlineCard: {
+    marginBottom: SPACING.lg,
+  },
+  offlineRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+  },
+  offlineText: {
+    flex: 1,
+    marginLeft: SPACING.md,
+    fontSize: FONT_SIZE.sm,
+    color: '#92400E',
+    lineHeight: 19,
   },
   statsRow: {
     flexDirection: 'row',
@@ -477,6 +663,24 @@ const styles = StyleSheet.create({
     color: COLORS.primary,
     fontWeight: FONT_WEIGHT.semibold,
     marginRight: 4,
+  },
+  noJobCard: {
+    alignItems: 'center',
+    paddingVertical: SPACING.xxl,
+    marginBottom: SPACING.lg,
+  },
+  noJobTitle: {
+    fontSize: FONT_SIZE.md,
+    fontWeight: FONT_WEIGHT.bold,
+    color: COLORS.textPrimary,
+    marginTop: SPACING.sm,
+  },
+  noJobText: {
+    fontSize: FONT_SIZE.sm,
+    color: COLORS.textSecondary,
+    textAlign: 'center',
+    marginTop: 4,
+    lineHeight: 19,
   },
   sectionHeader: {
     flexDirection: 'row',

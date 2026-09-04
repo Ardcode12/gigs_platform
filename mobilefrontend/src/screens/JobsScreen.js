@@ -1,4 +1,5 @@
-import React from 'react';
+import React, { useCallback, useState } from 'react';
+import { useNavigation } from '@react-navigation/native';
 import {
   View,
   Text,
@@ -6,36 +7,93 @@ import {
   ScrollView,
   TouchableOpacity,
   StatusBar,
+  RefreshControl,
 } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { COLORS, SPACING, RADIUS, FONT_SIZE, FONT_WEIGHT, SHADOWS } from '../theme';
 import Card from '../components/Card';
 import StatusBadge from '../components/StatusBadge';
-import { TODAYS_JOBS, CURRENT_JOB } from '../data/mockData';
+import LoadingState from '../components/LoadingState';
+import EmptyState from '../components/EmptyState';
+import useApi from '../hooks/useApi';
+import { useSocketEvent, WS_EVENTS } from '../context/SocketContext';
+import { getHistory, getCurrentJob } from '../api/jobs';
+import { formatRupees, formatDistance, formatTime, dayLabel } from '../utils/format';
+import {
+  JOB_STATUS,
+  JOB_STEPS,
+  STATUS_LABEL,
+  STATUS_TONE,
+  ACTIVE_STATUSES,
+} from '../constants/jobSteps';
 
-const JobsScreen = ({ navigation }) => {
-  const serviceIcons = {
-    'Fan Repair': 'fan',
-    'Wiring': 'lightning-bolt',
-    'Plumbing': 'water-pump',
-    'Electrical Repair': 'lightning-bolt',
-  };
+const FILTERS = [
+  { key: 'all', label: 'All' },
+  { key: 'active', label: 'Active' },
+  { key: 'completed', label: 'Completed' },
+];
 
-  const allJobs = [
-    {
-      id: CURRENT_JOB.id,
-      service: CURRENT_JOB.serviceType,
-      customer: CURRENT_JOB.customer.name,
-      amount: CURRENT_JOB.totalAmount,
-      status: 'in-progress',
-      time: '2:15 PM',
-      location: 'Banjara Hills',
-    },
-    ...TODAYS_JOBS.filter(j => j.id !== CURRENT_JOB.id).map(j => ({
-      ...j,
-      location: 'Hyderabad',
-    })),
-  ];
+const JobsScreen = () => {
+  const navigation = useNavigation();
+  const [filter, setFilter] = useState('all');
+
+  const jobs = useApi(
+    useCallback(
+      () =>
+        Promise.all([getHistory({ limit: 100 }), getCurrentJob()]).then(([history, current]) => ({
+          history,
+          current,
+        })),
+      [],
+    ),
+    [],
+  );
+
+  useSocketEvent([WS_EVENTS.JOB_UPDATE, WS_EVENTS.PAYMENT_UPDATE], () => jobs.refetch());
+
+  const history = jobs.data?.history ?? [];
+  const current = jobs.data?.current ?? null;
+
+  const completed = history.filter((job) => job.status === JOB_STATUS.COMPLETED);
+  const activeCount = current ? 1 : 0;
+
+  // "Active" is a client-side view of the history list: the API filters by one
+  // status at a time, and active spans four of them.
+  const visible =
+    filter === 'completed'
+      ? completed
+      : filter === 'active'
+        ? history.filter((job) => ACTIVE_STATUSES.includes(job.status))
+        : history;
+
+  const openJob = (job) =>
+    navigation.navigate(job.status === JOB_STATUS.COMPLETED ? 'JobRequest' : 'CurrentJob', {
+      jobId: job.id,
+    });
+
+  const chrome = (children) => (
+    <View style={styles.container}>
+      <StatusBar barStyle="light-content" backgroundColor={COLORS.primary} />
+      <View style={styles.header}>
+        <Text style={styles.headerTitle}>My Jobs</Text>
+      </View>
+      {children}
+    </View>
+  );
+
+  if (jobs.loading && !jobs.data) return chrome(<LoadingState message="Loading your jobs…" />);
+
+  if (!jobs.data) {
+    return chrome(
+      <EmptyState
+        tone="error"
+        title="Couldn't load your jobs"
+        message={jobs.error?.message}
+        actionLabel="Try again"
+        onAction={jobs.reload}
+      />,
+    );
+  }
 
   return (
     <View style={styles.container}>
@@ -44,98 +102,181 @@ const JobsScreen = ({ navigation }) => {
       {/* Header */}
       <View style={styles.header}>
         <Text style={styles.headerTitle}>My Jobs</Text>
-        <TouchableOpacity style={styles.filterBtn}>
-          <MaterialCommunityIcons name="filter-variant" size={22} color={COLORS.white} />
-        </TouchableOpacity>
       </View>
 
       {/* Quick Stats */}
       <View style={styles.statsBar}>
         <View style={styles.statItem}>
-          <Text style={styles.statNum}>1</Text>
+          <Text style={styles.statNum}>{activeCount}</Text>
           <Text style={styles.statText}>Active</Text>
         </View>
         <View style={styles.statDivider} />
         <View style={styles.statItem}>
-          <Text style={styles.statNum}>2</Text>
+          <Text style={styles.statNum}>{completed.length}</Text>
           <Text style={styles.statText}>Completed</Text>
         </View>
         <View style={styles.statDivider} />
         <View style={styles.statItem}>
-          <Text style={styles.statNum}>3</Text>
+          <Text style={styles.statNum}>{history.length}</Text>
           <Text style={styles.statText}>Total</Text>
         </View>
+      </View>
+
+      {/* Filters */}
+      <View style={styles.filterRow}>
+        {FILTERS.map((item) => (
+          <TouchableOpacity
+            key={item.key}
+            style={[styles.filterChip, filter === item.key && styles.filterChipActive]}
+            onPress={() => setFilter(item.key)}
+            activeOpacity={0.8}
+          >
+            <Text style={[styles.filterText, filter === item.key && styles.filterTextActive]}>
+              {item.label}
+            </Text>
+          </TouchableOpacity>
+        ))}
       </View>
 
       <ScrollView
         style={styles.body}
         contentContainerStyle={styles.bodyContent}
         showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl
+            refreshing={jobs.refreshing}
+            onRefresh={jobs.refetch}
+            tintColor={COLORS.primary}
+          />
+        }
       >
         {/* Active Job Section */}
-        <Text style={styles.sectionTitle}>Active Job</Text>
+        {!!current && filter !== 'completed' && (
+          <>
+            <Text style={styles.sectionTitle}>Active Job</Text>
 
-        <TouchableOpacity
-          activeOpacity={0.85}
-          onPress={() => navigation.navigate('HomeTab', { screen: 'CurrentJob' })}
-        >
-          <Card style={styles.activeJobCard}>
-            <View style={styles.activeJobHeader}>
-              <StatusBadge label="IN PROGRESS" color="warning" size="sm" />
-              <Text style={styles.jobTime}>2:15 PM</Text>
-            </View>
-            <View style={styles.activeJobBody}>
-              <View style={[styles.jobIconCircle, { backgroundColor: COLORS.infoLight }]}>
-                <MaterialCommunityIcons name="water-pump" size={24} color={COLORS.info} />
-              </View>
-              <View style={{ flex: 1, marginLeft: SPACING.md }}>
-                <Text style={styles.jobService}>{CURRENT_JOB.serviceType}</Text>
-                <Text style={styles.jobCustomer}>{CURRENT_JOB.customer.name}</Text>
-                <View style={styles.jobLocRow}>
-                  <MaterialCommunityIcons name="map-marker" size={14} color={COLORS.textSecondary} />
-                  <Text style={styles.jobLoc}>Banjara Hills</Text>
-                  <Text style={styles.jobDist}>· {CURRENT_JOB.location.distance}</Text>
+            <TouchableOpacity
+              activeOpacity={0.85}
+              onPress={() => navigation.navigate('CurrentJob', { jobId: current.id })}
+            >
+              <Card style={styles.activeJobCard}>
+                <View style={styles.activeJobHeader}>
+                  <StatusBadge
+                    label={(STATUS_LABEL[current.status] ?? '').toUpperCase()}
+                    color={STATUS_TONE[current.status] ?? 'warning'}
+                    size="sm"
+                  />
+                  <Text style={styles.jobTime}>{formatTime(current.accepted_at)}</Text>
                 </View>
-              </View>
-              <Text style={styles.jobAmount}>₹{CURRENT_JOB.totalAmount}</Text>
-            </View>
-            <View style={styles.activeJobFooter}>
-              <View style={styles.stepIndicator}>
-                <View style={[styles.stepCircle, { backgroundColor: COLORS.warning }]} />
-                <Text style={styles.stepLabel}>Arrived</Text>
-              </View>
-              <View style={styles.tapView}>
-                <Text style={styles.tapText}>Tap to view</Text>
-                <MaterialCommunityIcons name="arrow-right" size={16} color={COLORS.primary} />
-              </View>
-            </View>
-          </Card>
-        </TouchableOpacity>
+                <View style={styles.activeJobBody}>
+                  <View style={[styles.jobIconCircle, { backgroundColor: COLORS.infoLight }]}>
+                    <MaterialCommunityIcons
+                      name={current.service_icon || 'wrench'}
+                      size={24}
+                      color={COLORS.info}
+                    />
+                  </View>
+                  <View style={{ flex: 1, marginLeft: SPACING.md }}>
+                    <Text style={styles.jobService}>{current.service_type}</Text>
+                    <Text style={styles.jobCustomer}>{current.customer_name}</Text>
+                    <View style={styles.jobLocRow}>
+                      <MaterialCommunityIcons
+                        name="map-marker"
+                        size={14}
+                        color={COLORS.textSecondary}
+                      />
+                      <Text style={styles.jobLoc} numberOfLines={1}>
+                        {current.address}
+                      </Text>
+                      {!!formatDistance(current.distance_km) && (
+                        <Text style={styles.jobDist}>· {formatDistance(current.distance_km)}</Text>
+                      )}
+                    </View>
+                  </View>
+                  <Text style={styles.jobAmount}>{formatRupees(current.total_amount)}</Text>
+                </View>
+                <View style={styles.activeJobFooter}>
+                  <View style={styles.stepIndicator}>
+                    <View style={[styles.stepCircle, { backgroundColor: COLORS.warning }]} />
+                    <Text style={styles.stepLabel}>
+                      {JOB_STEPS[current.current_step] ?? STATUS_LABEL[current.status]}
+                    </Text>
+                  </View>
+                  <View style={styles.tapView}>
+                    <Text style={styles.tapText}>Tap to view</Text>
+                    <MaterialCommunityIcons name="arrow-right" size={16} color={COLORS.primary} />
+                  </View>
+                </View>
+              </Card>
+            </TouchableOpacity>
+          </>
+        )}
 
-        {/* Completed Jobs */}
-        <Text style={[styles.sectionTitle, { marginTop: SPACING.xl }]}>Today's Completed</Text>
+        {/* History */}
+        <Text style={[styles.sectionTitle, !!current && { marginTop: SPACING.xl }]}>
+          {filter === 'completed' ? 'Completed Jobs' : filter === 'active' ? 'In Progress' : 'History'}
+        </Text>
 
-        {TODAYS_JOBS.filter(j => j.status === 'completed').map((job) => (
-          <Card key={job.id} style={styles.completedCard}>
-            <View style={styles.completedRow}>
-              <View style={[styles.jobIconCircle, { backgroundColor: COLORS.successLight, width: 44, height: 44, borderRadius: 22 }]}>
-                <MaterialCommunityIcons
-                  name={serviceIcons[job.service] || 'wrench'}
-                  size={20}
-                  color={COLORS.success}
-                />
-              </View>
-              <View style={{ flex: 1, marginLeft: SPACING.md }}>
-                <Text style={styles.completedService}>{job.service}</Text>
-                <Text style={styles.completedCustomer}>{job.customer} · {job.time}</Text>
-              </View>
-              <View style={styles.completedRight}>
-                <Text style={styles.completedAmount}>₹{job.amount}</Text>
-                <StatusBadge label="Done" color="success" size="sm" />
-              </View>
-            </View>
+        {visible.length === 0 ? (
+          <Card style={styles.emptyCard}>
+            <MaterialCommunityIcons
+              name="clipboard-text-outline"
+              size={30}
+              color={COLORS.textTertiary}
+            />
+            <Text style={styles.emptyTitle}>Nothing here yet</Text>
+            <Text style={styles.emptyText}>
+              {filter === 'completed'
+                ? 'Jobs you finish will be listed here with what you earned.'
+                : 'Accepted and finished jobs show up on this tab.'}
+            </Text>
           </Card>
-        ))}
+        ) : (
+          visible.map((job) => {
+            const done = job.status === JOB_STATUS.COMPLETED;
+            return (
+              <TouchableOpacity key={job.id} activeOpacity={0.85} onPress={() => openJob(job)}>
+                <Card style={styles.completedCard}>
+                  <View style={styles.completedRow}>
+                    <View
+                      style={[
+                        styles.jobIconCircle,
+                        {
+                          backgroundColor: done ? COLORS.successLight : COLORS.primaryLight,
+                          width: 44,
+                          height: 44,
+                          borderRadius: 22,
+                        },
+                      ]}
+                    >
+                      <MaterialCommunityIcons
+                        name={job.service_icon || 'wrench'}
+                        size={20}
+                        color={done ? COLORS.success : COLORS.primary}
+                      />
+                    </View>
+                    <View style={{ flex: 1, marginLeft: SPACING.md }}>
+                      <Text style={styles.completedService}>{job.service_type}</Text>
+                      <Text style={styles.completedCustomer}>
+                        {job.customer_name} ·{' '}
+                        {dayLabel(job.completed_at ?? job.requested_at)}
+                        {done ? `, ${formatTime(job.completed_at)}` : ''}
+                      </Text>
+                    </View>
+                    <View style={styles.completedRight}>
+                      <Text style={styles.completedAmount}>{formatRupees(job.total_amount)}</Text>
+                      <StatusBadge
+                        label={done ? 'Done' : (STATUS_LABEL[job.status] ?? job.status)}
+                        color={STATUS_TONE[job.status] ?? 'neutral'}
+                        size="sm"
+                      />
+                    </View>
+                  </View>
+                </Card>
+              </TouchableOpacity>
+            );
+          })
+        )}
 
         <View style={{ height: 100 }} />
       </ScrollView>
@@ -161,14 +302,6 @@ const styles = StyleSheet.create({
     fontSize: FONT_SIZE.xxl,
     fontWeight: FONT_WEIGHT.bold,
     color: COLORS.white,
-  },
-  filterBtn: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: 'rgba(255,255,255,0.15)',
-    alignItems: 'center',
-    justifyContent: 'center',
   },
   statsBar: {
     flexDirection: 'row',
@@ -198,12 +331,38 @@ const styles = StyleSheet.create({
     width: 1,
     backgroundColor: COLORS.border,
   },
+  filterRow: {
+    flexDirection: 'row',
+    gap: SPACING.sm,
+    paddingHorizontal: SPACING.xl,
+    paddingTop: SPACING.lg,
+  },
+  filterChip: {
+    paddingHorizontal: SPACING.lg,
+    paddingVertical: SPACING.sm,
+    borderRadius: RADIUS.xl,
+    backgroundColor: COLORS.white,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  filterChipActive: {
+    backgroundColor: COLORS.primary,
+    borderColor: COLORS.primary,
+  },
+  filterText: {
+    fontSize: FONT_SIZE.sm,
+    fontWeight: FONT_WEIGHT.semibold,
+    color: COLORS.textSecondary,
+  },
+  filterTextActive: {
+    color: COLORS.white,
+  },
   body: {
     flex: 1,
   },
   bodyContent: {
     padding: SPACING.xl,
-    paddingTop: SPACING.xl,
+    paddingTop: SPACING.lg,
   },
   sectionTitle: {
     fontSize: FONT_SIZE.lg,
@@ -253,6 +412,7 @@ const styles = StyleSheet.create({
     marginTop: 4,
   },
   jobLoc: {
+    flexShrink: 1,
     fontSize: FONT_SIZE.sm,
     color: COLORS.textSecondary,
     marginLeft: 4,
@@ -326,6 +486,23 @@ const styles = StyleSheet.create({
     fontWeight: FONT_WEIGHT.bold,
     color: COLORS.textPrimary,
     marginBottom: 4,
+  },
+  emptyCard: {
+    alignItems: 'center',
+    paddingVertical: SPACING.xxl,
+  },
+  emptyTitle: {
+    fontSize: FONT_SIZE.md,
+    fontWeight: FONT_WEIGHT.bold,
+    color: COLORS.textPrimary,
+    marginTop: SPACING.sm,
+  },
+  emptyText: {
+    fontSize: FONT_SIZE.sm,
+    color: COLORS.textSecondary,
+    textAlign: 'center',
+    marginTop: 4,
+    lineHeight: 19,
   },
 });
 

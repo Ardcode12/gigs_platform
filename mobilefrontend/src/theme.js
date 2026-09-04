@@ -83,6 +83,15 @@ export const FONT_WEIGHT = {
   extrabold: '800',
 };
 
+// Poppins font family names (loaded in App.js via expo-font)
+export const FONTS = {
+  regular: 'Poppins_400Regular',
+  medium: 'Poppins_500Medium',
+  semibold: 'Poppins_600SemiBold',
+  bold: 'Poppins_700Bold',
+  extrabold: 'Poppins_800ExtraBold',
+};
+
 export const SHADOWS = {
   sm: {
     shadowColor: COLORS.shadow,

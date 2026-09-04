@@ -1,4 +1,5 @@
-import React, { useState, useRef } from 'react';
+import React, { useCallback, useRef, useState } from 'react';
+import { useNavigation, useRoute } from '@react-navigation/native';
 import {
   View,
   Text,
@@ -9,29 +10,109 @@ import {
   KeyboardAvoidingView,
   Platform,
   StatusBar,
+  ActivityIndicator,
+  Alert,
 } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { COLORS, SPACING, RADIUS, FONT_SIZE, FONT_WEIGHT, SHADOWS } from '../theme';
-import { CHAT_MESSAGES } from '../data/mockData';
+import Avatar from '../components/Avatar';
+import LoadingState from '../components/LoadingState';
+import EmptyState from '../components/EmptyState';
+import useApi from '../hooks/useApi';
+import { useSocketEvent, WS_EVENTS } from '../context/SocketContext';
+import { getMessages, sendMessage, requestCall } from '../api/chat';
+import { getJob } from '../api/jobs';
+import { formatTime } from '../utils/format';
 
-const ChatScreen = ({ navigation }) => {
-  const [messages, setMessages] = useState(CHAT_MESSAGES);
+/**
+ * Spec #5 — talk to the customer before and during the job.
+ *
+ * Neither side ever sees a phone number: the only way to get a call is to ask the
+ * customer to place one, which is a record on the job, not a number.
+ */
+const ChatScreen = () => {
+  const navigation = useNavigation();
+  const jobId = useRoute().params?.jobId;
   const [inputText, setInputText] = useState('');
+  const [sending, setSending] = useState(false);
+  const [calling, setCalling] = useState(false);
   const flatListRef = useRef(null);
 
-  const sendMessage = () => {
-    if (!inputText.trim()) return;
-    const newMsg = {
-      id: String(messages.length + 1),
-      sender: 'worker',
-      text: inputText.trim(),
-      time: new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true }),
-    };
-    setMessages([...messages, newMsg]);
+  const thread = useApi(
+    useCallback(
+      () =>
+        Promise.all([getJob(jobId), getMessages(jobId)]).then(([job, messages]) => ({
+          job,
+          messages,
+        })),
+      [jobId],
+    ),
+    [jobId],
+  );
+
+  // A message from the customer arrives over the socket; pull the thread again so
+  // ordering and ids come from one source.
+  useSocketEvent([WS_EVENTS.CHAT_MESSAGE], (event) => {
+    if (event.payload?.job_id === jobId) thread.refetch();
+  });
+
+  const job = thread.data?.job;
+  const messages = thread.data?.messages ?? [];
+
+  const scrollToEnd = (animated = true) => {
+    setTimeout(() => flatListRef.current?.scrollToEnd({ animated }), 60);
+  };
+
+  const handleSend = async () => {
+    const text = inputText.trim();
+    if (!text || sending) return;
+
     setInputText('');
-    setTimeout(() => {
-      flatListRef.current?.scrollToEnd({ animated: true });
-    }, 100);
+    setSending(true);
+
+    // Show it straight away — a chat that waits for the server feels broken.
+    const optimistic = {
+      id: `pending-${Date.now()}`,
+      sender: 'worker',
+      text,
+      sent_at: new Date().toISOString(),
+      pending: true,
+    };
+    thread.setData((prev) => ({ ...prev, messages: [...(prev?.messages ?? []), optimistic] }));
+    scrollToEnd();
+
+    try {
+      const saved = await sendMessage(jobId, text);
+      thread.setData((prev) => ({
+        ...prev,
+        messages: (prev?.messages ?? []).map((m) => (m.id === optimistic.id ? saved : m)),
+      }));
+    } catch (error) {
+      thread.setData((prev) => ({
+        ...prev,
+        messages: (prev?.messages ?? []).map((m) =>
+          m.id === optimistic.id ? { ...m, pending: false, failed: true } : m,
+        ),
+      }));
+      Alert.alert('Message not sent', error.message);
+    } finally {
+      setSending(false);
+    }
+  };
+
+  const handleRequestCall = async () => {
+    setCalling(true);
+    try {
+      await requestCall(jobId);
+      Alert.alert(
+        'Call requested',
+        'The customer has been asked to call you. Your number stays private.',
+      );
+    } catch (error) {
+      Alert.alert('Could not send the request', error.message);
+    } finally {
+      setCalling(false);
+    }
   };
 
   const renderMessage = ({ item }) => {
@@ -47,6 +128,7 @@ const ChatScreen = ({ navigation }) => {
           style={[
             styles.messageBubble,
             isWorker ? styles.workerBubble : styles.customerBubble,
+            item.failed && styles.failedBubble,
           ]}
         >
           <Text
@@ -58,59 +140,100 @@ const ChatScreen = ({ navigation }) => {
             {item.text}
           </Text>
         </View>
-        <Text
-          style={[
-            styles.messageTime,
-            isWorker ? styles.workerTime : styles.customerTime,
-          ]}
-        >
-          {item.time}
+        <Text style={[styles.messageTime, isWorker ? styles.workerTime : styles.customerTime]}>
+          {item.failed ? 'Not sent' : item.pending ? 'Sending…' : formatTime(item.sent_at)}
         </Text>
       </View>
     );
   };
+
+  const header = (
+    <View style={styles.header}>
+      <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
+        <MaterialCommunityIcons name="arrow-left" size={24} color={COLORS.textPrimary} />
+      </TouchableOpacity>
+      <View style={styles.headerCenter}>
+        <Avatar name={job?.customer.name ?? '?'} uri={job?.customer.photo_url} size={40} />
+        <View style={{ marginLeft: SPACING.sm }}>
+          <Text style={styles.headerName}>{job?.customer.name ?? 'Customer'}</Text>
+          <Text style={styles.headerStatus}>{job?.service_type ?? 'Customer'}</Text>
+        </View>
+      </View>
+      <TouchableOpacity style={styles.callBtn} onPress={handleRequestCall} disabled={calling}>
+        {calling ? (
+          <ActivityIndicator size="small" color={COLORS.success} />
+        ) : (
+          <MaterialCommunityIcons name="phone-outline" size={22} color={COLORS.success} />
+        )}
+      </TouchableOpacity>
+    </View>
+  );
+
+  if (thread.loading && !thread.data) {
+    return (
+      <View style={styles.container}>
+        <StatusBar barStyle="dark-content" backgroundColor={COLORS.white} />
+        {header}
+        <LoadingState />
+      </View>
+    );
+  }
+
+  if (!thread.data) {
+    return (
+      <View style={styles.container}>
+        <StatusBar barStyle="dark-content" backgroundColor={COLORS.white} />
+        {header}
+        <EmptyState
+          tone="error"
+          title="Couldn't load the chat"
+          message={thread.error?.message}
+          actionLabel="Try again"
+          onAction={thread.reload}
+        />
+      </View>
+    );
+  }
 
   return (
     <View style={styles.container}>
       <StatusBar barStyle="dark-content" backgroundColor={COLORS.white} />
 
       {/* Header */}
-      <View style={styles.header}>
-        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
-          <MaterialCommunityIcons name="arrow-left" size={24} color={COLORS.textPrimary} />
-        </TouchableOpacity>
-        <View style={styles.headerCenter}>
-          <View style={styles.headerAvatar}>
-            <Text style={styles.headerAvatarText}>PS</Text>
-          </View>
-          <View>
-            <Text style={styles.headerName}>Priya Sharma</Text>
-            <Text style={styles.headerStatus}>Customer</Text>
-          </View>
-        </View>
-        <TouchableOpacity style={styles.callBtn}>
-          <MaterialCommunityIcons name="phone-outline" size={22} color={COLORS.success} />
-        </TouchableOpacity>
-      </View>
+      {header}
 
       {/* Privacy Notice */}
       <View style={styles.privacyNotice}>
         <MaterialCommunityIcons name="shield-check" size={16} color={COLORS.info} />
         <Text style={styles.privacyText}>
-          Phone numbers are hidden. Use "Request Call" for privacy-protected calling.
+          Phone numbers are hidden. Use &quot;Request Call&quot; for privacy-protected calling.
         </Text>
       </View>
 
       {/* Messages */}
-      <FlatList
-        ref={flatListRef}
-        data={messages}
-        renderItem={renderMessage}
-        keyExtractor={(item) => item.id}
-        contentContainerStyle={styles.messagesList}
-        showsVerticalScrollIndicator={false}
-        onContentSizeChange={() => flatListRef.current?.scrollToEnd({ animated: false })}
-      />
+      {messages.length === 0 ? (
+        <View style={styles.emptyWrap}>
+          <MaterialCommunityIcons
+            name="message-text-outline"
+            size={40}
+            color={COLORS.textTertiary}
+          />
+          <Text style={styles.emptyTitle}>No messages yet</Text>
+          <Text style={styles.emptyText}>
+            Say hello, confirm the address, or ask what the problem looks like.
+          </Text>
+        </View>
+      ) : (
+        <FlatList
+          ref={flatListRef}
+          data={messages}
+          renderItem={renderMessage}
+          keyExtractor={(item) => String(item.id)}
+          contentContainerStyle={styles.messagesList}
+          showsVerticalScrollIndicator={false}
+          onContentSizeChange={() => flatListRef.current?.scrollToEnd({ animated: false })}
+        />
+      )}
 
       {/* Input Bar */}
       <KeyboardAvoidingView
@@ -118,12 +241,6 @@ const ChatScreen = ({ navigation }) => {
         keyboardVerticalOffset={0}
       >
         <View style={styles.inputBar}>
-          <TouchableOpacity style={styles.attachBtn}>
-            <MaterialCommunityIcons name="camera" size={24} color={COLORS.textSecondary} />
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.attachBtn}>
-            <MaterialCommunityIcons name="image" size={24} color={COLORS.textSecondary} />
-          </TouchableOpacity>
           <View style={styles.inputWrap}>
             <TextInput
               style={styles.textInput}
@@ -133,12 +250,13 @@ const ChatScreen = ({ navigation }) => {
               onChangeText={setInputText}
               multiline
               maxLength={500}
+              onSubmitEditing={handleSend}
             />
           </View>
           <TouchableOpacity
             style={[styles.sendBtn, inputText.trim() ? styles.sendBtnActive : {}]}
-            onPress={sendMessage}
-            disabled={!inputText.trim()}
+            onPress={handleSend}
+            disabled={!inputText.trim() || sending}
           >
             <MaterialCommunityIcons
               name="send"
@@ -149,9 +267,16 @@ const ChatScreen = ({ navigation }) => {
         </View>
 
         {/* Request Call Button */}
-        <TouchableOpacity style={styles.requestCallBar} activeOpacity={0.8}>
+        <TouchableOpacity
+          style={styles.requestCallBar}
+          activeOpacity={0.8}
+          onPress={handleRequestCall}
+          disabled={calling}
+        >
           <MaterialCommunityIcons name="phone-in-talk" size={20} color={COLORS.success} />
-          <Text style={styles.requestCallText}>Request Customer to Call (Privacy Protected)</Text>
+          <Text style={styles.requestCallText}>
+            {calling ? 'Sending request…' : 'Request Customer to Call (Privacy Protected)'}
+          </Text>
         </TouchableOpacity>
       </KeyboardAvoidingView>
     </View>
@@ -186,20 +311,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginLeft: SPACING.md,
   },
-  headerAvatar: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: COLORS.primaryLight,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: SPACING.sm,
-  },
-  headerAvatarText: {
-    fontSize: FONT_SIZE.md,
-    fontWeight: FONT_WEIGHT.bold,
-    color: COLORS.primary,
-  },
   headerName: {
     fontSize: FONT_SIZE.md,
     fontWeight: FONT_WEIGHT.bold,
@@ -231,6 +342,25 @@ const styles = StyleSheet.create({
     flex: 1,
     lineHeight: 16,
   },
+  emptyWrap: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: SPACING.xxl,
+  },
+  emptyTitle: {
+    fontSize: FONT_SIZE.md,
+    fontWeight: FONT_WEIGHT.bold,
+    color: COLORS.textPrimary,
+    marginTop: SPACING.md,
+  },
+  emptyText: {
+    fontSize: FONT_SIZE.sm,
+    color: COLORS.textSecondary,
+    textAlign: 'center',
+    marginTop: 4,
+    lineHeight: 20,
+  },
   messagesList: {
     padding: SPACING.lg,
     paddingBottom: SPACING.sm,
@@ -258,6 +388,9 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.white,
     borderBottomLeftRadius: 4,
     ...SHADOWS.sm,
+  },
+  failedBubble: {
+    opacity: 0.55,
   },
   messageText: {
     fontSize: FONT_SIZE.md,
@@ -290,19 +423,13 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
     borderTopColor: COLORS.borderLight,
   },
-  attachBtn: {
-    width: 40,
-    height: 40,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
   inputWrap: {
     flex: 1,
     backgroundColor: COLORS.background,
     borderRadius: RADIUS.xl,
     paddingHorizontal: SPACING.lg,
     paddingVertical: Platform.OS === 'ios' ? SPACING.sm : 0,
-    marginHorizontal: SPACING.sm,
+    marginRight: SPACING.sm,
     maxHeight: 100,
   },
   textInput: {

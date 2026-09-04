@@ -5,8 +5,13 @@ import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { createStackNavigator } from '@react-navigation/stack';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { COLORS, FONT_SIZE, FONT_WEIGHT, SHADOWS } from '../theme';
+import {
+  useIsSignedIn,
+  useIsSignedOut,
+  useMustChangePassword,
+} from '../context/AuthContext';
 
-// Screens
+// Worker screens
 import HomeScreen from '../screens/HomeScreen';
 import JobsScreen from '../screens/JobsScreen';
 import EarningsScreen from '../screens/EarningsScreen';
@@ -15,16 +20,29 @@ import NewJobRequestScreen from '../screens/NewJobRequestScreen';
 import ChatScreen from '../screens/ChatScreen';
 import RequestExtraAmountScreen from '../screens/RequestExtraAmountScreen';
 import CurrentJobScreen from '../screens/CurrentJobScreen';
+import JobRequestsListScreen from '../screens/JobRequestsListScreen';
+import JobLocationScreen from '../screens/JobLocationScreen';
+import RatingsScreen from '../screens/RatingsScreen';
+import NotificationsScreen from '../screens/NotificationsScreen';
+
+// Auth screens
+import LoginScreen from '../screens/auth/LoginScreen';
+import ForgotPasswordScreen from '../screens/auth/ForgotPasswordScreen';
+import ResetPasswordScreen from '../screens/auth/ResetPasswordScreen';
+import ChangePasswordScreen from '../screens/auth/ChangePasswordScreen';
 
 // Home Stack
 const HomeStackNav = createStackNavigator({
   screenOptions: { headerShown: false },
   screens: {
     HomeMain: HomeScreen,
-    NewJobRequest: NewJobRequestScreen,
+    JobRequests: JobRequestsListScreen,
+    JobRequest: NewJobRequestScreen,
     CurrentJob: CurrentJobScreen,
     Chat: ChatScreen,
     RequestExtraAmount: RequestExtraAmountScreen,
+    JobLocation: JobLocationScreen,
+    Notifications: NotificationsScreen,
   },
 });
 
@@ -33,8 +51,21 @@ const JobsStackNav = createStackNavigator({
   screenOptions: { headerShown: false },
   screens: {
     JobsMain: JobsScreen,
+    JobRequest: NewJobRequestScreen,
     CurrentJob: CurrentJobScreen,
     Chat: ChatScreen,
+    RequestExtraAmount: RequestExtraAmountScreen,
+    JobLocation: JobLocationScreen,
+  },
+});
+
+// Profile Stack
+const ProfileStackNav = createStackNavigator({
+  screenOptions: { headerShown: false },
+  screens: {
+    ProfileMain: ProfileScreen,
+    Ratings: RatingsScreen,
+    ChangePassword: ChangePasswordScreen,
   },
 });
 
@@ -46,7 +77,7 @@ const TAB_ICONS = {
   ProfileTab: { focused: 'account-circle', unfocused: 'account-circle-outline' },
 };
 
-// Root Tab Navigator
+// Signed-in tabs
 const RootNavigator = createBottomTabNavigator({
   screenOptions: ({ route }) => ({
     headerShown: false,
@@ -79,18 +110,56 @@ const RootNavigator = createBottomTabNavigator({
       options: { tabBarLabel: 'Earnings' },
     },
     ProfileTab: {
-      screen: ProfileScreen,
+      screen: ProfileStackNav,
       options: { tabBarLabel: 'Profile' },
     },
   },
 });
 
-// Create the navigation component using static API (React Navigation v7)
-const Navigation = createStaticNavigation(RootNavigator);
+/**
+ * The auth gate. Three mutually exclusive groups, each guarded by a hook that
+ * reads AuthContext:
+ *
+ *   signedOut            → Login / Forgot / Reset
+ *   mustChangePassword   → the forced password change, with nothing else mounted
+ *                          so it cannot be swiped past
+ *   signedIn             → the tabs
+ *
+ * Because the whole group unmounts when its condition flips, signing in or out
+ * needs no navigation call at all — which is why LoginScreen just calls signIn().
+ */
+const RootStack = createStackNavigator({
+  screenOptions: { headerShown: false },
+  groups: {
+    SignedOut: {
+      if: useIsSignedOut,
+      screens: {
+        Login: LoginScreen,
+        ForgotPassword: ForgotPasswordScreen,
+        ResetPassword: ResetPasswordScreen,
+      },
+    },
+    ForcedPasswordChange: {
+      if: useMustChangePassword,
+      screens: {
+        ForcePasswordChange: {
+          screen: ChangePasswordScreen,
+          options: { gestureEnabled: false },
+        },
+      },
+    },
+    SignedIn: {
+      if: useIsSignedIn,
+      screens: {
+        Tabs: RootNavigator,
+      },
+    },
+  },
+});
 
-const AppNavigator = () => {
-  return <Navigation />;
-};
+const Navigation = createStaticNavigation(RootStack);
+
+const AppNavigator = () => <Navigation />;
 
 const styles = StyleSheet.create({
   tabBar: {

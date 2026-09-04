@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+import React, { useCallback, useState } from 'react';
+import { useNavigation, useRoute } from '@react-navigation/native';
 import {
   View,
   Text,
@@ -7,39 +8,141 @@ import {
   TouchableOpacity,
   StatusBar,
   Alert,
-  Linking,
+  ActivityIndicator,
+  RefreshControl,
 } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { COLORS, SPACING, RADIUS, FONT_SIZE, FONT_WEIGHT, SHADOWS } from '../theme';
 import Card from '../components/Card';
 import StatusBadge from '../components/StatusBadge';
 import StepperProgress from '../components/StepperProgress';
-import { CURRENT_JOB, JOB_STEPS } from '../data/mockData';
+import Avatar from '../components/Avatar';
+import RatingStars from '../components/RatingStars';
+import LoadingState from '../components/LoadingState';
+import EmptyState from '../components/EmptyState';
+import useApi from '../hooks/useApi';
+import { useSocketEvent, WS_EVENTS } from '../context/SocketContext';
+import { getJob, getCurrentJob, updateJobStatus } from '../api/jobs';
+import { requestCall } from '../api/chat';
+import { formatRupees, formatDistance, formatEta } from '../utils/format';
+import { JOB_STEPS, JOB_STATUS, NEXT_ACTION, STATUS_LABEL } from '../constants/jobSteps';
 
-const CurrentJobScreen = ({ navigation }) => {
-  const job = CURRENT_JOB;
-  const [currentStep, setCurrentStep] = useState(job.currentStep);
+/**
+ * Spec #8 — the job in progress: on the way → arrived → start work → complete.
+ *
+ * The button always offers exactly one transition, taken from NEXT_ACTION, and the
+ * server is the one that decides whether it's legal. Nothing advances locally.
+ */
+const CurrentJobScreen = () => {
+  const navigation = useNavigation();
+  const jobId = useRoute().params?.jobId;
+  const [advancing, setAdvancing] = useState(false);
+  const [calling, setCalling] = useState(false);
 
-  const stepLabels = JOB_STEPS;
-  const isCompleted = currentStep >= stepLabels.length - 1;
+  // Reached from the tab bar there is no id yet — ask the server which job is live.
+  const request = useApi(
+    useCallback(() => (jobId ? getJob(jobId) : getCurrentJob()), [jobId]),
+    [jobId],
+  );
 
-  const advanceStep = () => {
-    if (currentStep < stepLabels.length - 1) {
-      setCurrentStep(currentStep + 1);
-    } else {
-      Alert.alert('Job Completed! 🎉', 'Great work! This job has been marked as completed.');
+  const job = request.data;
+
+  useSocketEvent(
+    [WS_EVENTS.JOB_UPDATE, WS_EVENTS.EXTRA_AMOUNT_DECISION, WS_EVENTS.PAYMENT_UPDATE],
+    (event) => {
+      if (!job || event.payload?.job_id === job.id) request.refetch();
+    },
+  );
+
+  const nextAction = job ? NEXT_ACTION[job.status] : undefined;
+  const isCompleted = job?.status === JOB_STATUS.COMPLETED;
+  const currentStep = job?.current_step ?? 0;
+  const pendingExtra = job?.extra_requests?.find((r) => r.status === 'pending');
+
+  const advance = async () => {
+    if (!nextAction) return;
+
+    const run = async () => {
+      setAdvancing(true);
+      try {
+        const updated = await updateJobStatus(job.id, nextAction.status);
+        request.setData(updated);
+        if (nextAction.status === JOB_STATUS.COMPLETED) {
+          Alert.alert(
+            'Job completed 🎉',
+            `${formatRupees(updated.amounts.total_amount)} has been added to your earnings.`,
+          );
+        }
+      } catch (error) {
+        Alert.alert('Could not update the job', error.message);
+      } finally {
+        setAdvancing(false);
+      }
+    };
+
+    if (nextAction.status === JOB_STATUS.COMPLETED) {
+      // The last step settles the payment, so make it deliberate.
+      Alert.alert('Mark this job complete?', 'The customer will be asked to pay and rate you.', [
+        { text: 'Not yet', style: 'cancel' },
+        { text: 'Complete', onPress: run },
+      ]);
+      return;
+    }
+    run();
+  };
+
+  const handleRequestCall = async () => {
+    setCalling(true);
+    try {
+      await requestCall(job.id);
+      Alert.alert(
+        'Call requested',
+        'The customer has been asked to call you. Neither side sees the other’s number.',
+      );
+    } catch (error) {
+      Alert.alert('Could not send the request', error.message);
+    } finally {
+      setCalling(false);
     }
   };
 
-  const getNextStepLabel = () => {
-    if (isCompleted) return 'Job Completed';
-    return `Mark as: ${stepLabels[currentStep + 1]}`;
-  };
+  const chrome = (children) => (
+    <View style={styles.container}>
+      <StatusBar barStyle="dark-content" backgroundColor={COLORS.white} />
+      <View style={styles.header}>
+        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
+          <MaterialCommunityIcons name="arrow-left" size={24} color={COLORS.textPrimary} />
+        </TouchableOpacity>
+        <Text style={styles.headerTitle}>Current Job</Text>
+        <View style={{ width: 40 }} />
+      </View>
+      {children}
+    </View>
+  );
 
-  const openNavigation = () => {
-    const address = encodeURIComponent(job.location.address);
-    Linking.openURL(`https://www.google.com/maps/search/?api=1&query=${address}`);
-  };
+  if (request.loading && !job) return chrome(<LoadingState message="Loading job…" />);
+
+  if (request.error && !job) {
+    return chrome(
+      <EmptyState
+        tone="error"
+        title="Couldn't load the job"
+        message={request.error.message}
+        actionLabel="Try again"
+        onAction={request.reload}
+      />,
+    );
+  }
+
+  if (!job) {
+    return chrome(
+      <EmptyState
+        icon="clipboard-check-outline"
+        title="No job in progress"
+        message="Accept a request and it will appear here with everything you need to run the job."
+      />,
+    );
+  }
 
   return (
     <View style={styles.container}>
@@ -52,7 +155,7 @@ const CurrentJobScreen = ({ navigation }) => {
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Current Job</Text>
         <StatusBadge
-          label={isCompleted ? 'COMPLETED' : 'ACTIVE'}
+          label={(STATUS_LABEL[job.status] ?? '').toUpperCase()}
           color={isCompleted ? 'success' : 'warning'}
           size="sm"
         />
@@ -62,37 +165,61 @@ const CurrentJobScreen = ({ navigation }) => {
         style={styles.body}
         contentContainerStyle={styles.bodyContent}
         showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl
+            refreshing={request.refreshing}
+            onRefresh={request.refetch}
+            tintColor={COLORS.primary}
+          />
+        }
       >
         {/* Customer Card */}
         <Card style={styles.card}>
           <View style={styles.customerRow}>
-            <View style={styles.customerAvatar}>
-              <Text style={styles.customerAvatarText}>
-                {job.customer.name.split(' ').map(n => n[0]).join('')}
-              </Text>
-            </View>
+            <Avatar name={job.customer.name} uri={job.customer.photo_url} size={52} />
             <View style={{ flex: 1, marginLeft: SPACING.md }}>
               <Text style={styles.customerName}>{job.customer.name}</Text>
               <View style={styles.ratingRow}>
-                <MaterialCommunityIcons name="star" size={16} color="#FBBF24" />
-                <Text style={styles.ratingText}>{job.customer.rating}</Text>
+                <RatingStars rating={job.customer.rating_avg} size={14} showValue />
               </View>
             </View>
             <View style={styles.headerActions}>
               <TouchableOpacity
                 style={[styles.headerActionBtn, { backgroundColor: COLORS.primaryLight }]}
-                onPress={() => navigation.navigate('Chat')}
+                onPress={() => navigation.navigate('Chat', { jobId: job.id })}
               >
                 <MaterialCommunityIcons name="chat-outline" size={20} color={COLORS.primary} />
+                {job.unread_messages > 0 && <View style={styles.dot} />}
               </TouchableOpacity>
               <TouchableOpacity
                 style={[styles.headerActionBtn, { backgroundColor: COLORS.successLight }]}
+                onPress={handleRequestCall}
+                disabled={calling}
               >
-                <MaterialCommunityIcons name="phone-outline" size={20} color={COLORS.success} />
+                {calling ? (
+                  <ActivityIndicator size="small" color={COLORS.success} />
+                ) : (
+                  <MaterialCommunityIcons name="phone-outline" size={20} color={COLORS.success} />
+                )}
               </TouchableOpacity>
             </View>
           </View>
         </Card>
+
+        {/* Pending extra amount (spec #6) */}
+        {!!pendingExtra && (
+          <Card variant="warning" style={styles.card}>
+            <View style={styles.pendingRow}>
+              <MaterialCommunityIcons name="clock-alert-outline" size={22} color="#B45309" />
+              <View style={{ flex: 1, marginLeft: SPACING.md }}>
+                <Text style={styles.pendingTitle}>
+                  {formatRupees(pendingExtra.amount)} extra — waiting for approval
+                </Text>
+                <Text style={styles.pendingBody}>{pendingExtra.reason}</Text>
+              </View>
+            </View>
+          </Card>
+        )}
 
         {/* Location Card */}
         <Card style={styles.card}>
@@ -101,22 +228,36 @@ const CurrentJobScreen = ({ navigation }) => {
             <Text style={styles.sectionLabelText}>Service Location</Text>
           </View>
           <Text style={styles.locationAddress}>{job.location.address}</Text>
-          <Text style={styles.locationLandmark}>{job.location.landmark}</Text>
+          {!!job.location.landmark && (
+            <Text style={styles.locationLandmark}>{job.location.landmark}</Text>
+          )}
 
           <View style={styles.locationMeta}>
             <View style={styles.locationMetaItem}>
-              <MaterialCommunityIcons name="map-marker-distance" size={18} color={COLORS.primary} />
-              <Text style={styles.locationMetaText}>{job.location.distance}</Text>
+              <MaterialCommunityIcons
+                name="map-marker-distance"
+                size={18}
+                color={COLORS.primary}
+              />
+              <Text style={styles.locationMetaText}>
+                {formatDistance(job.location.distance_km) ?? 'Distance unknown'}
+              </Text>
             </View>
             <View style={styles.locationMetaItem}>
               <MaterialCommunityIcons name="clock-outline" size={18} color={COLORS.primary} />
-              <Text style={styles.locationMetaText}>{job.location.estimatedTime}</Text>
+              <Text style={styles.locationMetaText}>
+                {formatEta(job.location.eta_min) ?? '—'}
+              </Text>
             </View>
           </View>
 
-          <TouchableOpacity style={styles.navigateBtn} onPress={openNavigation} activeOpacity={0.8}>
+          <TouchableOpacity
+            style={styles.navigateBtn}
+            onPress={() => navigation.navigate('JobLocation', { jobId: job.id })}
+            activeOpacity={0.8}
+          >
             <MaterialCommunityIcons name="navigation-variant" size={22} color={COLORS.white} />
-            <Text style={styles.navigateBtnText}>Navigate</Text>
+            <Text style={styles.navigateBtnText}>Map & Navigate</Text>
           </TouchableOpacity>
         </Card>
 
@@ -126,28 +267,38 @@ const CurrentJobScreen = ({ navigation }) => {
             <MaterialCommunityIcons name="wrench" size={18} color={COLORS.textSecondary} />
             <Text style={styles.sectionLabelText}>Services & Amount</Text>
           </View>
-          {job.services.map((service, index) => (
-            <View key={index} style={styles.serviceRow}>
+          {job.services.map((service) => (
+            <View key={service.id} style={styles.serviceRow}>
               <View style={styles.serviceDot} />
               <Text style={styles.serviceName}>{service.name}</Text>
-              <Text style={styles.servicePrice}>₹{service.price}</Text>
+              <Text style={styles.servicePrice}>{formatRupees(service.price)}</Text>
             </View>
           ))}
           <View style={styles.amountBreakdown}>
             <View style={styles.amountRow}>
               <Text style={styles.amountLabel}>Base Amount</Text>
-              <Text style={styles.amountValue}>₹{job.baseAmount}</Text>
+              <Text style={styles.amountValue}>{formatRupees(job.amounts.base_amount)}</Text>
             </View>
-            {job.extraAmount > 0 && (
+            {job.amounts.extra_amount > 0 && (
               <View style={styles.amountRow}>
                 <Text style={styles.amountLabel}>Extra Amount</Text>
-                <Text style={[styles.amountValue, { color: COLORS.warning }]}>+₹{job.extraAmount}</Text>
+                <Text style={[styles.amountValue, { color: COLORS.warning }]}>
+                  +{formatRupees(job.amounts.extra_amount)}
+                </Text>
+              </View>
+            )}
+            {job.amounts.pending_extra_amount > 0 && (
+              <View style={styles.amountRow}>
+                <Text style={styles.amountLabel}>Awaiting approval</Text>
+                <Text style={[styles.amountValue, { color: COLORS.textTertiary }]}>
+                  {formatRupees(job.amounts.pending_extra_amount)}
+                </Text>
               </View>
             )}
             <View style={styles.totalDivider} />
             <View style={styles.amountRow}>
               <Text style={styles.totalLabel}>Total Amount</Text>
-              <Text style={styles.totalValue}>₹{job.totalAmount}</Text>
+              <Text style={styles.totalValue}>{formatRupees(job.amounts.total_amount)}</Text>
             </View>
           </View>
         </Card>
@@ -158,31 +309,40 @@ const CurrentJobScreen = ({ navigation }) => {
             <MaterialCommunityIcons name="progress-check" size={18} color={COLORS.textSecondary} />
             <Text style={styles.sectionLabelText}>Job Progress</Text>
           </View>
-          <StepperProgress steps={stepLabels} currentStep={currentStep} />
+          <StepperProgress steps={JOB_STEPS} currentStep={currentStep} />
         </Card>
 
-        {/* Update Status Button */}
+        {/* The one legal next transition */}
         <TouchableOpacity
           style={[
             styles.updateStatusBtn,
-            isCompleted && styles.updateStatusBtnCompleted,
+            (isCompleted || !nextAction) && styles.updateStatusBtnCompleted,
           ]}
-          onPress={advanceStep}
+          onPress={advance}
+          disabled={!nextAction || advancing}
           activeOpacity={0.8}
         >
-          <MaterialCommunityIcons
-            name={isCompleted ? 'check-circle' : 'arrow-right-circle'}
-            size={24}
-            color={COLORS.white}
-          />
-          <Text style={styles.updateStatusText}>{getNextStepLabel()}</Text>
+          {advancing ? (
+            <ActivityIndicator size="small" color={COLORS.white} />
+          ) : (
+            <>
+              <MaterialCommunityIcons
+                name={nextAction?.icon ?? 'check-circle'}
+                size={24}
+                color={COLORS.white}
+              />
+              <Text style={styles.updateStatusText}>
+                {nextAction?.label ?? 'Job Completed'}
+              </Text>
+            </>
+          )}
         </TouchableOpacity>
 
         {/* Quick Actions */}
         <View style={styles.quickActions}>
           <TouchableOpacity
             style={styles.quickActionBtn}
-            onPress={() => navigation.navigate('Chat')}
+            onPress={() => navigation.navigate('Chat', { jobId: job.id })}
           >
             <View style={[styles.quickActionIcon, { backgroundColor: COLORS.primaryLight }]}>
               <MaterialCommunityIcons name="chat-outline" size={24} color={COLORS.primary} />
@@ -190,16 +350,21 @@ const CurrentJobScreen = ({ navigation }) => {
             <Text style={styles.quickActionLabel}>Chat</Text>
           </TouchableOpacity>
 
-          <TouchableOpacity style={styles.quickActionBtn}>
+          <TouchableOpacity
+            style={styles.quickActionBtn}
+            onPress={handleRequestCall}
+            disabled={calling}
+          >
             <View style={[styles.quickActionIcon, { backgroundColor: COLORS.successLight }]}>
               <MaterialCommunityIcons name="phone-in-talk" size={24} color={COLORS.success} />
             </View>
-            <Text style={styles.quickActionLabel}>Protected{'\n'}Call</Text>
+            <Text style={styles.quickActionLabel}>Request{'\n'}Call</Text>
           </TouchableOpacity>
 
           <TouchableOpacity
-            style={styles.quickActionBtn}
-            onPress={() => navigation.navigate('RequestExtraAmount')}
+            style={[styles.quickActionBtn, isCompleted && styles.quickActionDisabled]}
+            disabled={isCompleted}
+            onPress={() => navigation.navigate('RequestExtraAmount', { jobId: job.id })}
           >
             <View style={[styles.quickActionIcon, { backgroundColor: COLORS.warningLight }]}>
               <MaterialCommunityIcons name="cash-plus" size={24} color="#B45309" />
@@ -255,19 +420,6 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
   },
-  customerAvatar: {
-    width: 52,
-    height: 52,
-    borderRadius: 26,
-    backgroundColor: COLORS.primaryLight,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  customerAvatarText: {
-    fontSize: FONT_SIZE.xl,
-    fontWeight: FONT_WEIGHT.bold,
-    color: COLORS.primary,
-  },
   customerName: {
     fontSize: FONT_SIZE.lg,
     fontWeight: FONT_WEIGHT.bold,
@@ -277,12 +429,6 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     marginTop: 4,
-  },
-  ratingText: {
-    fontSize: FONT_SIZE.sm,
-    color: COLORS.textSecondary,
-    fontWeight: FONT_WEIGHT.semibold,
-    marginLeft: 4,
   },
   headerActions: {
     flexDirection: 'row',
@@ -294,6 +440,32 @@ const styles = StyleSheet.create({
     borderRadius: 22,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  dot: {
+    position: 'absolute',
+    top: 8,
+    right: 9,
+    width: 9,
+    height: 9,
+    borderRadius: 5,
+    backgroundColor: COLORS.danger,
+    borderWidth: 1.5,
+    borderColor: COLORS.white,
+  },
+  pendingRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+  },
+  pendingTitle: {
+    fontSize: FONT_SIZE.md,
+    fontWeight: FONT_WEIGHT.bold,
+    color: '#92400E',
+  },
+  pendingBody: {
+    fontSize: FONT_SIZE.sm,
+    color: '#92400E',
+    marginTop: 2,
+    lineHeight: 19,
   },
   sectionLabel: {
     flexDirection: 'row',
@@ -434,6 +606,9 @@ const styles = StyleSheet.create({
   },
   quickActionBtn: {
     alignItems: 'center',
+  },
+  quickActionDisabled: {
+    opacity: 0.4,
   },
   quickActionIcon: {
     width: 56,

@@ -1,69 +1,109 @@
-import React, { useState } from 'react';
+import React, { useCallback, useState } from 'react';
 import {
   View,
   Text,
   StyleSheet,
   ScrollView,
-  TouchableOpacity,
   StatusBar,
+  TouchableOpacity,
+  RefreshControl,
 } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import { COLORS, SPACING, RADIUS, FONT_SIZE, FONT_WEIGHT, SHADOWS } from '../theme';
+import { COLORS, SPACING, RADIUS, FONT_SIZE, FONT_WEIGHT } from '../theme';
 import Card from '../components/Card';
-import { EARNINGS } from '../data/mockData';
+import StatusBadge from '../components/StatusBadge';
+import LoadingState from '../components/LoadingState';
+import EmptyState from '../components/EmptyState';
+import useApi from '../hooks/useApi';
+import { useSocketEvent, WS_EVENTS } from '../context/SocketContext';
+import { getOverview, getPayments } from '../api/earnings';
+import { formatRupees, formatDate } from '../utils/format';
 
+const TABS = [
+  { key: 'today', label: 'Today', heroLabel: "Today's Earnings" },
+  { key: 'week', label: 'Weekly', heroLabel: "This Week's Earnings" },
+  { key: 'month', label: 'Monthly', heroLabel: "This Month's Earnings" },
+];
+
+/** A single bar of ₹0 for "today" says nothing — show the week's shape instead. */
+const chartFor = (overview, tab) => (tab === 'today' ? overview.week : overview[tab]);
+
+const todayIso = () => {
+  const now = new Date();
+  const pad = (n) => String(n).padStart(2, '0');
+  return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
+};
+
+/** Spec #10 — what came in today, this week, this month, and per completed job. */
 const EarningsScreen = () => {
   const [activeTab, setActiveTab] = useState('today');
 
-  const tabs = [
-    { key: 'today', label: 'Today' },
-    { key: 'weekly', label: 'Weekly' },
-    { key: 'monthly', label: 'Monthly' },
-  ];
+  const earnings = useApi(
+    useCallback(
+      () =>
+        Promise.all([getOverview(), getPayments({ limit: 15 })]).then(([overview, payments]) => ({
+          overview,
+          payments,
+        })),
+      [],
+    ),
+    [],
+  );
 
-  const getActiveData = () => {
-    switch (activeTab) {
-      case 'weekly':
-        return { amount: EARNINGS.weekly, jobs: EARNINGS.weeklyJobs, label: 'This Week' };
-      case 'monthly':
-        return { amount: EARNINGS.monthly, jobs: EARNINGS.monthlyJobs, label: 'This Month' };
-      default:
-        return { amount: EARNINGS.today, jobs: EARNINGS.todayJobs, label: 'Today' };
-    }
-  };
+  // A completed job writes a payment row, so both events matter here.
+  useSocketEvent([WS_EVENTS.PAYMENT_UPDATE, WS_EVENTS.JOB_UPDATE], () => earnings.refetch());
 
-  const activeData = getActiveData();
+  const header = (
+    <View style={styles.header}>
+      <Text style={styles.headerTitle}>Earnings</Text>
+    </View>
+  );
 
-  // Mock daily breakdown
-  const weeklyBreakdown = [
-    { day: 'Mon', amount: 2100, jobs: 3 },
-    { day: 'Tue', amount: 1850, jobs: 2 },
-    { day: 'Wed', amount: 2400, jobs: 4 },
-    { day: 'Thu', amount: 1600, jobs: 2 },
-    { day: 'Fri', amount: 2300, jobs: 3 },
-    { day: 'Sat', amount: 1200, jobs: 2 },
-    { day: 'Sun', amount: 1000, jobs: 2 },
-  ];
+  if (earnings.loading && !earnings.data) {
+    return (
+      <View style={styles.container}>
+        <StatusBar barStyle="light-content" backgroundColor={COLORS.primary} />
+        {header}
+        <LoadingState message="Loading your earnings…" />
+      </View>
+    );
+  }
 
-  const maxAmount = Math.max(...weeklyBreakdown.map(d => d.amount));
+  if (!earnings.data) {
+    return (
+      <View style={styles.container}>
+        <StatusBar barStyle="light-content" backgroundColor={COLORS.primary} />
+        {header}
+        <EmptyState
+          tone="error"
+          title="Couldn't load earnings"
+          message={earnings.error?.message}
+          actionLabel="Try again"
+          onAction={earnings.reload}
+        />
+      </View>
+    );
+  }
+
+  const { overview, payments } = earnings.data;
+  const active = overview[activeTab];
+  const tabMeta = TABS.find((t) => t.key === activeTab);
+  const chart = chartFor(overview, activeTab);
+  const maxAmount = Math.max(1, ...chart.breakdown.map((b) => b.amount));
+  const today = todayIso();
 
   return (
     <View style={styles.container}>
       <StatusBar barStyle="light-content" backgroundColor={COLORS.primary} />
 
       {/* Header */}
-      <View style={styles.header}>
-        <Text style={styles.headerTitle}>Earnings</Text>
-        <TouchableOpacity style={styles.historyBtn}>
-          <MaterialCommunityIcons name="history" size={22} color={COLORS.white} />
-        </TouchableOpacity>
-      </View>
+      {header}
 
       {/* Earnings Hero */}
       <View style={styles.heroSection}>
         {/* Tab Selector */}
         <View style={styles.tabRow}>
-          {tabs.map((tab) => (
+          {TABS.map((tab) => (
             <TouchableOpacity
               key={tab.key}
               style={[styles.tab, activeTab === tab.key && styles.tabActive]}
@@ -78,9 +118,12 @@ const EarningsScreen = () => {
 
         {/* Big Earnings Amount */}
         <View style={styles.heroAmount}>
-          <Text style={styles.heroLabel}>{activeData.label}'s Earnings</Text>
-          <Text style={styles.heroValue}>₹{activeData.amount.toLocaleString('en-IN')}</Text>
-          <Text style={styles.heroJobs}>{activeData.jobs} Jobs Completed</Text>
+          <Text style={styles.heroLabel}>{tabMeta.heroLabel}</Text>
+          <Text style={styles.heroValue}>{formatRupees(active.total)}</Text>
+          <Text style={styles.heroJobs}>
+            {active.jobs} {active.jobs === 1 ? 'Job' : 'Jobs'} Completed
+            {active.pending > 0 ? ` · ${formatRupees(active.pending)} awaiting payment` : ''}
+          </Text>
         </View>
       </View>
 
@@ -88,6 +131,13 @@ const EarningsScreen = () => {
         style={styles.body}
         contentContainerStyle={styles.bodyContent}
         showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl
+            refreshing={earnings.refreshing}
+            onRefresh={earnings.refetch}
+            tintColor={COLORS.primary}
+          />
+        }
       >
         {/* Stats Cards */}
         <View style={styles.statsGrid}>
@@ -95,31 +145,41 @@ const EarningsScreen = () => {
             <View style={[styles.statIcon, { backgroundColor: COLORS.successLight }]}>
               <MaterialCommunityIcons name="briefcase-check" size={22} color={COLORS.success} />
             </View>
-            <Text style={styles.statValue}>{EARNINGS.todayJobs + EARNINGS.weeklyJobs}</Text>
+            <Text style={styles.statValue}>{active.jobs}</Text>
             <Text style={styles.statLabel}>Completed Jobs</Text>
           </Card>
           <Card style={styles.statCard}>
             <View style={[styles.statIcon, { backgroundColor: COLORS.warningLight }]}>
               <MaterialCommunityIcons name="cash-plus" size={22} color="#B45309" />
             </View>
-            <Text style={styles.statValue}>₹{EARNINGS.extraEarned.toLocaleString('en-IN')}</Text>
+            <Text style={styles.statValue}>{formatRupees(active.extra_earned)}</Text>
             <Text style={styles.statLabel}>Extra Earned</Text>
           </Card>
         </View>
 
-        {/* Weekly Chart */}
+        {/* Breakdown Chart */}
         <Card style={styles.chartCard}>
           <View style={styles.chartHeader}>
-            <Text style={styles.chartTitle}>This Week</Text>
-            <Text style={styles.chartSubtitle}>Daily Breakdown</Text>
+            <Text style={styles.chartTitle}>
+              {activeTab === 'month' ? 'This Month' : 'This Week'}
+            </Text>
+            <Text style={styles.chartSubtitle}>
+              {activeTab === 'month' ? 'Weekly Breakdown' : 'Daily Breakdown'}
+            </Text>
           </View>
           <View style={styles.chartBars}>
-            {weeklyBreakdown.map((day, index) => {
-              const barHeight = (day.amount / maxAmount) * 120;
-              const isToday = index === 0;
+            {chart.breakdown.map((bucket) => {
+              const barHeight = (bucket.amount / maxAmount) * 120;
+              const isToday = bucket.day === today;
               return (
-                <View key={day.day} style={styles.barWrap}>
-                  <Text style={styles.barAmount}>₹{(day.amount / 1000).toFixed(1)}k</Text>
+                <View key={`${bucket.label}-${bucket.day}`} style={styles.barWrap}>
+                  <Text style={styles.barAmount}>
+                    {bucket.amount >= 1000
+                      ? `₹${(bucket.amount / 1000).toFixed(1)}k`
+                      : bucket.amount > 0
+                        ? `₹${Math.round(bucket.amount)}`
+                        : '–'}
+                  </Text>
                   <View style={styles.barTrack}>
                     <View
                       style={[
@@ -131,7 +191,9 @@ const EarningsScreen = () => {
                       ]}
                     />
                   </View>
-                  <Text style={[styles.barDay, isToday && styles.barDayActive]}>{day.day}</Text>
+                  <Text style={[styles.barDay, isToday && styles.barDayActive]}>
+                    {bucket.label}
+                  </Text>
                 </View>
               );
             })}
@@ -147,7 +209,7 @@ const EarningsScreen = () => {
               <View style={[styles.breakdownDot, { backgroundColor: COLORS.primary }]} />
               <Text style={styles.breakdownLabel}>Today</Text>
             </View>
-            <Text style={styles.breakdownValue}>₹{EARNINGS.today.toLocaleString('en-IN')}</Text>
+            <Text style={styles.breakdownValue}>{formatRupees(overview.today.total)}</Text>
           </View>
 
           <View style={styles.breakdownRow}>
@@ -155,7 +217,7 @@ const EarningsScreen = () => {
               <View style={[styles.breakdownDot, { backgroundColor: COLORS.info }]} />
               <Text style={styles.breakdownLabel}>This Week</Text>
             </View>
-            <Text style={styles.breakdownValue}>₹{EARNINGS.weekly.toLocaleString('en-IN')}</Text>
+            <Text style={styles.breakdownValue}>{formatRupees(overview.week.total)}</Text>
           </View>
 
           <View style={styles.breakdownRow}>
@@ -163,7 +225,7 @@ const EarningsScreen = () => {
               <View style={[styles.breakdownDot, { backgroundColor: COLORS.success }]} />
               <Text style={styles.breakdownLabel}>This Month</Text>
             </View>
-            <Text style={styles.breakdownValue}>₹{EARNINGS.monthly.toLocaleString('en-IN')}</Text>
+            <Text style={styles.breakdownValue}>{formatRupees(overview.month.total)}</Text>
           </View>
 
           <View style={[styles.breakdownRow, { borderBottomWidth: 0 }]}>
@@ -172,9 +234,50 @@ const EarningsScreen = () => {
               <Text style={styles.breakdownLabel}>Extra Amount Earned</Text>
             </View>
             <Text style={[styles.breakdownValue, { color: COLORS.warning }]}>
-              +₹{EARNINGS.extraEarned.toLocaleString('en-IN')}
+              +{formatRupees(overview.month.extra_earned)}
             </Text>
           </View>
+        </Card>
+
+        {/* Per-job payments */}
+        <Card style={styles.breakdownCard}>
+          <Text style={styles.breakdownTitle}>Recent Payments</Text>
+
+          {payments.length === 0 ? (
+            <Text style={styles.emptyText}>
+              Payments appear here once you complete a job — base amount plus any approved extra.
+            </Text>
+          ) : (
+            payments.map((payment, index) => (
+              <View
+                key={payment.id}
+                style={[
+                  styles.paymentRow,
+                  index === payments.length - 1 && { borderBottomWidth: 0 },
+                ]}
+              >
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.paymentService}>
+                    {payment.service_type ?? 'Job'} · {payment.customer_name ?? 'Customer'}
+                  </Text>
+                  <Text style={styles.paymentMeta}>
+                    {formatDate(payment.paid_at ?? payment.created_at)}
+                    {payment.extra_amount > 0
+                      ? ` · incl. ${formatRupees(payment.extra_amount)} extra`
+                      : ''}
+                  </Text>
+                </View>
+                <View style={styles.paymentRight}>
+                  <Text style={styles.paymentAmount}>{formatRupees(payment.total_amount)}</Text>
+                  <StatusBadge
+                    label={payment.status === 'paid' ? 'Paid' : 'Pending'}
+                    color={payment.status === 'paid' ? 'success' : 'warning'}
+                    size="sm"
+                  />
+                </View>
+              </View>
+            ))
+          )}
         </Card>
 
         <View style={{ height: 100 }} />
@@ -201,14 +304,6 @@ const styles = StyleSheet.create({
     fontSize: FONT_SIZE.xxl,
     fontWeight: FONT_WEIGHT.bold,
     color: COLORS.white,
-  },
-  historyBtn: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: 'rgba(255,255,255,0.15)',
-    alignItems: 'center',
-    justifyContent: 'center',
   },
   heroSection: {
     backgroundColor: COLORS.primary,
@@ -260,6 +355,7 @@ const styles = StyleSheet.create({
     color: 'rgba(255,255,255,0.8)',
     fontWeight: FONT_WEIGHT.medium,
     marginTop: SPACING.sm,
+    textAlign: 'center',
   },
   body: {
     flex: 1,
@@ -389,6 +485,38 @@ const styles = StyleSheet.create({
     fontSize: FONT_SIZE.md,
     fontWeight: FONT_WEIGHT.bold,
     color: COLORS.textPrimary,
+  },
+  paymentRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: SPACING.md,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.borderLight,
+  },
+  paymentService: {
+    fontSize: FONT_SIZE.md,
+    fontWeight: FONT_WEIGHT.semibold,
+    color: COLORS.textPrimary,
+  },
+  paymentMeta: {
+    fontSize: FONT_SIZE.xs,
+    color: COLORS.textSecondary,
+    marginTop: 2,
+  },
+  paymentRight: {
+    alignItems: 'flex-end',
+    marginLeft: SPACING.md,
+  },
+  paymentAmount: {
+    fontSize: FONT_SIZE.md,
+    fontWeight: FONT_WEIGHT.bold,
+    color: COLORS.textSuccess,
+    marginBottom: 4,
+  },
+  emptyText: {
+    fontSize: FONT_SIZE.sm,
+    color: COLORS.textSecondary,
+    lineHeight: 20,
   },
 });
 
