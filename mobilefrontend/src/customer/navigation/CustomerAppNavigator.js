@@ -1,0 +1,167 @@
+import React from 'react';
+import { View, StyleSheet, Platform } from 'react-native';
+import { createStaticNavigation } from '@react-navigation/native';
+import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
+import { createStackNavigator } from '@react-navigation/stack';
+import { MaterialCommunityIcons } from '@expo/vector-icons';
+import { COLORS, FONT_SIZE, FONT_WEIGHT, SHADOWS } from '../../theme';
+
+// Customer Screens
+import AuthScreen from '../screens/AuthScreen';
+import CustomerHomeScreen from '../screens/CustomerHomeScreen';
+import SearchServiceScreen from '../screens/SearchServiceScreen';
+import AIRequirementScreen from '../screens/AIRequirementScreen';
+import CostEstimateScreen from '../screens/CostEstimateScreen';
+import WorkerRecommendationsScreen from '../screens/WorkerRecommendationsScreen';
+import WorkerProfileScreen from '../screens/WorkerProfileScreen';
+import CustomerChatScreen from '../screens/CustomerChatScreen';
+import ExtraAmountScreen from '../screens/ExtraAmountScreen';
+import ConfirmBookingScreen from '../screens/ConfirmBookingScreen';
+import TrackBookingScreen from '../screens/TrackBookingScreen';
+import PaymentScreen from '../screens/PaymentScreen';
+import RatingFeedbackScreen from '../screens/RatingFeedbackScreen';
+import BookingHistoryScreen from '../screens/BookingHistoryScreen';
+import CustomerProfileScreen from '../screens/CustomerProfileScreen';
+import NotificationsScreen from '../screens/NotificationsScreen';
+
+// 1. Home Stack
+const HomeStack = createStackNavigator({
+  screenOptions: { headerShown: false },
+  screens: {
+    CustomerHome: CustomerHomeScreen,
+    SearchService: SearchServiceScreen,
+    AIRequirement: AIRequirementScreen,
+    CostEstimate: CostEstimateScreen,
+    WorkerRecommendations: WorkerRecommendationsScreen,
+    WorkerProfile: WorkerProfileScreen,
+    ConfirmBooking: ConfirmBookingScreen,
+    ExtraAmount: ExtraAmountScreen,
+    TrackBooking: TrackBookingScreen,
+    Payment: PaymentScreen,
+    RatingFeedback: RatingFeedbackScreen,
+    CustomerChat: CustomerChatScreen,
+    Notifications: NotificationsScreen,
+    Auth: AuthScreen,
+  },
+});
+
+// 2. Bookings Stack
+const BookingsStack = createStackNavigator({
+  screenOptions: { headerShown: false },
+  screens: {
+    TrackBookingMain: TrackBookingScreen,
+    BookingHistory: BookingHistoryScreen,
+    Payment: PaymentScreen,
+    RatingFeedback: RatingFeedbackScreen,
+    CustomerChat: CustomerChatScreen,
+    ExtraAmount: ExtraAmountScreen,
+  },
+});
+
+// 3. Messages Stack
+const MessagesStack = createStackNavigator({
+  screenOptions: { headerShown: false },
+  screens: {
+    CustomerChatMain: CustomerChatScreen,
+    ExtraAmount: ExtraAmountScreen,
+    WorkerProfile: WorkerProfileScreen,
+  },
+});
+
+// 4. Profile Stack
+const ProfileStack = createStackNavigator({
+  screenOptions: { headerShown: false },
+  screens: {
+    CustomerProfileMain: CustomerProfileScreen,
+    Notifications: NotificationsScreen,
+    BookingHistory: BookingHistoryScreen,
+    Auth: AuthScreen,
+  },
+});
+
+const TAB_ICONS = {
+  HomeTab: { focused: 'home', unfocused: 'home-outline' },
+  BookingsTab: { focused: 'calendar-check', unfocused: 'calendar-check-outline' },
+  MessagesTab: { focused: 'chat-processing', unfocused: 'chat-processing-outline' },
+  ProfileTab: { focused: 'account-circle', unfocused: 'account-circle-outline' },
+};
+
+// Root Tab Navigator with 4 tabs: Home, Bookings, Messages, Profile
+const RootCustomerTabs = createBottomTabNavigator({
+  screenOptions: ({ route }) => ({
+    headerShown: false,
+    tabBarIcon: ({ focused, color }) => {
+      const icons = TAB_ICONS[route.name];
+      const iconName = focused ? icons.focused : icons.unfocused;
+      return (
+        <View style={focused ? styles.activeTabHighlight : undefined}>
+          <MaterialCommunityIcons name={iconName} size={24} color={color} />
+        </View>
+      );
+    },
+    tabBarActiveTintColor: COLORS.primary,
+    tabBarInactiveTintColor: COLORS.textTertiary,
+    tabBarStyle: styles.tabBar,
+    tabBarLabelStyle: styles.tabLabel,
+    tabBarItemStyle: styles.tabItem,
+  }),
+  screens: {
+    HomeTab: {
+      screen: HomeStack,
+      options: { tabBarLabel: 'Home' },
+    },
+    BookingsTab: {
+      screen: BookingsStack,
+      options: { tabBarLabel: 'Bookings' },
+    },
+    MessagesTab: {
+      screen: MessagesStack,
+      options: { tabBarLabel: 'Messages' },
+    },
+    ProfileTab: {
+      screen: ProfileStack,
+      options: { tabBarLabel: 'Profile' },
+    },
+  },
+});
+
+const Navigation = createStaticNavigation(RootCustomerTabs);
+
+const CustomerAppNavigator = () => {
+  return <Navigation />;
+};
+
+const styles = StyleSheet.create({
+  tabBar: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    height: Platform.OS === 'ios' ? 88 : 68,
+    backgroundColor: COLORS.white,
+    borderTopWidth: 1,
+    borderTopColor: COLORS.borderLight,
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    paddingTop: 8,
+    paddingBottom: Platform.OS === 'ios' ? 28 : 8,
+    ...SHADOWS.lg,
+  },
+  tabLabel: {
+    fontSize: FONT_SIZE.xs,
+    fontWeight: FONT_WEIGHT.semibold,
+    marginTop: 2,
+  },
+  tabItem: {
+    paddingTop: 4,
+  },
+  activeTabHighlight: {
+    backgroundColor: COLORS.primaryLight,
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 4,
+    marginBottom: -2,
+  },
+});
+
+export default CustomerAppNavigator;
