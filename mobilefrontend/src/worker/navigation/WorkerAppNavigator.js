@@ -4,9 +4,9 @@ import { createStaticNavigation } from '@react-navigation/native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { createStackNavigator } from '@react-navigation/stack';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import { COLORS, FONT_SIZE, FONT_WEIGHT, SHADOWS } from '../theme';
+import { COLORS, FONT_SIZE, FONT_WEIGHT, SHADOWS } from '../../theme';
 
-// Screens
+// Worker Screens
 import HomeScreen from '../screens/HomeScreen';
 import JobsScreen from '../screens/JobsScreen';
 import EarningsScreen from '../screens/EarningsScreen';
@@ -85,10 +85,9 @@ const RootNavigator = createBottomTabNavigator({
   },
 });
 
-// Create the navigation component using static API (React Navigation v7)
 const Navigation = createStaticNavigation(RootNavigator);
 
-const AppNavigator = () => {
+const WorkerAppNavigator = () => {
   return <Navigation />;
 };
 
@@ -123,4 +122,4 @@ const styles = StyleSheet.create({
   },
 });
 
-export default AppNavigator;
+export default WorkerAppNavigator;
