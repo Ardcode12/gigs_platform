@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useNavigation } from '@react-navigation/native';
 import {
   View,
   Text,
@@ -15,7 +16,8 @@ import { COLORS, SPACING, RADIUS, FONT_SIZE, FONT_WEIGHT, SHADOWS } from '../../
 import { useAuth } from '../../context/AuthContext';
 import { CUSTOMER_PROFILE } from '../data/customerMockData';
 
-const CustomerProfileScreen = ({ navigation }) => {
+const CustomerProfileScreen = () => {
+  const navigation = useNavigation();
   const [profile] = useState(CUSTOMER_PROFILE);
   const [pushNotif, setPushNotif] = useState(true);
   const [selectedLanguage, setSelectedLanguage] = useState('English');

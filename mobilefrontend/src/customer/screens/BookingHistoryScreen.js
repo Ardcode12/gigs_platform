@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useNavigation } from '@react-navigation/native';
 import {
   View,
   Text,
@@ -13,7 +14,8 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { COLORS, SPACING, RADIUS, FONT_SIZE, FONT_WEIGHT, SHADOWS } from '../../theme';
 import { BOOKING_HISTORY_SAMPLE } from '../data/customerMockData';
 
-const BookingHistoryScreen = ({ navigation }) => {
+const BookingHistoryScreen = () => {
+  const navigation = useNavigation();
   const [activeTab, setActiveTab] = useState('completed'); // 'completed' | 'cancelled'
   const [selectedInvoice, setSelectedInvoice] = useState(null);
 

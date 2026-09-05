@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useNavigation, useRoute } from '@react-navigation/native';
 import {
   View,
   Text,
@@ -12,7 +13,9 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { COLORS, SPACING, RADIUS, FONT_SIZE, FONT_WEIGHT, SHADOWS } from '../../theme';
 import { AI_DETECTION_SAMPLE } from '../data/customerMockData';
 
-const AIRequirementScreen = ({ navigation, route }) => {
+const AIRequirementScreen = () => {
+  const navigation = useNavigation();
+  const route = useRoute();
   const initialText =
     route?.params?.userInput || 'I need fan repair, two lights replaced and some wiring.';
   const [inputText, setInputText] = useState(initialText);

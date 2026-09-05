@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useNavigation } from '@react-navigation/native';
 import {
   View,
   Text,
@@ -23,7 +24,8 @@ const COMPLIMENT_TAGS = [
   'Excellent Knowledge',
 ];
 
-const RatingFeedbackScreen = ({ navigation }) => {
+const RatingFeedbackScreen = () => {
+  const navigation = useNavigation();
   const [rating, setRating] = useState(5);
   const [feedback, setFeedback] = useState('');
   const [selectedTags, setSelectedTags] = useState(['Punctual & Fast', 'Fair Transparent Pricing']);

@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useNavigation } from '@react-navigation/native';
 import {
   View,
   Text,
@@ -21,7 +22,8 @@ const TRACKING_STEPS = [
   { id: 5, title: 'Work Completed', sub: 'Review, payment & digital receipt', icon: 'star-check' },
 ];
 
-const TrackBookingScreen = ({ navigation }) => {
+const TrackBookingScreen = () => {
+  const navigation = useNavigation();
   const [currentStep, setCurrentStep] = useState(2); // 2: Worker On The Way
   const booking = ONGOING_BOOKING;
 

@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useNavigation } from '@react-navigation/native';
 import {
   View,
   Text,
@@ -13,7 +14,8 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { COLORS, SPACING, RADIUS, FONT_SIZE, FONT_WEIGHT, SHADOWS } from '../../theme';
 import { ONGOING_BOOKING } from '../data/customerMockData';
 
-const ExtraAmountScreen = ({ navigation, route }) => {
+const ExtraAmountScreen = () => {
+  const navigation = useNavigation();
   const [status, setStatus] = useState('pending'); // 'pending' | 'accepted' | 'rejected'
   const worker = ONGOING_BOOKING.worker;
   const baseAmount = 650;

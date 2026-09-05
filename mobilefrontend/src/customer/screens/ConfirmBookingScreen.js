@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useNavigation, useRoute } from '@react-navigation/native';
 import {
   View,
   Text,
@@ -17,9 +18,9 @@ import {
   AI_DETECTION_SAMPLE,
 } from '../data/customerMockData';
 
-const ConfirmBookingScreen = ({ navigation, route }) => {
-  const worker = route?.params?.worker || RECOMMENDED_WORKERS[0];
-  const hasExtra = route?.params?.hasExtra || false;
+const ConfirmBookingScreen = () => {
+  const navigation = useNavigation();
+  const { worker = RECOMMENDED_WORKERS[0], hasExtra = false } = useRoute().params ?? {};
   const baseAmount = 650;
   const extraAmount = hasExtra ? 100 : 0;
   const finalAmount = baseAmount + extraAmount;

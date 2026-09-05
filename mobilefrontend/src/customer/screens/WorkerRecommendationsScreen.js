@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useNavigation } from '@react-navigation/native';
 import {
   View,
   Text,
@@ -12,7 +13,8 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { COLORS, SPACING, RADIUS, FONT_SIZE, FONT_WEIGHT, SHADOWS } from '../../theme';
 import { RECOMMENDED_WORKERS, AI_DETECTION_SAMPLE } from '../data/customerMockData';
 
-const WorkerRecommendationsScreen = ({ navigation, route }) => {
+const WorkerRecommendationsScreen = () => {
+  const navigation = useNavigation();
   const [workersList] = useState(RECOMMENDED_WORKERS);
   const [activeFilter, setActiveFilter] = useState('All');
 

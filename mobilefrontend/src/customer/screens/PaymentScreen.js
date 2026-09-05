@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useNavigation, useRoute } from '@react-navigation/native';
 import {
   View,
   Text,
@@ -20,8 +21,9 @@ const DIGITAL_PAYMENT_OPTIONS = [
   { id: 'cash_cod', name: 'Cash to Cooperative Worker', desc: 'Direct currency hand-over', icon: 'cash-multiple', popular: false },
 ];
 
-const PaymentScreen = ({ navigation, route }) => {
-  const finalAmount = route?.params?.amount || 650;
+const PaymentScreen = () => {
+  const navigation = useNavigation();
+  const finalAmount = useRoute().params?.amount || 650;
   const [selectedMethod, setSelectedMethod] = useState('upi_gpay');
   const [isProcessing, setIsProcessing] = useState(false);
   const [paymentSuccess, setPaymentSuccess] = useState(false);

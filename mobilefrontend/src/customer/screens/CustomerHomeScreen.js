@@ -1,4 +1,5 @@
 import React from 'react';
+import { useNavigation } from '@react-navigation/native';
 import {
   View,
   Text,
@@ -17,7 +18,8 @@ import {
   ONGOING_BOOKING,
 } from '../data/customerMockData';
 
-const CustomerHomeScreen = ({ navigation }) => {
+const CustomerHomeScreen = () => {
+  const navigation = useNavigation();
   const defaultAddress = CUSTOMER_PROFILE.savedAddresses.find((a) => a.isDefault) || CUSTOMER_PROFILE.savedAddresses[0];
 
   return (

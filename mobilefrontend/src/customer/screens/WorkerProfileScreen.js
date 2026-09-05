@@ -1,4 +1,5 @@
 import React from 'react';
+import { useNavigation, useRoute } from '@react-navigation/native';
 import {
   View,
   Text,
@@ -13,8 +14,9 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { COLORS, SPACING, RADIUS, FONT_SIZE, FONT_WEIGHT, SHADOWS } from '../../theme';
 import { RECOMMENDED_WORKERS } from '../data/customerMockData';
 
-const WorkerProfileScreen = ({ navigation, route }) => {
-  const worker = route?.params?.worker || RECOMMENDED_WORKERS[0];
+const WorkerProfileScreen = () => {
+  const navigation = useNavigation();
+  const worker = useRoute().params?.worker || RECOMMENDED_WORKERS[0];
 
   const handleProtectedCall = () => {
     Alert.alert(

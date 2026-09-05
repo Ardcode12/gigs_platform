@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useNavigation } from '@react-navigation/native';
 import {
   View,
   Text,
@@ -11,7 +12,8 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { COLORS, SPACING, RADIUS, FONT_SIZE, FONT_WEIGHT, SHADOWS } from '../../theme';
 import { NOTIFICATIONS_SAMPLE } from '../data/customerMockData';
 
-const NotificationsScreen = ({ navigation }) => {
+const NotificationsScreen = () => {
+  const navigation = useNavigation();
   const [notifications, setNotifications] = useState(NOTIFICATIONS_SAMPLE);
 
   const handleNotificationPress = (item) => {

@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useNavigation, useRoute } from '@react-navigation/native';
 import {
   View,
   Text,
@@ -21,8 +22,9 @@ const SUGGESTED_NATURAL_PROMPTS = [
   'Lawn mowing, flower bed pruning and plant repotting.',
 ];
 
-const SearchServiceScreen = ({ navigation, route }) => {
-  const initialCategory = route?.params?.category || '';
+const SearchServiceScreen = () => {
+  const navigation = useNavigation();
+  const initialCategory = useRoute().params?.category || '';
   const [searchQuery, setSearchQuery] = useState(initialCategory);
   const [selectedCategory, setSelectedCategory] = useState(initialCategory);
   const [naturalText, setNaturalText] = useState(

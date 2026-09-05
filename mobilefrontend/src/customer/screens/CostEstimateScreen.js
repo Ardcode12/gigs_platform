@@ -1,4 +1,5 @@
 import React from 'react';
+import { useNavigation, useRoute } from '@react-navigation/native';
 import {
   View,
   Text,
@@ -11,8 +12,9 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { COLORS, SPACING, RADIUS, FONT_SIZE, FONT_WEIGHT, SHADOWS } from '../../theme';
 import { AI_DETECTION_SAMPLE } from '../data/customerMockData';
 
-const CostEstimateScreen = ({ navigation, route }) => {
-  const aiData = route?.params?.aiData || AI_DETECTION_SAMPLE;
+const CostEstimateScreen = () => {
+  const navigation = useNavigation();
+  const aiData = useRoute().params?.aiData || AI_DETECTION_SAMPLE;
 
   const handleProceedToWorkers = () => {
     navigation.navigate('WorkerRecommendations', {

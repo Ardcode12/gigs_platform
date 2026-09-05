@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useNavigation, useRoute } from '@react-navigation/native';
 import {
   View,
   Text,
@@ -16,8 +17,9 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { COLORS, SPACING, RADIUS, FONT_SIZE, FONT_WEIGHT, SHADOWS } from '../../theme';
 import { RECOMMENDED_WORKERS, CHAT_MESSAGES_SAMPLE } from '../data/customerMockData';
 
-const CustomerChatScreen = ({ navigation, route }) => {
-  const worker = route?.params?.worker || RECOMMENDED_WORKERS[0];
+const CustomerChatScreen = () => {
+  const navigation = useNavigation();
+  const worker = useRoute().params?.worker || RECOMMENDED_WORKERS[0];
   const [messages, setMessages] = useState(CHAT_MESSAGES_SAMPLE);
   const [inputText, setInputText] = useState('');
 
