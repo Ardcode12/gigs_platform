@@ -7,12 +7,12 @@
  */
 
 import React from 'react';
-import { View, StyleSheet, Platform } from 'react-native';
+import { View, Text, StyleSheet, Platform } from 'react-native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { createStackNavigator } from '@react-navigation/stack';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { COLORS, FONT_SIZE, FONT_WEIGHT, SHADOWS } from '../../theme';
-import { t } from '../../i18n';
+import { useT } from '../../i18n/LanguageContext';
 
 // Worker screens
 import HomeScreen from '../screens/HomeScreen';
@@ -76,6 +76,11 @@ const TAB_ICONS = {
   ProfileTab: { focused: 'account-circle', unfocused: 'account-circle-outline' },
 };
 
+const LocalizedTabLabel = ({ labelKey, color }) => {
+  const translate = useT();
+  return <Text style={[styles.tabLabel, { color }]}>{translate(labelKey)}</Text>;
+};
+
 const WorkerTabs = createBottomTabNavigator({
   screenOptions: ({ route }) => {
     const nestedRoute = route.state?.routes?.[route.state.index ?? 0]?.name;
@@ -102,19 +107,19 @@ const WorkerTabs = createBottomTabNavigator({
   screens: {
     HomeTab: {
       screen: HomeStackNav,
-       options: { tabBarLabel: () => t('tabs.home') },
+       options: { tabBarLabel: ({ color }) => <LocalizedTabLabel labelKey="tabs.home" color={color} /> },
     },
     JobsTab: {
       screen: JobsStackNav,
-       options: { tabBarLabel: () => t('tabs.jobs') },
+       options: { tabBarLabel: ({ color }) => <LocalizedTabLabel labelKey="tabs.jobs" color={color} /> },
     },
     EarningsTab: {
       screen: EarningsScreen,
-       options: { tabBarLabel: () => t('tabs.earnings') },
+       options: { tabBarLabel: ({ color }) => <LocalizedTabLabel labelKey="tabs.earnings" color={color} /> },
     },
     ProfileTab: {
       screen: ProfileStackNav,
-       options: { tabBarLabel: () => t('tabs.profile') },
+       options: { tabBarLabel: ({ color }) => <LocalizedTabLabel labelKey="tabs.profile" color={color} /> },
     },
   },
 });

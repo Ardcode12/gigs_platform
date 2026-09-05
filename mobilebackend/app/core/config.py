@@ -38,13 +38,12 @@ class Settings(BaseSettings):
     # in the earnings breakdown. Timestamps are stored in UTC regardless.
     TIMEZONE: str = "Asia/Kolkata"
 
-    # Chat translation. "none" keeps translation disabled until a provider is configured.
+    # Chat translation. "none" keeps translation disabled until a provider is running;
+    # "local" talks to the IndicTrans2 sidecar in mobilebackend/translator/.
     TRANSLATION_PROVIDER: str = "none"
-    BHASHINI_API_URL: str = "https://dhruva-api.bhashini.gov.in/services/inference/pipeline"
-    BHASHINI_API_KEY: str = ""
-    BHASHINI_USER_ID: str = ""
-    BHASHINI_SERVICE_ID: str = ""
-    BHASHINI_TIMEOUT_SECONDS: float = 10.0
+    LOCAL_TRANSLATE_URL: str = "http://127.0.0.1:8001/translate"
+    # Generous on purpose: the sidecar's first request loads a ~1 GB model from disk.
+    LOCAL_TRANSLATE_TIMEOUT_SECONDS: float = 30.0
 
     @property
     def cors_origin_list(self) -> list[str]:

@@ -467,14 +467,18 @@ const styles = StyleSheet.create({
     marginRight: SPACING.md,
   },
   availLabel: {
+    flexShrink: 1,
     color: COLORS.white,
     fontSize: FONT_SIZE.md,
     fontWeight: FONT_WEIGHT.semibold,
+    lineHeight: 24,
   },
   availSubtext: {
+    flexShrink: 1,
     color: 'rgba(255,255,255,0.7)',
     fontSize: FONT_SIZE.sm,
     marginTop: 2,
+    lineHeight: 21,
   },
   body: {
     flex: 1,
@@ -505,13 +509,17 @@ const styles = StyleSheet.create({
     marginLeft: SPACING.md,
   },
   requestTitle: {
+    flexShrink: 1,
     fontSize: FONT_SIZE.lg,
     fontWeight: FONT_WEIGHT.bold,
     color: COLORS.textPrimary,
+    lineHeight: 24,
   },
   requestSubtext: {
+    flexShrink: 1,
     fontSize: FONT_SIZE.sm,
     color: COLORS.textSecondary,
+    lineHeight: 20,
     marginTop: 2,
   },
   requestBadge: {

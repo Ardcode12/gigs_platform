@@ -9,10 +9,13 @@ Chat is available on a job that is still only a request, because the spec calls
 for communicating *before* booking.
 """
 
+from collections import defaultdict
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, HTTPException, Query, status as http_status
 from sqlalchemy import select, update
+from sqlalchemy.dialects.postgresql import insert as pg_insert
+from sqlalchemy.orm import Session
 
 from app.core.deps import CurrentWorker, DbSession
 from app.models import (
@@ -32,12 +35,62 @@ from app.schemas.chat import (
 )
 from app.services.access import get_job_for_worker
 from app.services.notify import push_event
-from app.services.translation import detect_language, translate_text
+from app.services.translation import detect_language, translate_texts
 
 router = APIRouter(prefix="/api/jobs", tags=["chat"])
 
 #: Once a job is finished or dead, the thread is history — readable, not writable.
 _CLOSED_STATUSES = (JobStatus.COMPLETED, JobStatus.REJECTED, JobStatus.CANCELLED)
+
+
+def _translate_uncached(
+    db: Session,
+    messages: list[ChatMessage],
+    cached: dict[int, str],
+    target_lang: str,
+) -> dict[int, str]:
+    """Translate whatever the cache missed, one provider call per source language.
+
+    A thread mixes languages — the worker's Tamil and the customer's English — so
+    the misses are grouped by `source_lang` and each group crosses the wire exactly
+    once. That is one call per language present in the thread, not one per bubble,
+    which is what makes opening a long thread in a new language bearable.
+    """
+    pending: dict[str, list[ChatMessage]] = defaultdict(list)
+    for message in messages:
+        if message.id in cached or message.source_lang == target_lang:
+            continue
+        pending[message.source_lang].append(message)
+
+    fresh: dict[int, str] = {}
+    rows: list[dict[str, object]] = []
+    for source_lang, group in pending.items():
+        outputs = translate_texts([m.text for m in group], source_lang, target_lang)
+        for message, translated in zip(group, outputs):
+            # None means the translator was unavailable; an unchanged string means it
+            # had nothing to say. Neither earns a cache row, and neither is an error.
+            if not translated or translated == message.text:
+                continue
+            fresh[message.id] = translated
+            rows.append(
+                {
+                    "message_id": message.id,
+                    "target_lang": target_lang,
+                    "translated_text": translated,
+                }
+            )
+
+    if rows:
+        # Two of the worker's devices opening the same thread race for the same cache
+        # rows, and UNIQUE(message_id, target_lang) would turn that race into a 500 on
+        # a *read*. Losing the race is harmless — the row is already there.
+        db.execute(
+            pg_insert(ChatMessageTranslation)
+            .values(rows)
+            .on_conflict_do_nothing(constraint="uq_chat_translation_message_lang")
+        )
+        db.commit()
+    return fresh
 
 
 @router.get("/{job_id}/messages", response_model=list[ChatMessageOut])
@@ -84,21 +137,7 @@ def list_messages(
             )
         ).all()
         translations = {item.message_id: item.translated_text for item in cached}
-        for message in messages:
-            if message.id in translations or lang == message.source_lang:
-                continue
-            translated = translate_text(message.text, message.source_lang, lang)
-            if translated and translated != message.text:
-                db.add(
-                    ChatMessageTranslation(
-                        message_id=message.id,
-                        target_lang=lang,
-                        translated_text=translated,
-                    )
-                )
-                translations[message.id] = translated
-        if translations:
-            db.commit()
+        translations.update(_translate_uncached(db, messages, translations, lang))
 
     result = []
     for message in messages:

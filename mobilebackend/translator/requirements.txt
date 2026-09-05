@@ -1,0 +1,13 @@
+# Translation sidecar — dependencies for THIS SERVICE ONLY.
+#
+# Deliberately kept out of mobilebackend/requirements.txt, which is twelve lean
+# packages with no ML stack. Install into a separate virtualenv; see README.md.
+#
+# transformers is capped below 5.0 on purpose: IndicTrans2 ships its architecture
+# as custom remote code written against the v4 API, and v5 removed pieces it uses.
+torch>=2.2
+transformers>=4.44,<5
+sentencepiece>=0.2.0
+IndicTransToolkit>=1.0.0
+fastapi==0.115.6
+uvicorn[standard]==0.34.0
