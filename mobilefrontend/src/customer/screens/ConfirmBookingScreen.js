@@ -12,6 +12,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { COLORS, SPACING, RADIUS, FONT_SIZE, FONT_WEIGHT, SHADOWS } from '../../theme';
+import { useT } from '../../i18n/LanguageContext';
 import {
   RECOMMENDED_WORKERS,
   CUSTOMER_PROFILE,
@@ -20,21 +21,22 @@ import {
 
 const ConfirmBookingScreen = () => {
   const navigation = useNavigation();
+  const t = useT();
   const { worker = RECOMMENDED_WORKERS[0], hasExtra = false } = useRoute().params ?? {};
   const baseAmount = 650;
   const extraAmount = hasExtra ? 100 : 0;
   const finalAmount = baseAmount + extraAmount;
 
-  const [serviceTime, setServiceTime] = useState('Today, 3:45 PM - 4:45 PM');
+  const [serviceTime, setServiceTime] = useState(t('customer.serviceTimeSlot'));
   const address = CUSTOMER_PROFILE.savedAddresses[0];
 
   const handleConfirm = () => {
     Alert.alert(
-      'Booking Confirmed! 🎉',
-      `Your service has been confirmed with ${worker.name}. OTP for starting service is 4829.`,
+       t('customer.bookingConfirmed'),
+       t('customer.bookingConfirmedBody', { name: worker.name, otp: 4829 }),
       [
         {
-          text: 'Track Booking Live',
+           text: t('customer.trackBooking'),
           onPress: () => navigation.navigate('TrackBooking'),
         },
       ]
@@ -43,11 +45,11 @@ const ConfirmBookingScreen = () => {
 
   const handleCancel = () => {
     Alert.alert(
-      'Cancel Booking?',
-      'Are you sure you want to cancel? No cancellation fee applies.',
+       t('customer.cancelBooking'),
+       t('customer.cancelBookingBody'),
       [
-        { text: 'Keep Booking', style: 'cancel' },
-        { text: 'Yes, Cancel', style: 'destructive', onPress: () => navigation.goBack() },
+         { text: t('customer.keepBooking'), style: 'cancel' },
+         { text: t('customer.yesCancel'), style: 'destructive', onPress: () => navigation.goBack() },
       ]
     );
   };
@@ -59,14 +61,14 @@ const ConfirmBookingScreen = () => {
         <TouchableOpacity style={styles.backButton} onPress={() => navigation.goBack()}>
           <MaterialCommunityIcons name="arrow-left" size={24} color={COLORS.textPrimary} />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>Confirm Booking</Text>
+         <Text style={styles.headerTitle}>{t('customer.confirmBooking')}</Text>
         <View style={{ width: 40 }} />
       </View>
 
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
         {/* Selected Worker Card */}
         <View style={styles.sectionCard}>
-          <Text style={styles.sectionTitle}>Selected Cooperative Worker</Text>
+           <Text style={styles.sectionTitle}>{t('customer.selectedWorker')}</Text>
           <View style={styles.workerRow}>
             <Image source={{ uri: worker.photo }} style={styles.workerPhoto} />
             <View style={styles.workerMeta}>
@@ -74,7 +76,7 @@ const ConfirmBookingScreen = () => {
                 <Text style={styles.workerName}>{worker.name}</Text>
                 <MaterialCommunityIcons name="check-decagram" size={16} color={COLORS.primary} />
               </View>
-              <Text style={styles.workerTrade}>{worker.trade}</Text>
+              <Text style={styles.workerTrade}>{t(worker.tradeKey)}</Text>
               <View style={styles.workerRatingRow}>
                 <MaterialCommunityIcons name="star" size={14} color="#F59E0B" />
                 <Text style={styles.workerRatingText}>{worker.rating} • {worker.distance}</Text>
@@ -84,7 +86,7 @@ const ConfirmBookingScreen = () => {
               style={styles.changeWorkerButton}
               onPress={() => navigation.navigate('WorkerRecommendations')}
             >
-              <Text style={styles.changeWorkerText}>Change</Text>
+               <Text style={styles.changeWorkerText}>{t('customer.change')}</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -92,9 +94,9 @@ const ConfirmBookingScreen = () => {
         {/* Service Location */}
         <View style={styles.sectionCard}>
           <View style={styles.sectionHeaderRow}>
-            <Text style={styles.sectionTitle}>Service Location</Text>
+             <Text style={styles.sectionTitle}>{t('customer.serviceLocation')}</Text>
             <TouchableOpacity>
-              <Text style={styles.editLink}>Edit</Text>
+               <Text style={styles.editLink}>{t('customer.edit')}</Text>
             </TouchableOpacity>
           </View>
 
@@ -103,23 +105,23 @@ const ConfirmBookingScreen = () => {
               <MaterialCommunityIcons name="map-marker-radius" size={22} color={COLORS.primary} />
             </View>
             <View style={styles.locationTextWrapper}>
-              <Text style={styles.locationTypeBadge}>{address.type}</Text>
+              <Text style={styles.locationTypeBadge}>{t(address.typeKey)}</Text>
               <Text style={styles.locationAddressText}>{address.address}</Text>
-              <Text style={styles.landmarkText}>Near Green Glen Park Gate 2</Text>
+               <Text style={styles.landmarkText}>{t('customer.nearLandmark')}</Text>
             </View>
           </View>
         </View>
 
         {/* Required Services List */}
         <View style={styles.sectionCard}>
-          <Text style={styles.sectionTitle}>Required Services</Text>
+           <Text style={styles.sectionTitle}>{t('customer.requiredServices')}</Text>
           <View style={styles.servicesList}>
             {AI_DETECTION_SAMPLE.detectedServices.map((srv) => (
               <View key={srv.id} style={styles.serviceItemRow}>
                 <MaterialCommunityIcons name={srv.icon} size={18} color={COLORS.primary} />
                 <View style={styles.serviceItemInfo}>
                   <Text style={styles.serviceItemName}>{srv.name}</Text>
-                  <Text style={styles.serviceItemQty}>Qty: {srv.quantity}</Text>
+                   <Text style={styles.serviceItemQty}>{t('customer.qty', { count: srv.quantity })}</Text>
                 </View>
                 <Text style={styles.serviceItemPrice}>₹{srv.totalPrice}</Text>
               </View>
@@ -130,7 +132,7 @@ const ConfirmBookingScreen = () => {
         {/* Service Time */}
         <View style={styles.sectionCard}>
           <View style={styles.sectionHeaderRow}>
-            <Text style={styles.sectionTitle}>Service Time</Text>
+             <Text style={styles.sectionTitle}>{t('customer.serviceTime')}</Text>
             <MaterialCommunityIcons name="clock-check-outline" size={18} color={COLORS.success} />
           </View>
 
@@ -142,20 +144,20 @@ const ConfirmBookingScreen = () => {
 
         {/* Amount Breakdown Card: Base Amount, Extra Amount, Final Amount */}
         <View style={styles.sectionCard}>
-          <Text style={styles.sectionTitle}>Payment Summary</Text>
+           <Text style={styles.sectionTitle}>{t('customer.paymentSummary')}</Text>
           <View style={styles.divider} />
 
           <View style={styles.priceRow}>
-            <Text style={styles.priceLabel}>Base Amount</Text>
+             <Text style={styles.priceLabel}>{t('customer.baseAmount')}</Text>
             <Text style={styles.priceVal}>₹{baseAmount}</Text>
           </View>
 
           <View style={styles.priceRow}>
             <View style={styles.extraLabelWrapper}>
-              <Text style={styles.priceLabel}>Extra Amount</Text>
+               <Text style={styles.priceLabel}>{t('customer.extraAmount')}</Text>
               {hasExtra && (
                 <View style={styles.extraBadge}>
-                  <Text style={styles.extraBadgeText}>Approved</Text>
+                   <Text style={styles.extraBadgeText}>{t('customer.approved')}</Text>
                 </View>
               )}
             </View>
@@ -165,16 +167,16 @@ const ConfirmBookingScreen = () => {
           </View>
 
           <View style={styles.priceRow}>
-            <Text style={styles.priceLabel}>Platform Convenience Fee</Text>
-            <Text style={[styles.priceVal, { color: COLORS.success }]}>₹0 (Cooperative)</Text>
+             <Text style={styles.priceLabel}>{t('customer.convenienceFee')}</Text>
+             <Text style={[styles.priceVal, { color: COLORS.success }]}>₹0 ({t('customer.cooperative')})</Text>
           </View>
 
           <View style={styles.totalDivider} />
 
           <View style={styles.finalTotalRow}>
             <View>
-              <Text style={styles.finalAmountLabel}>Final Amount</Text>
-              <Text style={styles.finalAmountSub}>Payable digitally or cash after service</Text>
+               <Text style={styles.finalAmountLabel}>{t('customer.finalAmount')}</Text>
+               <Text style={styles.finalAmountSub}>{t('customer.payAfterService')}</Text>
             </View>
             <Text style={styles.finalAmountVal}>₹{finalAmount}</Text>
           </View>
@@ -187,7 +189,7 @@ const ConfirmBookingScreen = () => {
             onPress={handleCancel}
             activeOpacity={0.8}
           >
-            <Text style={styles.cancelBookingText}>Cancel</Text>
+             <Text style={styles.cancelBookingText}>{t('customer.cancel')}</Text>
           </TouchableOpacity>
 
           <TouchableOpacity
@@ -195,7 +197,7 @@ const ConfirmBookingScreen = () => {
             onPress={handleConfirm}
             activeOpacity={0.85}
           >
-            <Text style={styles.confirmBookingText}>Confirm Booking</Text>
+             <Text style={styles.confirmBookingText}>{t('customer.confirmBooking')}</Text>
             <MaterialCommunityIcons name="check-bold" size={18} color={COLORS.white} />
           </TouchableOpacity>
         </View>

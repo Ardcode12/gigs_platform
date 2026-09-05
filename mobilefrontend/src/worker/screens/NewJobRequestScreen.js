@@ -1,5 +1,6 @@
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { useNavigation, useRoute } from '@react-navigation/native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   View,
   Text,
@@ -25,6 +26,7 @@ import { getJob, acceptJob, rejectJob } from '../../api/jobs';
 import { requestCall } from '../../api/chat';
 import { formatRupees, formatDistance, formatEta, timeAgo } from '../../utils/format';
 import { JOB_STATUS, STATUS_LABEL, STATUS_TONE } from '../../constants/jobSteps';
+import { useT } from '../../i18n/LanguageContext';
 
 /**
  * Spec #3, #7 and #9 in one screen.
@@ -35,8 +37,17 @@ import { JOB_STATUS, STATUS_LABEL, STATUS_TONE } from '../../constants/jobSteps'
  */
 const NewJobRequestScreen = () => {
   const navigation = useNavigation();
+  const t = useT();
+  const insets = useSafeAreaInsets();
   const { jobId } = useRoute().params ?? {};
   const [acting, setActing] = useState(null); // 'accept' | 'reject' | 'call'
+
+  useEffect(() => {
+    // This screen is inside the stack inside the tab navigator.
+    const tabNavigation = navigation.getParent()?.getParent();
+    tabNavigation?.setOptions({ tabBarStyle: { display: 'none' } });
+    return () => tabNavigation?.setOptions({ tabBarStyle: undefined });
+  }, [navigation]);
 
   const request = useApi(useCallback(() => getJob(jobId), [jobId]), [jobId]);
 
@@ -54,8 +65,8 @@ const NewJobRequestScreen = () => {
       navigation.replace('CurrentJob', { jobId });
     } catch (error) {
       // 409 here means another worker claimed it first — worth saying plainly.
-      Alert.alert('Could not accept', error.message, [
-        { text: 'OK', onPress: () => navigation.goBack() },
+      Alert.alert(t('worker.couldNotAccept'), error.message, [
+        { text: t('common.ok'), onPress: () => navigation.goBack() },
       ]);
     } finally {
       setActing(null);
@@ -64,11 +75,11 @@ const NewJobRequestScreen = () => {
 
   const confirmReject = () => {
     Alert.alert(
-      'Reject this job?',
-      'It will be removed from your requests.',
+      t('worker.rejectConfirm'),
+      t('worker.rejectBody'),
       [
-        { text: 'Keep it', style: 'cancel' },
-        { text: 'Reject', style: 'destructive', onPress: doReject },
+        { text: t('worker.keepJob'), style: 'cancel' },
+        { text: t('worker.rejectJob'), style: 'destructive', onPress: doReject },
       ],
       { cancelable: true },
     );
@@ -80,7 +91,7 @@ const NewJobRequestScreen = () => {
       await rejectJob(jobId);
       navigation.goBack();
     } catch (error) {
-      Alert.alert('Could not reject', error.message);
+      Alert.alert(t('worker.couldNotReject'), error.message);
     } finally {
       setActing(null);
     }
@@ -91,11 +102,11 @@ const NewJobRequestScreen = () => {
     try {
       await requestCall(jobId);
       Alert.alert(
-        'Call requested',
-        'The customer has been asked to call you. Your number stays private — the app never shares either side’s number.',
+        t('worker.callRequested'),
+        t('worker.callBody'),
       );
     } catch (error) {
-      Alert.alert('Could not send the request', error.message);
+      Alert.alert(t('worker.couldNotCall'), error.message);
     } finally {
       setActing(null);
     }
@@ -109,10 +120,10 @@ const NewJobRequestScreen = () => {
           <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
             <MaterialCommunityIcons name="arrow-left" size={24} color={COLORS.textPrimary} />
           </TouchableOpacity>
-          <Text style={styles.headerTitle}>Job Details</Text>
+           <Text style={styles.headerTitle}>{t('worker.jobDetails')}</Text>
           <View style={{ width: 40 }} />
         </View>
-        <LoadingState message="Loading job…" />
+         <LoadingState message={t('job.loading')} />
       </View>
     );
   }
@@ -124,14 +135,14 @@ const NewJobRequestScreen = () => {
           <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
             <MaterialCommunityIcons name="arrow-left" size={24} color={COLORS.textPrimary} />
           </TouchableOpacity>
-          <Text style={styles.headerTitle}>Job Details</Text>
+           <Text style={styles.headerTitle}>{t('worker.jobDetails')}</Text>
           <View style={{ width: 40 }} />
         </View>
         <EmptyState
           tone="error"
-          title="Couldn't load this job"
+           title={t('worker.loadThisJob')}
           message={request.error?.message}
-          actionLabel="Try again"
+           actionLabel={t('common.tryAgain')}
           onAction={request.reload}
         />
       </View>
@@ -150,7 +161,7 @@ const NewJobRequestScreen = () => {
         <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
           <MaterialCommunityIcons name="arrow-left" size={24} color={COLORS.textPrimary} />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>{isOffer ? 'New Job Request' : 'Job Details'}</Text>
+        <Text style={styles.headerTitle}>{isOffer ? t('worker.newJobRequest') : t('worker.jobDetails')}</Text>
         <View style={{ width: 40 }} />
       </View>
 
@@ -177,11 +188,11 @@ const NewJobRequestScreen = () => {
           </View>
           <View style={{ marginLeft: SPACING.md, flex: 1 }}>
             <Text style={styles.serviceType}>{job.service_type}</Text>
-            <Text style={styles.requestTime}>Requested {timeAgo(job.requested_at)}</Text>
+            <Text style={styles.requestTime}>{t('worker.requested', { time: timeAgo(job.requested_at) })}</Text>
           </View>
           {!isOffer && (
             <StatusBadge
-              label={STATUS_LABEL[job.status] ?? job.status}
+               label={t(STATUS_LABEL[job.status] ?? 'common.unknown')}
               color={STATUS_TONE[job.status] ?? 'neutral'}
             />
           )}
@@ -191,7 +202,7 @@ const NewJobRequestScreen = () => {
         <Card style={styles.card}>
           <View style={styles.sectionLabel}>
             <MaterialCommunityIcons name="account" size={18} color={COLORS.textSecondary} />
-            <Text style={styles.sectionLabelText}>Customer</Text>
+            <Text style={styles.sectionLabelText}>{t('worker.customer')}</Text>
           </View>
           <View style={styles.customerRow}>
             <Avatar name={job.customer.name} uri={job.customer.photo_url} size={48} />
@@ -219,7 +230,7 @@ const NewJobRequestScreen = () => {
                 size={18}
                 color={COLORS.textSecondary}
               />
-              <Text style={styles.sectionLabelText}>Work Details</Text>
+              <Text style={styles.sectionLabelText}>{t('worker.workDetails')}</Text>
             </View>
             <Text style={styles.workDetails}>{job.work_details}</Text>
           </Card>
@@ -229,7 +240,7 @@ const NewJobRequestScreen = () => {
         <Card style={styles.card}>
           <View style={styles.sectionLabel}>
             <MaterialCommunityIcons name="map-marker" size={18} color={COLORS.textSecondary} />
-            <Text style={styles.sectionLabelText}>Service Location</Text>
+              <Text style={styles.sectionLabelText}>{t('job.serviceLocation')}</Text>
           </View>
           <Text style={styles.locationAddress}>{job.location.address}</Text>
           {!!job.location.landmark && (
@@ -244,7 +255,7 @@ const NewJobRequestScreen = () => {
           >
             <View style={styles.mapPlaceholder}>
               <MaterialCommunityIcons name="map" size={40} color={COLORS.primary} />
-              <Text style={styles.mapText}>Open map & navigate</Text>
+              <Text style={styles.mapText}>{t('worker.openMap')}</Text>
             </View>
           </TouchableOpacity>
 
@@ -256,13 +267,13 @@ const NewJobRequestScreen = () => {
                 color={COLORS.primary}
               />
               <Text style={styles.distanceValue}>{distance ?? '—'}</Text>
-              <Text style={styles.distanceLabel}>Distance</Text>
+              <Text style={styles.distanceLabel}>{t('shared.distance')}</Text>
             </View>
             <View style={styles.distanceDivider} />
             <View style={styles.distanceItem}>
               <MaterialCommunityIcons name="clock-outline" size={20} color={COLORS.primary} />
               <Text style={styles.distanceValue}>{eta ?? '—'}</Text>
-              <Text style={styles.distanceLabel}>Est. Time</Text>
+              <Text style={styles.distanceLabel}>{t('shared.estimatedTime')}</Text>
             </View>
           </View>
         </Card>
@@ -271,7 +282,7 @@ const NewJobRequestScreen = () => {
         <Card style={styles.card}>
           <View style={styles.sectionLabel}>
             <MaterialCommunityIcons name="wrench" size={18} color={COLORS.textSecondary} />
-            <Text style={styles.sectionLabelText}>Required Services</Text>
+            <Text style={styles.sectionLabelText}>{t('worker.requiredServices')}</Text>
           </View>
           {job.services.map((service) => (
             <View key={service.id} style={styles.serviceRow}>
@@ -282,19 +293,19 @@ const NewJobRequestScreen = () => {
           ))}
           <View style={styles.totalRow}>
             <Text style={styles.totalLabel}>
-              {isOffer ? 'Base Estimated Amount' : 'Base Amount'}
+              {isOffer ? t('worker.baseEstimated') : t('job.baseAmount')}
             </Text>
             <Text style={styles.totalValue}>{formatRupees(job.amounts.base_amount)}</Text>
           </View>
           {job.amounts.extra_amount > 0 && (
             <View style={styles.extraRow}>
-              <Text style={styles.extraLabel}>Approved extra</Text>
+              <Text style={styles.extraLabel}>{t('worker.approvedExtra')}</Text>
               <Text style={styles.extraValue}>+{formatRupees(job.amounts.extra_amount)}</Text>
             </View>
           )}
           {job.amounts.extra_amount > 0 && (
             <View style={styles.totalRow}>
-              <Text style={styles.totalLabel}>Total</Text>
+            <Text style={styles.totalLabel}>{t('common.total')}</Text>
               <Text style={styles.totalValue}>{formatRupees(job.amounts.total_amount)}</Text>
             </View>
           )}
@@ -315,7 +326,7 @@ const NewJobRequestScreen = () => {
                   </View>
                 )}
               </View>
-              <Text style={styles.actionLabel}>Chat</Text>
+              <Text style={styles.actionLabel}>{t('job.chat')}</Text>
             </TouchableOpacity>
 
             <TouchableOpacity
@@ -358,7 +369,7 @@ const NewJobRequestScreen = () => {
 
       {/* Accept / Reject (spec #7) — only while the job is still an offer */}
       {isOffer && (
-        <View style={styles.bottomBar}>
+        <View style={[styles.bottomBar, { paddingBottom: Math.max(insets.bottom, SPACING.md) }]}>
           <TouchableOpacity
             style={[styles.bottomBtn, styles.rejectBtn]}
             onPress={confirmReject}
@@ -370,7 +381,7 @@ const NewJobRequestScreen = () => {
             ) : (
               <>
                 <MaterialCommunityIcons name="close" size={22} color={COLORS.danger} />
-                <Text style={styles.rejectText}>Reject</Text>
+                <Text style={styles.rejectText}>{t('common.reject')}</Text>
               </>
             )}
           </TouchableOpacity>
@@ -385,7 +396,7 @@ const NewJobRequestScreen = () => {
             ) : (
               <>
                 <MaterialCommunityIcons name="check" size={22} color={COLORS.white} />
-                <Text style={styles.acceptText}>Accept Job</Text>
+                <Text style={styles.acceptText}>{t('worker.acceptJob')}</Text>
               </>
             )}
           </TouchableOpacity>
@@ -661,7 +672,7 @@ const styles = StyleSheet.create({
   bottomBar: {
     flexDirection: 'row',
     padding: SPACING.xl,
-    paddingBottom: 34,
+    paddingBottom: 24,
     backgroundColor: COLORS.white,
     gap: SPACING.md,
     ...SHADOWS.lg,

@@ -16,6 +16,7 @@ import Input from '../components/Input';
 import IconButton from '../components/IconButton';
 import { useAuth } from '../context/AuthContext';
 import { changePassword } from '../api/auth';
+import { useT } from '../i18n/LanguageContext';
 
 /**
  * Two jobs in one screen:
@@ -25,6 +26,7 @@ import { changePassword } from '../api/auth';
  */
 const ChangePasswordScreen = () => {
   const navigation = useNavigation();
+  const t = useT();
   const { mustChangePassword, completePasswordChange, signOut } = useAuth();
   const forced = useRoute().params?.forced ?? mustChangePassword;
 
@@ -61,8 +63,8 @@ const ChangePasswordScreen = () => {
   return (
     <View style={styles.container}>
       <ScreenHeader
-        title={forced ? 'Choose a Password' : 'Change Password'}
-        subtitle={forced ? 'Required before you can start working' : undefined}
+        title={forced ? t('auth.choosePassword') : t('auth.changePassword')}
+        subtitle={forced ? t('auth.changePasswordSubtitle') : undefined}
         onBack={forced ? undefined : () => navigation.goBack()}
       />
 
@@ -80,42 +82,41 @@ const ChangePasswordScreen = () => {
               <View style={styles.notice}>
                 <MaterialCommunityIcons name="shield-key-outline" size={20} color={COLORS.primary} />
                 <Text style={styles.noticeText}>
-                  Your society set your first password. Choose one only you know before you start
-                  taking jobs.
+                  {t('auth.firstPasswordNotice')}
                 </Text>
               </View>
             )}
 
             <Input
-              label={forced ? 'Password from your society' : 'Current Password'}
+              label={forced ? t('auth.societyPassword') : t('auth.currentPassword')}
               value={current}
               onChangeText={setCurrent}
-              placeholder="Enter your current password"
+              placeholder={t('auth.currentPasswordPlaceholder')}
               icon="lock-outline"
               secure
               maxLength={128}
             />
 
             <Input
-              label="New Password"
+              label={t('auth.newPassword')}
               value={password}
               onChangeText={setPassword}
-              placeholder="At least 6 characters"
+              placeholder={t('auth.passwordCreatePlaceholder')}
               icon="lock-plus-outline"
               secure
               maxLength={128}
-              error={sameAsOld ? 'Choose a password different from the current one.' : undefined}
+               error={sameAsOld ? t('auth.differentPassword') : undefined}
             />
 
             <Input
-              label="Confirm New Password"
+              label={t('auth.confirmPassword')}
               value={confirm}
               onChangeText={setConfirm}
-              placeholder="Type it again"
+              placeholder={t('auth.confirmPlaceholder')}
               icon="lock-check-outline"
               secure
               maxLength={128}
-              error={mismatch ? 'The two passwords do not match.' : undefined}
+              error={mismatch ? t('auth.passwordMismatch') : undefined}
               returnKeyType="go"
               onSubmitEditing={handleSubmit}
             />
@@ -123,7 +124,7 @@ const ChangePasswordScreen = () => {
             {!!error && <Text style={styles.error}>{error}</Text>}
 
             <IconButton
-              label={forced ? 'Save & Continue' : 'Update Password'}
+              label={forced ? t('auth.saveContinue') : t('auth.updatePassword')}
               icon="check"
               onPress={handleSubmit}
               disabled={!canSubmit}
@@ -134,7 +135,7 @@ const ChangePasswordScreen = () => {
 
             {forced && (
               <IconButton
-                label="Sign out instead"
+                 label={t('auth.signOutInstead')}
                 onPress={signOut}
                 variant="ghost"
                 color={COLORS.textSecondary}

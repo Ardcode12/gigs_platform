@@ -19,6 +19,7 @@ from app.models import (
     CallRequest,
     CallRequestStatus,
     ChatMessage,
+    ChatMessageTranslation,
     JobStatus,
     MessageSender,
     WsEvent,
@@ -31,6 +32,7 @@ from app.schemas.chat import (
 )
 from app.services.access import get_job_for_worker
 from app.services.notify import push_event
+from app.services.translation import detect_language, translate_text
 
 router = APIRouter(prefix="/api/jobs", tags=["chat"])
 
@@ -44,6 +46,7 @@ def list_messages(
     worker: CurrentWorker,
     db: DbSession,
     limit: int = Query(default=200, ge=1, le=500),
+    lang: str | None = Query(default=None, min_length=2, max_length=16),
 ) -> list[ChatMessageOut]:
     """The thread, oldest first, marking the customer's messages read.
 
@@ -71,7 +74,40 @@ def list_messages(
     db.commit()
 
     # Reversed so the client gets chronological order without a second sort.
-    return [ChatMessageOut.model_validate(m) for m in reversed(rows)]
+    messages = list(reversed(rows))
+    translations: dict[int, str] = {}
+    if lang:
+        cached = db.scalars(
+            select(ChatMessageTranslation).where(
+                ChatMessageTranslation.message_id.in_([m.id for m in messages]),
+                ChatMessageTranslation.target_lang == lang,
+            )
+        ).all()
+        translations = {item.message_id: item.translated_text for item in cached}
+        for message in messages:
+            if message.id in translations or lang == message.source_lang:
+                continue
+            translated = translate_text(message.text, message.source_lang, lang)
+            if translated and translated != message.text:
+                db.add(
+                    ChatMessageTranslation(
+                        message_id=message.id,
+                        target_lang=lang,
+                        translated_text=translated,
+                    )
+                )
+                translations[message.id] = translated
+        if translations:
+            db.commit()
+
+    result = []
+    for message in messages:
+        item = ChatMessageOut.model_validate(message)
+        translated = translations.get(message.id)
+        if translated:
+            item = item.model_copy(update={"text": translated, "original_text": message.text})
+        result.append(item)
+    return result
 
 
 @router.post(
@@ -93,6 +129,7 @@ def send_message(
         job_id=job.id,
         sender=MessageSender.WORKER,
         text=payload.text.strip(),
+        source_lang=detect_language(payload.text),
     )
     db.add(message)
     db.commit()

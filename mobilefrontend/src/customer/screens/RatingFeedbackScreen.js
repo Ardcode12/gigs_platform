@@ -13,6 +13,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { COLORS, SPACING, RADIUS, FONT_SIZE, FONT_WEIGHT, SHADOWS } from '../../theme';
+import { useT } from '../../i18n/LanguageContext';
 import { ONGOING_BOOKING } from '../data/customerMockData';
 
 const COMPLIMENT_TAGS = [
@@ -26,6 +27,7 @@ const COMPLIMENT_TAGS = [
 
 const RatingFeedbackScreen = () => {
   const navigation = useNavigation();
+  const t = useT();
   const [rating, setRating] = useState(5);
   const [feedback, setFeedback] = useState('');
   const [selectedTags, setSelectedTags] = useState(['Punctual & Fast', 'Fair Transparent Pricing']);
@@ -41,11 +43,11 @@ const RatingFeedbackScreen = () => {
 
   const handleSubmitReview = () => {
     Alert.alert(
-      'Review Submitted! 🌟',
-      `Thank you for supporting ${worker.name} and the Workers Cooperative. Your honest rating helps maintain high standards.`,
+       t('customer.ratingSubmitted'),
+       t('customer.ratingSubmittedBody', { name: worker.name }),
       [
         {
-          text: 'Back to Home',
+           text: t('customer.backHome'),
           onPress: () => navigation.navigate('HomeTab'),
         },
       ]
@@ -59,7 +61,7 @@ const RatingFeedbackScreen = () => {
         <TouchableOpacity style={styles.backButton} onPress={() => navigation.goBack()}>
           <MaterialCommunityIcons name="arrow-left" size={24} color={COLORS.textPrimary} />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>Rate & Review Service</Text>
+         <Text style={styles.headerTitle}>{t('customer.rating')}</Text>
         <View style={{ width: 40 }} />
       </View>
 
@@ -68,12 +70,12 @@ const RatingFeedbackScreen = () => {
         <View style={styles.workerReviewCard}>
           <Image source={{ uri: worker.photo }} style={styles.workerAvatar} />
           <Text style={styles.workerName}>{worker.name}</Text>
-          <Text style={styles.workerTrade}>{worker.trade}</Text>
+          <Text style={styles.workerTrade}>{t(worker.tradeKey)}</Text>
           <Text style={styles.coopBranch}>{worker.coopBranch}</Text>
 
           <View style={styles.divider} />
 
-          <Text style={styles.questionText}>How was your service experience?</Text>
+           <Text style={styles.questionText}>{t('customer.ratingQuestion')}</Text>
 
           {/* 1–5 Star Rating */}
           <View style={styles.starsRow}>
@@ -97,17 +99,17 @@ const RatingFeedbackScreen = () => {
           </View>
 
           <Text style={styles.ratingDescriptor}>
-            {rating === 5 && 'Outstanding & Highly Recommended!'}
-            {rating === 4 && 'Very Good Service!'}
-            {rating === 3 && 'Average / Met Expectations'}
-            {rating === 2 && 'Needs Improvement'}
-            {rating === 1 && 'Unsatisfactory Experience'}
+             {rating === 5 && t('customer.outstanding')}
+             {rating === 4 && t('customer.veryGood')}
+             {rating === 3 && t('customer.average')}
+             {rating === 2 && t('customer.needsImprovement')}
+             {rating === 1 && t('customer.unsatisfactory')}
           </Text>
         </View>
 
         {/* Compliment Tags */}
         <View style={styles.sectionCard}>
-          <Text style={styles.sectionTitle}>What did you like most?</Text>
+           <Text style={styles.sectionTitle}>{t('customer.likeMost')}</Text>
           <View style={styles.tagsContainer}>
             {COMPLIMENT_TAGS.map((tag, idx) => {
               const isSelected = selectedTags.includes(tag);
@@ -134,16 +136,16 @@ const RatingFeedbackScreen = () => {
 
         {/* Feedback Text Box */}
         <View style={styles.sectionCard}>
-          <Text style={styles.sectionTitle}>Write your Feedback</Text>
+           <Text style={styles.sectionTitle}>{t('customer.writeFeedback')}</Text>
           <Text style={styles.sectionSub}>
-            Your comments are shared directly with the cooperative committee.
+             {t('customer.feedbackShared')}
           </Text>
 
           <TextInput
             style={styles.feedbackInput}
             multiline
             numberOfLines={4}
-            placeholder="Tell us about the worker's punctuality, repair quality, clean-up, or cooperative service..."
+             placeholder={t('customer.feedbackPlaceholder')}
             placeholderTextColor={COLORS.textTertiary}
             value={feedback}
             onChangeText={setFeedback}
@@ -156,7 +158,7 @@ const RatingFeedbackScreen = () => {
           onPress={handleSubmitReview}
           activeOpacity={0.85}
         >
-          <Text style={styles.submitReviewText}>Submit Review</Text>
+           <Text style={styles.submitReviewText}>{t('customer.submitReview')}</Text>
           <MaterialCommunityIcons name="send" size={18} color={COLORS.white} />
         </TouchableOpacity>
       </ScrollView>

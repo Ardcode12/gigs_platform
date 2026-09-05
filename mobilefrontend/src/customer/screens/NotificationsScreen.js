@@ -10,10 +10,12 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { COLORS, SPACING, RADIUS, FONT_SIZE, FONT_WEIGHT, SHADOWS } from '../../theme';
+import { useT } from '../../i18n/LanguageContext';
 import { NOTIFICATIONS_SAMPLE } from '../data/customerMockData';
 
 const NotificationsScreen = () => {
   const navigation = useNavigation();
+  const t = useT();
   const [notifications, setNotifications] = useState(NOTIFICATIONS_SAMPLE);
 
   const handleNotificationPress = (item) => {
@@ -39,6 +41,19 @@ const NotificationsScreen = () => {
     setNotifications(notifications.map((n) => ({ ...n, unread: false })));
   };
 
+  const notificationCopy = (item) => {
+    const values = {
+      extra_amount: ['customer.notif.extra.title', 'customer.notif.extra.body', { name: 'Ramesh Kumar', amount: '₹100' }],
+      worker_message: ['customer.notif.message.title', 'customer.notif.message.body', { name: 'Ramesh', minutes: 15 }],
+      worker_arrival: ['customer.notif.arrival.title', 'customer.notif.arrival.body', { name: 'Ramesh Kumar', address: 'Flat 402, Green Glen Layout' }],
+      booking_confirmed: ['customer.notif.confirmed.title', 'customer.notif.confirmed.body', { id: 'WM-9812', time: '3:45 PM' }],
+      payment_confirmation: ['customer.notif.payment.title', 'customer.notif.payment.body', { amount: '₹450' }],
+      invoice: ['customer.notif.invoice.title', 'customer.notif.invoice.body', { id: 'WM-8102' }],
+      rating_reminder: ['customer.notif.rating.title', 'customer.notif.rating.body', { name: 'Rajesh' }],
+    }[item.type];
+    return values ? { title: t(values[0], values[2]), body: t(values[1], values[2]) } : { title: item.title, body: item.body };
+  };
+
   return (
     <SafeAreaView style={styles.safeArea}>
       {/* Header */}
@@ -46,14 +61,14 @@ const NotificationsScreen = () => {
         <TouchableOpacity style={styles.backButton} onPress={() => navigation.goBack()}>
           <MaterialCommunityIcons name="arrow-left" size={24} color={COLORS.textPrimary} />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>Notifications</Text>
+        <Text style={styles.headerTitle}>{t('customer.notifications')}</Text>
         <TouchableOpacity onPress={markAllRead}>
-          <Text style={styles.markReadText}>Mark Read</Text>
+           <Text style={styles.markReadText}>{t('customer.markRead')}</Text>
         </TouchableOpacity>
       </View>
 
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
-        <Text style={styles.sectionHeaderTitle}>Recent Service Updates</Text>
+         <Text style={styles.sectionHeaderTitle}>{t('customer.recentUpdates')}</Text>
 
         <View style={styles.listContainer}>
           {notifications.map((item) => (
@@ -70,17 +85,17 @@ const NotificationsScreen = () => {
               <View style={styles.contentWrap}>
                 <View style={styles.cardTopRow}>
                   <Text style={[styles.itemTitle, item.unread && styles.itemTitleUnread]}>
-                    {item.title}
+                     {notificationCopy(item).title}
                   </Text>
                   <Text style={styles.itemTime}>{item.time}</Text>
                 </View>
 
                 <Text style={styles.itemBody} numberOfLines={2}>
-                  {item.body}
+                   {notificationCopy(item).body}
                 </Text>
 
                 <View style={styles.actionPromptRow}>
-                  <Text style={styles.actionPromptText}>Tap to view details</Text>
+                   <Text style={styles.actionPromptText}>{t('customer.tapDetails')}</Text>
                   <MaterialCommunityIcons name="chevron-right" size={14} color={COLORS.primary} />
                 </View>
               </View>

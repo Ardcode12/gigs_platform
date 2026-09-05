@@ -12,17 +12,19 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { COLORS, SPACING, RADIUS, FONT_SIZE, FONT_WEIGHT, SHADOWS } from '../../theme';
+import { useT } from '../../i18n/LanguageContext';
 import { RECOMMENDED_WORKERS } from '../data/customerMockData';
 
 const WorkerProfileScreen = () => {
   const navigation = useNavigation();
+  const t = useT();
   const worker = useRoute().params?.worker || RECOMMENDED_WORKERS[0];
 
   const handleProtectedCall = () => {
     Alert.alert(
-      'Protected Cooperative Call',
-      `Connecting call to ${worker.name} via WORKMAT Masked Exchange. Your personal number remains completely private.`,
-      [{ text: 'Start Call' }, { text: 'Cancel', style: 'cancel' }]
+       t('customer.protectedCall'),
+       t('customer.connectingCall', { name: worker.name }),
+       [{ text: t('customer.startCall') }, { text: t('common.cancel'), style: 'cancel' }]
     );
   };
 
@@ -33,7 +35,7 @@ const WorkerProfileScreen = () => {
         <TouchableOpacity style={styles.backButton} onPress={() => navigation.goBack()}>
           <MaterialCommunityIcons name="arrow-left" size={24} color={COLORS.textPrimary} />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>Cooperative Worker Profile</Text>
+        <Text style={styles.headerTitle}>{t('customer.workerProfile')}</Text>
         <TouchableOpacity style={styles.shareButton}>
           <MaterialCommunityIcons name="share-variant-outline" size={22} color={COLORS.textPrimary} />
         </TouchableOpacity>
@@ -50,13 +52,13 @@ const WorkerProfileScreen = () => {
           </View>
 
           <Text style={styles.workerName}>{worker.name}</Text>
-          <Text style={styles.workerTrade}>{worker.trade}</Text>
+          <Text style={styles.workerTrade}>{t(worker.tradeKey)}</Text>
           <Text style={styles.coopBranchText}>{worker.coopBranch}</Text>
 
           {/* Privacy Notice on Profile */}
           <View style={styles.privacyPill}>
             <MaterialCommunityIcons name="shield-lock" size={14} color={COLORS.success} />
-            <Text style={styles.privacyPillText}>Identity & Aadhar Verified</Text>
+             <Text style={styles.privacyPillText}>{t('customer.identityVerified')}</Text>
           </View>
 
           {/* Key Stats Strip */}
@@ -66,21 +68,21 @@ const WorkerProfileScreen = () => {
                 <MaterialCommunityIcons name="star" size={18} color="#F59E0B" />
                 <Text style={styles.statNumber}>{worker.rating}</Text>
               </View>
-              <Text style={styles.statLabel}>{worker.reviewsCount} Reviews</Text>
+               <Text style={styles.statLabel}>{worker.reviewsCount} {t('customer.reviews')}</Text>
             </View>
 
             <View style={styles.statDivider} />
 
             <View style={styles.statCol}>
               <Text style={styles.statNumber}>{worker.completedJobs}</Text>
-              <Text style={styles.statLabel}>Completed Jobs</Text>
+               <Text style={styles.statLabel}>{t('customer.completedJobs')}</Text>
             </View>
 
             <View style={styles.statDivider} />
 
             <View style={styles.statCol}>
               <Text style={styles.statNumber}>{worker.experience}</Text>
-              <Text style={styles.statLabel}>Experience</Text>
+               <Text style={styles.statLabel}>{t('customer.experience')}</Text>
             </View>
           </View>
 
@@ -92,7 +94,7 @@ const WorkerProfileScreen = () => {
               activeOpacity={0.8}
             >
               <MaterialCommunityIcons name="chat-processing-outline" size={20} color={COLORS.primary} />
-              <Text style={styles.chatActionText}>Chat with Worker</Text>
+               <Text style={styles.chatActionText}>{t('customer.chatWorker')}</Text>
             </TouchableOpacity>
 
             <TouchableOpacity
@@ -101,14 +103,14 @@ const WorkerProfileScreen = () => {
               activeOpacity={0.8}
             >
               <MaterialCommunityIcons name="phone-shield" size={20} color={COLORS.white} />
-              <Text style={styles.callActionText}>Call through Platform</Text>
+               <Text style={styles.callActionText}>{t('customer.callPlatform')}</Text>
             </TouchableOpacity>
           </View>
         </View>
 
         {/* About Bio */}
         <View style={styles.sectionCard}>
-          <Text style={styles.sectionTitle}>Worker Bio & Background</Text>
+           <Text style={styles.sectionTitle}>{t('customer.workerBio')}</Text>
           <Text style={styles.bioText}>{worker.bio}</Text>
 
           <View style={styles.maskedNumberBox}>
@@ -119,7 +121,7 @@ const WorkerProfileScreen = () => {
 
         {/* Skills Section */}
         <View style={styles.sectionCard}>
-          <Text style={styles.sectionTitle}>Verified Skills & Expertise</Text>
+           <Text style={styles.sectionTitle}>{t('customer.skills')}</Text>
           <View style={styles.skillsGrid}>
             {worker.skills.map((skill, index) => (
               <View key={index} style={styles.skillBadge}>
@@ -134,9 +136,9 @@ const WorkerProfileScreen = () => {
         <View style={styles.coopNoticeCard}>
           <MaterialCommunityIcons name="handshake" size={24} color={COLORS.primary} />
           <View style={styles.coopNoticeTextWrap}>
-            <Text style={styles.coopNoticeTitle}>Cooperative Wage Guarantee</Text>
+             <Text style={styles.coopNoticeTitle}>{t('customer.wageGuarantee')}</Text>
             <Text style={styles.coopNoticeDesc}>
-              WORKMAT guarantees that all payments go straight to the worker with 0% platform extraction fee.
+               {t('customer.wageDescription')}
             </Text>
           </View>
         </View>
@@ -145,7 +147,7 @@ const WorkerProfileScreen = () => {
       {/* Bottom Booking Sticky Bar */}
       <View style={styles.bottomBar}>
         <View>
-          <Text style={styles.barAmountLabel}>Estimated Total</Text>
+           <Text style={styles.barAmountLabel}>{t('customer.estimatedTotal')}</Text>
           <Text style={styles.barAmountValue}>₹{worker.estimatedAmount}</Text>
         </View>
 
@@ -154,7 +156,7 @@ const WorkerProfileScreen = () => {
           onPress={() => navigation.navigate('ConfirmBooking', { worker })}
           activeOpacity={0.85}
         >
-          <Text style={styles.bookWorkerButtonText}>Book Worker</Text>
+           <Text style={styles.bookWorkerButtonText}>{t('customer.bookWorker')}</Text>
           <MaterialCommunityIcons name="arrow-right" size={20} color={COLORS.white} />
         </TouchableOpacity>
       </View>

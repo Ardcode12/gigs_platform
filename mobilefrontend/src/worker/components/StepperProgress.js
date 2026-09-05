@@ -2,8 +2,10 @@ import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { COLORS, SPACING, FONT_SIZE, FONT_WEIGHT, RADIUS } from '../../theme';
+import { useT } from '../../i18n/LanguageContext';
 
 const StepperProgress = ({ steps, currentStep }) => {
+  const t = useT();
   return (
     <View style={styles.container}>
       {steps.map((step, index) => {
@@ -55,18 +57,18 @@ const StepperProgress = ({ steps, currentStep }) => {
                     isCurrent && styles.labelCurrent,
                   ]}
                 >
-                  {step}
+                  {t(step)}
                 </Text>
                 {isCurrent && (
                   <View style={styles.activeBadge}>
-                    <Text style={styles.activeBadgeText}>ACTIVE NOW</Text>
+                    <Text style={styles.activeBadgeText}>{t('worker.activeNow')}</Text>
                   </View>
                 )}
               </View>
               <Text style={styles.stepDesc}>
-                {isCompleted && 'Completed'}
-                {isCurrent && 'In Progress • Update when finished'}
-                {!isCompleted && !isCurrent && 'Upcoming Step'}
+                {isCompleted && t('worker.completed')}
+                {isCurrent && t('worker.inProgressUpdate')}
+                {!isCompleted && !isCurrent && t('worker.upcomingStep')}
               </Text>
             </View>
           </View>

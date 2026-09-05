@@ -10,6 +10,7 @@ import {
   Alert,
 } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import MapView, { Marker, Polyline, PROVIDER_DEFAULT } from 'react-native-maps';
 import { COLORS, SPACING, RADIUS, FONT_SIZE, FONT_WEIGHT, SHADOWS } from '../../theme';
 import ScreenHeader from '../../components/ScreenHeader';
@@ -20,6 +21,7 @@ import useApi from '../../hooks/useApi';
 import useLocation from '../../hooks/useLocation';
 import { getJob } from '../../api/jobs';
 import { formatDistance, formatEta } from '../../utils/format';
+import { useT } from '../../i18n/LanguageContext';
 
 /**
  * Spec #4 — where the job is, how far it is, and a hand-off to real turn-by-turn
@@ -27,8 +29,17 @@ import { formatDistance, formatEta } from '../../utils/format';
  */
 const JobLocationScreen = () => {
   const navigation = useNavigation();
+  const insets = useSafeAreaInsets();
   const { jobId } = useRoute().params ?? {};
   const mapRef = useRef(null);
+  const t = useT();
+
+  useEffect(() => {
+    // This screen is inside the stack inside the tab navigator.
+    const tabNavigation = navigation.getParent()?.getParent();
+    tabNavigation?.setOptions({ tabBarStyle: { display: 'none' } });
+    return () => tabNavigation?.setOptions({ tabBarStyle: undefined });
+  }, [navigation]);
 
   const job = useApi(useCallback(() => getJob(jobId), [jobId]), [jobId]);
   const { coords, request: requestLocation, loading: locating, error: locationError } = useLocation();
@@ -60,15 +71,15 @@ const JobLocationScreen = () => {
     // when it isn't, on both platforms.
     const url = `https://www.google.com/maps/dir/?api=1&destination=${destination}&travelmode=driving`;
     Linking.openURL(url).catch(() =>
-      Alert.alert('Could not open Maps', 'No maps app is available on this device.'),
+      Alert.alert(t('worker.mapsError'), t('worker.mapUnavailable')),
     );
   };
 
   if (job.loading && !detail) {
     return (
       <View style={styles.container}>
-        <ScreenHeader title="Job Location" onBack={() => navigation.goBack()} />
-        <LoadingState message="Loading location…" />
+        <ScreenHeader title={t('worker.jobLocation')} onBack={() => navigation.goBack()} />
+        <LoadingState message={t('shared.locating')} />
       </View>
     );
   }
@@ -76,12 +87,12 @@ const JobLocationScreen = () => {
   if (!detail) {
     return (
       <View style={styles.container}>
-        <ScreenHeader title="Job Location" onBack={() => navigation.goBack()} />
+        <ScreenHeader title={t('worker.jobLocation')} onBack={() => navigation.goBack()} />
         <EmptyState
           tone="error"
-          title="Couldn't load the location"
+          title={t('worker.loadLocation')}
           message={job.error?.message}
-          actionLabel="Try again"
+          actionLabel={t('common.tryAgain')}
           onAction={job.reload}
         />
       </View>
@@ -94,7 +105,7 @@ const JobLocationScreen = () => {
   return (
     <View style={styles.container}>
       <ScreenHeader
-        title="Job Location"
+        title={t('worker.jobLocation')}
         subtitle={detail.service_type}
         onBack={() => navigation.goBack()}
       />
@@ -105,7 +116,16 @@ const JobLocationScreen = () => {
           <View style={styles.webFallback}>
             <MaterialCommunityIcons name="map-outline" size={40} color={COLORS.textTertiary} />
             <Text style={styles.webFallbackText}>
-              The embedded map is available on the phone. Use Navigate to open Maps.
+              {t('worker.webMapHint')}
+            </Text>
+          </View>
+        ) : Platform.OS === 'android' ? (
+          <View style={styles.androidMapFallback}>
+            <MaterialCommunityIcons name="map-marker-radius" size={48} color={COLORS.primary} />
+            <Text style={styles.androidMapTitle}>{t('worker.androidMapTitle')}</Text>
+            <Text style={styles.androidMapAddress}>{target.address}</Text>
+            <Text style={styles.androidMapHint}>
+              {t('worker.androidMapHint')}
             </Text>
           </View>
         ) : (
@@ -130,7 +150,7 @@ const JobLocationScreen = () => {
 
             {!!coords && (
               <>
-                <Marker coordinate={coords} title="You" pinColor={COLORS.primary} />
+                <Marker coordinate={coords} title={t('shared.you')} pinColor={COLORS.primary} />
                 {/* A straight line, not a route — it shows direction, not the road. */}
                 <Polyline
                   coordinates={[coords, { latitude: target.lat, longitude: target.lng }]}
@@ -151,13 +171,13 @@ const JobLocationScreen = () => {
           >
             <MaterialCommunityIcons name="crosshairs-gps" size={20} color={COLORS.primary} />
             <Text style={styles.locateText}>
-              {locating ? 'Locating…' : 'Show my position'}
+               {locating ? t('shared.locating') : t('shared.showPosition')}
             </Text>
           </TouchableOpacity>
         )}
       </View>
 
-      <View style={styles.sheet}>
+      <View style={[styles.sheet, { paddingBottom: Math.max(insets.bottom, SPACING.xxl) }]}>
         <View style={styles.addressRow}>
           <View style={styles.addressIcon}>
             <MaterialCommunityIcons name="map-marker" size={22} color={COLORS.danger} />
@@ -166,7 +186,7 @@ const JobLocationScreen = () => {
             <Text style={styles.customerName}>{detail.customer.name}</Text>
             <Text style={styles.address}>{target.address}</Text>
             {!!target.landmark && (
-              <Text style={styles.landmark}>Landmark: {target.landmark}</Text>
+              <Text style={styles.landmark}>{t('worker.landmark', { landmark: target.landmark })}</Text>
             )}
           </View>
         </View>
@@ -174,12 +194,12 @@ const JobLocationScreen = () => {
         <View style={styles.statsRow}>
           <View style={styles.stat}>
             <Text style={styles.statValue}>{distance ?? '—'}</Text>
-            <Text style={styles.statLabel}>Distance</Text>
+            <Text style={styles.statLabel}>{t('shared.distance')}</Text>
           </View>
           <View style={styles.statDivider} />
           <View style={styles.stat}>
             <Text style={styles.statValue}>{eta ?? '—'}</Text>
-            <Text style={styles.statLabel}>Approx. travel</Text>
+            <Text style={styles.statLabel}>{t('shared.approxTravel')}</Text>
           </View>
         </View>
 
@@ -187,12 +207,12 @@ const JobLocationScreen = () => {
           <Text style={styles.hint}>
             {locationError
               ? locationError.message
-              : 'Share your location to see how far the job is.'}
+               : t('worker.shareLocationHint')}
           </Text>
         )}
 
         <IconButton
-          label="Navigate"
+          label={t('shared.navigate')}
           icon="navigation-variant"
           onPress={openNavigation}
           size="lg"
@@ -222,6 +242,31 @@ const styles = StyleSheet.create({
     marginTop: SPACING.md,
     fontSize: FONT_SIZE.sm,
     color: COLORS.textSecondary,
+    textAlign: 'center',
+  },
+  androidMapFallback: {
+    ...StyleSheet.absoluteFillObject,
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: SPACING.xxl,
+    backgroundColor: '#E8F0FE',
+  },
+  androidMapTitle: {
+    marginTop: SPACING.md,
+    fontSize: FONT_SIZE.lg,
+    fontWeight: FONT_WEIGHT.bold,
+    color: COLORS.textPrimary,
+  },
+  androidMapAddress: {
+    marginTop: SPACING.xs,
+    fontSize: FONT_SIZE.sm,
+    color: COLORS.textSecondary,
+    textAlign: 'center',
+  },
+  androidMapHint: {
+    marginTop: SPACING.lg,
+    fontSize: FONT_SIZE.xs,
+    color: COLORS.textTertiary,
     textAlign: 'center',
   },
   locateBtn: {

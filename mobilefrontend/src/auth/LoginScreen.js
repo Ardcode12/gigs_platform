@@ -15,6 +15,7 @@ import { COLORS, FONT_SIZE, FONT_WEIGHT, RADIUS, SHADOWS, SPACING } from '../the
 import Input from '../components/Input';
 import IconButton from '../components/IconButton';
 import { useAuth } from '../context/AuthContext';
+import { useT } from '../i18n/LanguageContext';
 
 /**
  * Spec #1 — the single login for both roles.
@@ -39,6 +40,7 @@ const ROLE_TABS = [
 const LoginScreen = () => {
   const navigation = useNavigation();
   const { signIn, signInCustomer } = useAuth();
+  const t = useT();
 
   const [role, setRole] = useState('worker');
   // Customer-only: registration is not offered to workers.
@@ -106,7 +108,7 @@ const LoginScreen = () => {
               />
             </View>
             <Text style={styles.brand}>WORKMAT</Text>
-            <Text style={styles.tagline}>{isWorker ? 'Worker' : 'Customer'}</Text>
+            <Text style={styles.tagline}>{isWorker ? t('auth.roleWorker') : t('auth.roleCustomer')}</Text>
           </View>
 
           <View style={styles.roleSwitch}>
@@ -125,7 +127,7 @@ const LoginScreen = () => {
                     color={active ? COLORS.primary : 'rgba(255,255,255,0.85)'}
                   />
                   <Text style={[styles.roleText, active && styles.roleTextActive]}>
-                    {tab.label}
+                    {tab.key === 'worker' ? t('auth.roleWorker') : t('auth.roleCustomer')}
                   </Text>
                 </TouchableOpacity>
               );
@@ -137,9 +139,9 @@ const LoginScreen = () => {
                 exist on the customer side. */}
             {isWorker ? (
               <>
-                <Text style={styles.title}>Sign in</Text>
+                <Text style={styles.title}>{t('auth.signIn')}</Text>
                 <Text style={styles.subtitle}>
-                  Use the worker ID your society gave you, or your registered phone number.
+                  {t('auth.signInHintWorker')}
                 </Text>
               </>
             ) : (
@@ -153,7 +155,7 @@ const LoginScreen = () => {
                   activeOpacity={0.8}
                 >
                   <Text style={[styles.modeText, !isRegister && styles.modeTextActive]}>
-                    Sign in
+                    {t('auth.signIn')}
                   </Text>
                 </TouchableOpacity>
                 <TouchableOpacity
@@ -165,7 +167,7 @@ const LoginScreen = () => {
                   activeOpacity={0.8}
                 >
                   <Text style={[styles.modeText, isRegister && styles.modeTextActive]}>
-                    Sign up
+                    {t('auth.signUp')}
                   </Text>
                 </TouchableOpacity>
               </View>
@@ -173,10 +175,10 @@ const LoginScreen = () => {
 
             {isRegister && (
               <Input
-                label="Full Name"
+                label={t('auth.fullName')}
                 value={fullName}
                 onChangeText={setFullName}
-                placeholder="Your name"
+                placeholder={t('auth.fullNamePlaceholder')}
                 icon="account-outline"
                 autoCapitalize="words"
                 maxLength={64}
@@ -185,10 +187,10 @@ const LoginScreen = () => {
             )}
 
             <Input
-              label={isWorker ? 'Worker ID or Phone' : 'Mobile Number'}
+              label={isWorker ? t('auth.workerIdOrPhone') : t('auth.mobileNumber')}
               value={identifier}
               onChangeText={setIdentifier}
-              placeholder={isWorker ? 'WM1042 or 9876543210' : '9876543210'}
+              placeholder={isWorker ? t('auth.workerIdPlaceholder') : t('auth.mobilePlaceholder')}
               icon={isWorker ? 'account-outline' : 'phone-outline'}
               keyboardType={isWorker ? 'default' : 'phone-pad'}
               maxLength={32}
@@ -197,10 +199,10 @@ const LoginScreen = () => {
 
             {isRegister && (
               <Input
-                label="Email"
+                label={t('auth.email')}
                 value={email}
                 onChangeText={setEmail}
-                placeholder="you@example.com"
+                placeholder={t('auth.emailPlaceholder')}
                 icon="email-outline"
                 keyboardType="email-address"
                 maxLength={120}
@@ -209,10 +211,10 @@ const LoginScreen = () => {
             )}
 
             <Input
-              label="Password"
+              label={t('auth.password')}
               value={password}
               onChangeText={setPassword}
-              placeholder={isRegister ? 'Create a password' : 'Enter your password'}
+              placeholder={isRegister ? t('auth.passwordCreatePlaceholder') : t('auth.passwordPlaceholder')}
               icon="lock-outline"
               secure
               maxLength={128}
@@ -232,7 +234,7 @@ const LoginScreen = () => {
             )}
 
             <IconButton
-              label={isRegister ? 'Create Account' : 'Sign In'}
+              label={isRegister ? t('auth.createAccount') : t('auth.signInAction')}
               icon={isRegister ? 'account-plus' : 'login'}
               onPress={handleSubmit}
               disabled={!canSubmit}
@@ -250,7 +252,7 @@ const LoginScreen = () => {
                 style={styles.forgot}
                 activeOpacity={0.7}
               >
-                <Text style={styles.forgotText}>Forgot Password?</Text>
+                <Text style={styles.forgotText}>{t('auth.forgotPassword')}</Text>
               </TouchableOpacity>
             )}
           </View>
@@ -263,8 +265,8 @@ const LoginScreen = () => {
             />
             <Text style={styles.noteText}>
               {isWorker
-                ? 'Worker accounts are created by your society. Contact your society office if you don’t have a worker ID.'
-                : 'Customer accounts are not connected to the server yet — signing in opens the customer app with sample data.'}
+                ? t('auth.noteWorker')
+                : t('auth.noteCustomer')}
             </Text>
           </View>
         </ScrollView>

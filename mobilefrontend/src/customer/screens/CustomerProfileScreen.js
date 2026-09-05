@@ -13,11 +13,15 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { COLORS, SPACING, RADIUS, FONT_SIZE, FONT_WEIGHT, SHADOWS } from '../../theme';
+import { useT, useLanguageState } from '../../i18n/LanguageContext';
+import { LANGUAGES } from '../../i18n';
 import { useAuth } from '../../context/AuthContext';
 import { CUSTOMER_PROFILE } from '../data/customerMockData';
 
 const CustomerProfileScreen = () => {
   const navigation = useNavigation();
+  const t = useT();
+  const { language, changeLanguage } = useLanguageState();
   const [profile] = useState(CUSTOMER_PROFILE);
   const [pushNotif, setPushNotif] = useState(true);
   const [selectedLanguage, setSelectedLanguage] = useState('English');
@@ -25,12 +29,12 @@ const CustomerProfileScreen = () => {
 
   const handleLogout = () => {
     Alert.alert(
-      'Log Out',
-      'Are you sure you want to log out of WORKMAT?',
+       t('auth.signIn'),
+       t('customer.cancelBookingBody'),
       [
-        { text: 'Cancel', style: 'cancel' },
+         { text: t('common.cancel'), style: 'cancel' },
         {
-          text: 'Log Out',
+           text: t('customer.cancel'),
           style: 'destructive',
           // Clearing the session unmounts this whole group, so the shared Login
           // screen appears on its own — no navigation call needed.
@@ -44,7 +48,7 @@ const CustomerProfileScreen = () => {
     <SafeAreaView style={styles.safeArea}>
       {/* Header */}
       <View style={styles.headerRow}>
-        <Text style={styles.headerTitle}>My Profile & Settings</Text>
+         <Text style={styles.headerTitle}>{t('customer.profile')} & {t('language.settingTitle')}</Text>
         <TouchableOpacity
           style={styles.notifIcon}
           onPress={() => navigation.navigate('Notifications')}
@@ -61,7 +65,7 @@ const CustomerProfileScreen = () => {
             <View style={styles.profileMeta}>
               <Text style={styles.customerName}>{profile.name}</Text>
               <Text style={styles.memberIdBadge}>{profile.coopMemberId}</Text>
-              <Text style={styles.memberSince}>Cooperative Member since {profile.memberSince}</Text>
+               <Text style={styles.memberSince}>{t('customer.cooperative')} {profile.memberSince}</Text>
             </View>
           </View>
 
@@ -73,7 +77,7 @@ const CustomerProfileScreen = () => {
               <MaterialCommunityIcons name="phone-outline" size={18} color={COLORS.primary} />
               <Text style={styles.contactText}>{profile.mobile}</Text>
               <View style={styles.verifiedTag}>
-                <Text style={styles.verifiedTagText}>VERIFIED</Text>
+                 <Text style={styles.verifiedTagText}>{t('customer.verified')}</Text>
               </View>
             </View>
 
@@ -89,10 +93,10 @@ const CustomerProfileScreen = () => {
           <View style={styles.sectionTitleRow}>
             <View style={styles.iconTitleWrap}>
               <MaterialCommunityIcons name="map-marker-multiple-outline" size={20} color={COLORS.primary} />
-              <Text style={styles.sectionTitle}>Saved Addresses</Text>
+               <Text style={styles.sectionTitle}>{t('customer.serviceLocation')}</Text>
             </View>
-            <TouchableOpacity onPress={() => Alert.alert('Add Address', 'Address modal')}>
-              <Text style={styles.addLink}>+ Add New</Text>
+            <TouchableOpacity onPress={() => Alert.alert(t('customer.addAddress'), t('customer.addressModal'))}>
+               <Text style={styles.addLink}>+ {t('customer.addNew')}</Text>
             </TouchableOpacity>
           </View>
 
@@ -100,9 +104,9 @@ const CustomerProfileScreen = () => {
             <View key={addr.id} style={styles.addressItem}>
               <View style={styles.addressHeader}>
                 <View style={styles.addressTypeBadge}>
-                  <Text style={styles.addressTypeText}>{addr.type}</Text>
+                  <Text style={styles.addressTypeText}>{t(addr.typeKey)}</Text>
                 </View>
-                {addr.isDefault && <Text style={styles.defaultLabel}>DEFAULT</Text>}
+                 {addr.isDefault && <Text style={styles.defaultLabel}>{t('customer.default')}</Text>}
               </View>
               <Text style={styles.addressString}>{addr.address}</Text>
             </View>
@@ -114,10 +118,10 @@ const CustomerProfileScreen = () => {
           <View style={styles.sectionTitleRow}>
             <View style={styles.iconTitleWrap}>
               <MaterialCommunityIcons name="credit-card-outline" size={20} color={COLORS.primary} />
-              <Text style={styles.sectionTitle}>Payment Methods</Text>
+               <Text style={styles.sectionTitle}>{t('customer.selectPayment')}</Text>
             </View>
             <TouchableOpacity onPress={() => navigation.navigate('Payment')}>
-              <Text style={styles.addLink}>Manage</Text>
+               <Text style={styles.addLink}>{t('customer.manage')}</Text>
             </TouchableOpacity>
           </View>
 
@@ -125,12 +129,12 @@ const CustomerProfileScreen = () => {
             <View key={pm.id} style={styles.paymentMethodRow}>
               <MaterialCommunityIcons name={pm.icon} size={20} color={COLORS.textSecondary} />
               <View style={styles.pmInfo}>
-                <Text style={styles.pmType}>{pm.type}</Text>
-                <Text style={styles.pmDetail}>{pm.detail}</Text>
+                <Text style={styles.pmType}>{t(pm.typeKey)}</Text>
+                <Text style={styles.pmDetail}>{pm.detailKey ? t(pm.detailKey) : pm.detail}</Text>
               </View>
               {pm.isDefault && (
                 <View style={styles.primaryPill}>
-                  <Text style={styles.primaryPillText}>Primary</Text>
+                   <Text style={styles.primaryPillText}>{t('customer.primary')}</Text>
                 </View>
               )}
             </View>
@@ -142,21 +146,21 @@ const CustomerProfileScreen = () => {
           <View style={styles.sectionTitleRow}>
             <View style={styles.iconTitleWrap}>
               <MaterialCommunityIcons name="translate" size={20} color={COLORS.primary} />
-              <Text style={styles.sectionTitle}>Language Preference</Text>
+               <Text style={styles.sectionTitle}>{t('language.settingTitle')}</Text>
             </View>
           </View>
 
           <View style={styles.languagePillsRow}>
-            {['English', 'हिंदी (Hindi)', 'ಕನ್ನಡ (Kannada)', 'தமிழ் (Tamil)'].map((lang) => {
-              const isSelected = selectedLanguage.includes(lang.split(' ')[0]);
+             {LANGUAGES.map((lang) => {
+               const isSelected = language === lang.code;
               return (
                 <TouchableOpacity
                   key={lang}
                   style={[styles.langPill, isSelected && styles.langPillActive]}
-                  onPress={() => setSelectedLanguage(lang)}
+                   onPress={() => changeLanguage(lang.code)}
                 >
                   <Text style={[styles.langText, isSelected && styles.langTextActive]}>
-                    {lang}
+                     {lang.native}
                   </Text>
                 </TouchableOpacity>
               );
@@ -169,7 +173,7 @@ const CustomerProfileScreen = () => {
           <View style={styles.sectionTitleRow}>
             <View style={styles.iconTitleWrap}>
               <MaterialCommunityIcons name="bell-ring-outline" size={20} color={COLORS.primary} />
-              <Text style={styles.sectionTitle}>Notifications</Text>
+               <Text style={styles.sectionTitle}>{t('customer.notifications')}</Text>
             </View>
             <Switch
               value={pushNotif}
@@ -179,14 +183,14 @@ const CustomerProfileScreen = () => {
             />
           </View>
           <Text style={styles.settingDesc}>
-            Receive live alerts on worker arrival, price adjustments, and booking receipts.
+             {t('customer.notificationDescription')}
           </Text>
 
           <TouchableOpacity
             style={styles.subSettingsLink}
             onPress={() => navigation.navigate('Notifications')}
           >
-            <Text style={styles.subSettingsLinkText}>View all recent notifications</Text>
+             <Text style={styles.subSettingsLinkText}>{t('customer.viewNotifications')}</Text>
             <MaterialCommunityIcons name="chevron-right" size={18} color={COLORS.primary} />
           </TouchableOpacity>
         </View>
@@ -195,11 +199,11 @@ const CustomerProfileScreen = () => {
         <View style={styles.sectionCard}>
           <TouchableOpacity
             style={styles.supportRow}
-            onPress={() => Alert.alert('Help & Support', 'Cooperative Helpline: 1800-425-WORKMAT')}
+             onPress={() => Alert.alert(t('customer.helpTitle'), t('customer.helpBody'))}
           >
             <View style={styles.iconTitleWrap}>
               <MaterialCommunityIcons name="lifebuoy" size={20} color={COLORS.primary} />
-              <Text style={styles.sectionTitle}>Help & Cooperative Support</Text>
+               <Text style={styles.sectionTitle}>{t('customer.support')}</Text>
             </View>
             <MaterialCommunityIcons name="chevron-right" size={22} color={COLORS.textTertiary} />
           </TouchableOpacity>
@@ -208,11 +212,11 @@ const CustomerProfileScreen = () => {
 
           <TouchableOpacity
             style={styles.supportRow}
-            onPress={() => Alert.alert('Cooperative Charter', 'WORKMAT operates on standard cooperative laws ensuring 100% fair payout to verified technicians.')}
+             onPress={() => Alert.alert(t('customer.charterTitle'), t('customer.charterBody'))}
           >
             <View style={styles.iconTitleWrap}>
               <MaterialCommunityIcons name="file-document-outline" size={20} color={COLORS.primary} />
-              <Text style={styles.sectionTitle}>Cooperative Charter & Safety Terms</Text>
+               <Text style={styles.sectionTitle}>{t('customer.terms')}</Text>
             </View>
             <MaterialCommunityIcons name="chevron-right" size={22} color={COLORS.textTertiary} />
           </TouchableOpacity>
@@ -221,7 +225,7 @@ const CustomerProfileScreen = () => {
         {/* Logout Button */}
         <TouchableOpacity style={styles.logoutButton} onPress={handleLogout}>
           <MaterialCommunityIcons name="logout" size={20} color={COLORS.danger} />
-          <Text style={styles.logoutText}>Log Out</Text>
+           <Text style={styles.logoutText}>{t('customer.logout')}</Text>
         </TouchableOpacity>
       </ScrollView>
     </SafeAreaView>

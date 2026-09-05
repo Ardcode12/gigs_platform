@@ -11,13 +11,15 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { COLORS, SPACING, RADIUS, FONT_SIZE, FONT_WEIGHT, SHADOWS } from '../../theme';
+import { useT } from '../../i18n/LanguageContext';
 import { AI_DETECTION_SAMPLE } from '../data/customerMockData';
 
 const AIRequirementScreen = () => {
   const navigation = useNavigation();
+  const t = useT();
   const route = useRoute();
   const initialText =
-    route?.params?.userInput || 'I need fan repair, two lights replaced and some wiring.';
+    route?.params?.userInput || t('customer.searchPrompt1');
   const [inputText, setInputText] = useState(initialText);
   const [isProcessing, setIsProcessing] = useState(false);
   const [detectedData, setDetectedData] = useState(AI_DETECTION_SAMPLE);
@@ -42,10 +44,10 @@ const AIRequirementScreen = () => {
         <TouchableOpacity style={styles.backButton} onPress={() => navigation.goBack()}>
           <MaterialCommunityIcons name="arrow-left" size={24} color={COLORS.textPrimary} />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>AI Requirement Breakdown</Text>
+        <Text style={styles.headerTitle}>{t('customer.aiBreakdown')}</Text>
         <View style={styles.coopAIPill}>
           <MaterialCommunityIcons name="robot" size={14} color={COLORS.primary} />
-          <Text style={styles.coopAIPillText}>WORKMAT AI</Text>
+          <Text style={styles.coopAIPillText}>{t('customer.aiBrand')}</Text>
         </View>
       </View>
 
@@ -53,9 +55,9 @@ const AIRequirementScreen = () => {
         {/* Customer Input Card */}
         <View style={styles.inputCard}>
           <View style={styles.cardHeaderRow}>
-            <Text style={styles.cardHeaderTitle}>Your Service Requirement</Text>
+            <Text style={styles.cardHeaderTitle}>{t('customer.serviceRequirement')}</Text>
             <TouchableOpacity onPress={handleReprocess}>
-              <Text style={styles.reAnalyseLink}>Re-Analyze</Text>
+              <Text style={styles.reAnalyseLink}>{t('customer.reanalyze')}</Text>
             </TouchableOpacity>
           </View>
 
@@ -65,7 +67,7 @@ const AIRequirementScreen = () => {
               multiline
               value={inputText}
               onChangeText={setInputText}
-              placeholder="Describe your requirement..."
+               placeholder={t('customer.requirementPlaceholder')}
               placeholderTextColor={COLORS.textTertiary}
             />
           </View>
@@ -73,7 +75,7 @@ const AIRequirementScreen = () => {
           <View style={styles.nlpStatusRow}>
             <MaterialCommunityIcons name="check-decagram" size={16} color={COLORS.success} />
             <Text style={styles.nlpStatusText}>
-              Parsed 3 distinct tasks from natural language
+               {t('customer.parsedTasks', { count: 3 })}
             </Text>
           </View>
         </View>
@@ -84,19 +86,19 @@ const AIRequirementScreen = () => {
             <MaterialCommunityIcons name="sparkles" size={24} color={COLORS.white} />
           </View>
           <View style={styles.bannerTextWrap}>
-            <Text style={styles.bannerTitle}>Identified Trade Category</Text>
-            <Text style={styles.bannerCategory}>{detectedData.detectedCategory}</Text>
+             <Text style={styles.bannerTitle}>{t('customer.identifiedCategory')}</Text>
+            <Text style={styles.bannerCategory}>{t(detectedData.detectedCategoryKey)}</Text>
           </View>
           <View style={styles.confidenceBadge}>
-            <Text style={styles.confidenceText}>99.4% Match</Text>
+             <Text style={styles.confidenceText}>{t('customer.match', { value: '99.4' })}</Text>
           </View>
         </View>
 
         {/* Individual Detected Services */}
         <View style={styles.servicesSection}>
-          <Text style={styles.servicesSectionTitle}>Detected Individual Services</Text>
+           <Text style={styles.servicesSectionTitle}>{t('customer.detectedServices')}</Text>
           <Text style={styles.servicesSectionSub}>
-            Please review the items detected from your description:
+             {t('customer.reviewDetected')}
           </Text>
 
           {detectedData.detectedServices.map((service, index) => (
@@ -107,16 +109,16 @@ const AIRequirementScreen = () => {
 
               <View style={styles.serviceDetails}>
                 <View style={styles.serviceNameRow}>
-                  <Text style={styles.serviceNameText}>{service.name}</Text>
+                <Text style={styles.serviceNameText}>{t(service.nameKey)}</Text>
                   <View style={styles.qtyBadge}>
-                    <Text style={styles.qtyBadgeText}>Qty: {service.quantity}</Text>
+                     <Text style={styles.qtyBadgeText}>{t('customer.qty', { count: service.quantity })}</Text>
                   </View>
                 </View>
 
-                <Text style={styles.serviceDetailText}>{service.detail}</Text>
+                <Text style={styles.serviceDetailText}>{t(service.detailKey)}</Text>
 
                 <View style={styles.servicePriceRow}>
-                  <Text style={styles.coopRateLabel}>Cooperative Standard Rate:</Text>
+                   <Text style={styles.coopRateLabel}>{t('customer.coopRate')}</Text>
                   <Text style={styles.servicePriceValue}>₹{service.totalPrice}</Text>
                 </View>
               </View>
@@ -135,18 +137,18 @@ const AIRequirementScreen = () => {
         <View style={styles.confirmationSummaryBox}>
           <View style={styles.summaryTopRow}>
             <View>
-              <Text style={styles.summaryTotalLabel}>Base Estimated Total</Text>
+               <Text style={styles.summaryTotalLabel}>{t('customer.baseEstimated')}</Text>
               <Text style={styles.summaryTotalValue}>
                 ₹{detectedData.baseEstimatedTotal}
               </Text>
             </View>
             <View style={styles.savingsPill}>
               <MaterialCommunityIcons name="tag-outline" size={14} color={COLORS.success} />
-              <Text style={styles.savingsPillText}>Cooperative Pricing</Text>
+               <Text style={styles.savingsPillText}>{t('customer.coopPricing')}</Text>
             </View>
           </View>
           <Text style={styles.pricingNote}>
-            Includes inspection, standardized labor charge, and safety guarantee.
+             {t('customer.pricingNote')}
           </Text>
         </View>
 
@@ -157,11 +159,11 @@ const AIRequirementScreen = () => {
           activeOpacity={0.85}
         >
           <View style={styles.buttonContentRow}>
-            <Text style={styles.confirmButtonText}>Confirm AI Understanding</Text>
+             <Text style={styles.confirmButtonText}>{t('customer.confirmUnderstanding')}</Text>
             <MaterialCommunityIcons name="arrow-right" size={20} color={COLORS.white} />
           </View>
           <Text style={styles.confirmButtonSub}>
-            Proceed to detailed cost estimate & worker matching
+             {t('customer.proceedEstimate')}
           </Text>
         </TouchableOpacity>
       </ScrollView>

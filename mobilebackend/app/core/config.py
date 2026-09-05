@@ -38,6 +38,14 @@ class Settings(BaseSettings):
     # in the earnings breakdown. Timestamps are stored in UTC regardless.
     TIMEZONE: str = "Asia/Kolkata"
 
+    # Chat translation. "none" keeps translation disabled until a provider is configured.
+    TRANSLATION_PROVIDER: str = "none"
+    BHASHINI_API_URL: str = "https://dhruva-api.bhashini.gov.in/services/inference/pipeline"
+    BHASHINI_API_KEY: str = ""
+    BHASHINI_USER_ID: str = ""
+    BHASHINI_SERVICE_ID: str = ""
+    BHASHINI_TIMEOUT_SECONDS: float = 10.0
+
     @property
     def cors_origin_list(self) -> list[str]:
         if self.CORS_ORIGINS.strip() == "*":

@@ -10,10 +10,12 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { COLORS, SPACING, RADIUS, FONT_SIZE, FONT_WEIGHT, SHADOWS } from '../../theme';
+import { useT } from '../../i18n/LanguageContext';
 import { AI_DETECTION_SAMPLE } from '../data/customerMockData';
 
 const CostEstimateScreen = () => {
   const navigation = useNavigation();
+  const t = useT();
   const aiData = useRoute().params?.aiData || AI_DETECTION_SAMPLE;
 
   const handleProceedToWorkers = () => {
@@ -29,7 +31,7 @@ const CostEstimateScreen = () => {
         <TouchableOpacity style={styles.backButton} onPress={() => navigation.goBack()}>
           <MaterialCommunityIcons name="arrow-left" size={24} color={COLORS.textPrimary} />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>Transparent Cost Estimate</Text>
+        <Text style={styles.headerTitle}>{t('customer.costEstimate')}</Text>
         <View style={{ width: 40 }} />
       </View>
 
@@ -40,9 +42,9 @@ const CostEstimateScreen = () => {
             <MaterialCommunityIcons name="shield-check" size={24} color={COLORS.success} />
           </View>
           <View style={styles.trustTextWrapper}>
-            <Text style={styles.trustTitle}>Standard Cooperative Rates</Text>
+            <Text style={styles.trustTitle}>{t('customer.standardRates')}</Text>
             <Text style={styles.trustSub}>
-              Direct cooperative pricing with 0% platform commission. 100% of labor goes to the skilled worker.
+              {t('customer.directPricing')}
             </Text>
           </View>
         </View>
@@ -50,8 +52,8 @@ const CostEstimateScreen = () => {
         {/* Itemized Price Breakdown Card */}
         <View style={styles.estimateCard}>
           <View style={styles.estimateCardHeader}>
-            <Text style={styles.estimateCardTitle}>Service Cost Breakdown</Text>
-            <Text style={styles.estimateCardMeta}>3 Matched Services</Text>
+            <Text style={styles.estimateCardTitle}>{t('customer.costBreakdown')}</Text>
+            <Text style={styles.estimateCardMeta}>{t('customer.matchedServices', { count: aiData.detectedServices.length })}</Text>
           </View>
 
           <View style={styles.divider} />
@@ -64,9 +66,9 @@ const CostEstimateScreen = () => {
               </View>
 
               <View style={styles.itemInfo}>
-                <Text style={styles.itemName}>{item.name}</Text>
+                <Text style={styles.itemName}>{t(item.nameKey)}</Text>
                 <Text style={styles.itemQtyDetail}>
-                  {item.quantity > 1 ? `Unit: ₹${item.unitPrice} × ${item.quantity}` : 'Standard diagnostic & labor'}
+                   {item.quantity > 1 ? t('customer.unitPrice', { amount: item.unitPrice, count: item.quantity }) : t('customer.standardLabor')}
                 </Text>
               </View>
 
@@ -78,23 +80,23 @@ const CostEstimateScreen = () => {
 
           {/* Subtotal & Cooperative Fee */}
           <View style={styles.calcRow}>
-            <Text style={styles.calcLabel}>Subtotal</Text>
+             <Text style={styles.calcLabel}>{t('customer.subtotal')}</Text>
             <Text style={styles.calcValue}>₹{aiData.baseEstimatedTotal}</Text>
           </View>
 
           <View style={styles.calcRow}>
             <View style={styles.coopFeeLabelRow}>
-              <Text style={styles.calcLabel}>Cooperative Platform Fee</Text>
+               <Text style={styles.calcLabel}>{t('customer.coopPlatformFee')}</Text>
               <View style={styles.freeBadge}>
-                <Text style={styles.freeBadgeText}>FREE</Text>
+                 <Text style={styles.freeBadgeText}>{t('customer.free')}</Text>
               </View>
             </View>
             <Text style={[styles.calcValue, { color: COLORS.success }]}>₹0</Text>
           </View>
 
           <View style={styles.calcRow}>
-            <Text style={styles.calcLabel}>Safety & Tool Insurance</Text>
-            <Text style={[styles.calcValue, { color: COLORS.success }]}>Included</Text>
+             <Text style={styles.calcLabel}>{t('customer.insurance')}</Text>
+             <Text style={[styles.calcValue, { color: COLORS.success }]}>{t('customer.included')}</Text>
           </View>
 
           <View style={styles.totalDivider} />
@@ -102,8 +104,8 @@ const CostEstimateScreen = () => {
           {/* Grand Estimated Total */}
           <View style={styles.totalRow}>
             <View>
-              <Text style={styles.totalLabel}>Estimated Total</Text>
-              <Text style={styles.totalNote}>Fixed base price before arrival</Text>
+               <Text style={styles.totalLabel}>{t('customer.estimatedTotal')}</Text>
+               <Text style={styles.totalNote}>{t('customer.fixedBase')}</Text>
             </View>
             <Text style={styles.totalAmount}>₹{aiData.baseEstimatedTotal}</Text>
           </View>
@@ -111,19 +113,19 @@ const CostEstimateScreen = () => {
 
         {/* Protection Assurance Card */}
         <View style={styles.assuranceCard}>
-          <Text style={styles.assuranceTitle}>Workmat Cooperative Guarantee</Text>
+           <Text style={styles.assuranceTitle}>{t('customer.guarantee')}</Text>
           <View style={styles.assuranceList}>
             <View style={styles.assuranceItem}>
               <MaterialCommunityIcons name="check" size={16} color={COLORS.success} />
-              <Text style={styles.assuranceText}>No surprise fees. Extra work requires prior in-app consent.</Text>
+               <Text style={styles.assuranceText}>{t('customer.noSurprise')}</Text>
             </View>
             <View style={styles.assuranceItem}>
               <MaterialCommunityIcons name="check" size={16} color={COLORS.success} />
-              <Text style={styles.assuranceText}>7-day service rework guarantee backed by cooperative pool.</Text>
+               <Text style={styles.assuranceText}>{t('customer.rework')}</Text>
             </View>
             <View style={styles.assuranceItem}>
               <MaterialCommunityIcons name="check" size={16} color={COLORS.success} />
-              <Text style={styles.assuranceText}>Protected masked calls and digital payment options.</Text>
+               <Text style={styles.assuranceText}>{t('customer.protectedCalls')}</Text>
             </View>
           </View>
         </View>
@@ -135,11 +137,11 @@ const CostEstimateScreen = () => {
           activeOpacity={0.85}
         >
           <View style={styles.findWorkersContent}>
-            <Text style={styles.findWorkersText}>Show Recommended Workers</Text>
+             <Text style={styles.findWorkersText}>{t('customer.showWorkers')}</Text>
             <MaterialCommunityIcons name="account-search" size={22} color={COLORS.white} />
           </View>
           <Text style={styles.findWorkersSub}>
-            Find nearby verified electricians ready to accept at ₹{aiData.baseEstimatedTotal}
+             {t('customer.findWorkers', { amount: `₹${aiData.baseEstimatedTotal}` })}
           </Text>
         </TouchableOpacity>
       </ScrollView>

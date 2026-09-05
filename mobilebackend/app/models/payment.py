@@ -7,12 +7,13 @@ from sqlalchemy import (
     Enum as SQLEnum,
     ForeignKey,
     Numeric,
+    String,
     func,
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
-from app.models.enums import PaymentStatus
+from app.models.enums import PaymentMethod, PaymentStatus
 
 payment_status_enum = SQLEnum(
     PaymentStatus,
@@ -42,9 +43,19 @@ class Payment(Base):
     status: Mapped[PaymentStatus] = mapped_column(
         payment_status_enum, default=PaymentStatus.PENDING, nullable=False, index=True
     )
+    payment_method: Mapped[PaymentMethod] = mapped_column(
+        SQLEnum(PaymentMethod, name="payment_method", values_callable=lambda e: [m.value for m in e]),
+        default=PaymentMethod.DIGITAL,
+        nullable=False,
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False, index=True
     )
     paid_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    cash_otp_hash: Mapped[str | None] = mapped_column(String(255))
+    cash_otp_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    cash_otp_attempts: Mapped[int] = mapped_column(default=0, nullable=False)
+    cash_verified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    digital_transaction_id: Mapped[str | None] = mapped_column(String(255))
 
     job: Mapped["Job"] = relationship(lazy="joined")  # noqa: F821

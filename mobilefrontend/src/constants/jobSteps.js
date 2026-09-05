@@ -16,7 +16,7 @@ export const JOB_STATUS = {
   CANCELLED: 'cancelled',
 };
 
-export const JOB_STEPS = ['Accepted', 'On The Way', 'Arrived', 'Work Started', 'Completed'];
+export const JOB_STEPS = ['step.accepted', 'step.onTheWay', 'step.arrived', 'step.workStarted', 'step.completed'];
 
 /** The status each step of the stepper corresponds to. */
 export const STEP_STATUS = [
@@ -29,21 +29,14 @@ export const STEP_STATUS = [
 
 /** What the primary button says when the job is in a given status. */
 export const NEXT_ACTION = {
-  [JOB_STATUS.ACCEPTED]: { status: JOB_STATUS.ON_THE_WAY, label: "I'm On The Way", icon: 'bike-fast' },
-  [JOB_STATUS.ON_THE_WAY]: { status: JOB_STATUS.ARRIVED, label: 'I Have Arrived', icon: 'map-marker-check' },
-  [JOB_STATUS.ARRIVED]: { status: JOB_STATUS.WORK_STARTED, label: 'Start Work', icon: 'play-circle' },
-  [JOB_STATUS.WORK_STARTED]: { status: JOB_STATUS.COMPLETED, label: 'Complete Work', icon: 'check-circle' },
+  [JOB_STATUS.ACCEPTED]: { status: JOB_STATUS.ON_THE_WAY, label: 'action.onTheWay', icon: 'bike-fast' },
+  [JOB_STATUS.ON_THE_WAY]: { status: JOB_STATUS.ARRIVED, label: 'action.arrived', icon: 'map-marker-check' },
+  [JOB_STATUS.ARRIVED]: { status: JOB_STATUS.WORK_STARTED, label: 'action.startWork', icon: 'play-circle' },
+  [JOB_STATUS.WORK_STARTED]: { status: JOB_STATUS.COMPLETED, label: 'action.completeWork', icon: 'check-circle' },
 };
 
 export const STATUS_LABEL = {
-  [JOB_STATUS.REQUESTED]: 'New Request',
-  [JOB_STATUS.ACCEPTED]: 'Accepted',
-  [JOB_STATUS.ON_THE_WAY]: 'On The Way',
-  [JOB_STATUS.ARRIVED]: 'Arrived',
-  [JOB_STATUS.WORK_STARTED]: 'In Progress',
-  [JOB_STATUS.COMPLETED]: 'Completed',
-  [JOB_STATUS.REJECTED]: 'Rejected',
-  [JOB_STATUS.CANCELLED]: 'Cancelled',
+  [JOB_STATUS.REQUESTED]: 'status.requested', [JOB_STATUS.ACCEPTED]: 'status.accepted', [JOB_STATUS.ON_THE_WAY]: 'status.on_the_way', [JOB_STATUS.ARRIVED]: 'status.arrived', [JOB_STATUS.WORK_STARTED]: 'status.work_started', [JOB_STATUS.COMPLETED]: 'status.completed', [JOB_STATUS.REJECTED]: 'status.rejected', [JOB_STATUS.CANCELLED]: 'status.cancelled',
 };
 
 /** Maps a status onto a StatusBadge colour name. */

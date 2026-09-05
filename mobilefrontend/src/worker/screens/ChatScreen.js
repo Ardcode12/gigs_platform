@@ -1,4 +1,4 @@
-import React, { useCallback, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import {
   View,
@@ -14,6 +14,7 @@ import {
   Alert,
 } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { COLORS, SPACING, RADIUS, FONT_SIZE, FONT_WEIGHT, SHADOWS } from '../../theme';
 import Avatar from '../../components/Avatar';
 import LoadingState from '../../components/LoadingState';
@@ -23,6 +24,7 @@ import { useSocketEvent, WS_EVENTS } from '../../context/SocketContext';
 import { getMessages, sendMessage, requestCall } from '../../api/chat';
 import { getJob } from '../../api/jobs';
 import { formatTime } from '../../utils/format';
+import { useLanguage, useT } from '../../i18n/LanguageContext';
 
 /**
  * Spec #5 — talk to the customer before and during the job.
@@ -32,22 +34,33 @@ import { formatTime } from '../../utils/format';
  */
 const ChatScreen = () => {
   const navigation = useNavigation();
+  const insets = useSafeAreaInsets();
+  const language = useLanguage();
+  const t = useT();
   const jobId = useRoute().params?.jobId;
   const [inputText, setInputText] = useState('');
   const [sending, setSending] = useState(false);
   const [calling, setCalling] = useState(false);
+  const [showOriginal, setShowOriginal] = useState({});
   const flatListRef = useRef(null);
+
+  useEffect(() => {
+    // This screen is inside the stack inside the tab navigator.
+    const tabNavigation = navigation.getParent()?.getParent();
+    tabNavigation?.setOptions({ tabBarStyle: { display: 'none' } });
+    return () => tabNavigation?.setOptions({ tabBarStyle: undefined });
+  }, [navigation]);
 
   const thread = useApi(
     useCallback(
       () =>
-        Promise.all([getJob(jobId), getMessages(jobId)]).then(([job, messages]) => ({
+          Promise.all([getJob(jobId), getMessages(jobId, language)]).then(([job, messages]) => ({
           job,
           messages,
         })),
-      [jobId],
+      [jobId, language],
     ),
-    [jobId],
+    [jobId, language],
   );
 
   // A message from the customer arrives over the socket; pull the thread again so
@@ -94,7 +107,7 @@ const ChatScreen = () => {
           m.id === optimistic.id ? { ...m, pending: false, failed: true } : m,
         ),
       }));
-      Alert.alert('Message not sent', error.message);
+       Alert.alert(t('chat.sendFailed'), error.message);
     } finally {
       setSending(false);
     }
@@ -104,12 +117,9 @@ const ChatScreen = () => {
     setCalling(true);
     try {
       await requestCall(jobId);
-      Alert.alert(
-        'Call requested',
-        'The customer has been asked to call you. Your number stays private.',
-      );
+       Alert.alert(t('job.callRequested'), t('job.callRequestedBodyPrivate'));
     } catch (error) {
-      Alert.alert('Could not send the request', error.message);
+      Alert.alert(t('job.callRequestFailed'), error.message);
     } finally {
       setCalling(false);
     }
@@ -117,6 +127,7 @@ const ChatScreen = () => {
 
   const renderMessage = ({ item }) => {
     const isWorker = item.sender === 'worker';
+    const displayText = item.original_text && showOriginal[item.id] ? item.original_text : item.text;
     return (
       <View
         style={[
@@ -137,11 +148,23 @@ const ChatScreen = () => {
               isWorker ? styles.workerMessageText : styles.customerMessageText,
             ]}
           >
-            {item.text}
+            {displayText}
           </Text>
         </View>
+        {item.original_text && (
+          <TouchableOpacity
+            style={styles.translationToggle}
+            onPress={() =>
+              setShowOriginal((current) => ({ ...current, [item.id]: !current[item.id] }))
+            }
+          >
+            <Text style={styles.translationToggleText}>
+              {showOriginal[item.id] ? t('chat.hideOriginal') : t('chat.showOriginal')}
+            </Text>
+          </TouchableOpacity>
+        )}
         <Text style={[styles.messageTime, isWorker ? styles.workerTime : styles.customerTime]}>
-          {item.failed ? 'Not sent' : item.pending ? 'Sending…' : formatTime(item.sent_at)}
+          {item.failed ? t('chat.notSent') : item.pending ? t('chat.sending') : formatTime(item.sent_at)}
         </Text>
       </View>
     );
@@ -155,8 +178,8 @@ const ChatScreen = () => {
       <View style={styles.headerCenter}>
         <Avatar name={job?.customer.name ?? '?'} uri={job?.customer.photo_url} size={40} />
         <View style={{ marginLeft: SPACING.sm }}>
-          <Text style={styles.headerName}>{job?.customer.name ?? 'Customer'}</Text>
-          <Text style={styles.headerStatus}>{job?.service_type ?? 'Customer'}</Text>
+          <Text style={styles.headerName}>{job?.customer.name ?? t('chat.customer')}</Text>
+          <Text style={styles.headerStatus}>{job?.service_type ?? t('chat.customer')}</Text>
         </View>
       </View>
       <TouchableOpacity style={styles.callBtn} onPress={handleRequestCall} disabled={calling}>
@@ -186,9 +209,9 @@ const ChatScreen = () => {
         {header}
         <EmptyState
           tone="error"
-          title="Couldn't load the chat"
+           title={t('chat.loadFailed')}
           message={thread.error?.message}
-          actionLabel="Try again"
+           actionLabel={t('common.tryAgain')}
           onAction={thread.reload}
         />
       </View>
@@ -205,9 +228,7 @@ const ChatScreen = () => {
       {/* Privacy Notice */}
       <View style={styles.privacyNotice}>
         <MaterialCommunityIcons name="shield-check" size={16} color={COLORS.info} />
-        <Text style={styles.privacyText}>
-          Phone numbers are hidden. Use &quot;Request Call&quot; for privacy-protected calling.
-        </Text>
+        <Text style={styles.privacyText}>{t('chat.privacyNote')}</Text>
       </View>
 
       {/* Messages */}
@@ -218,10 +239,8 @@ const ChatScreen = () => {
             size={40}
             color={COLORS.textTertiary}
           />
-          <Text style={styles.emptyTitle}>No messages yet</Text>
-          <Text style={styles.emptyText}>
-            Say hello, confirm the address, or ask what the problem looks like.
-          </Text>
+          <Text style={styles.emptyTitle}>{t('chat.empty')}</Text>
+          <Text style={styles.emptyText}>{t('chat.emptyBody')}</Text>
         </View>
       ) : (
         <FlatList
@@ -240,11 +259,11 @@ const ChatScreen = () => {
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         keyboardVerticalOffset={0}
       >
-        <View style={styles.inputBar}>
+        <View style={[styles.inputBar, { paddingBottom: Math.max(insets.bottom, SPACING.sm) }]}>
           <View style={styles.inputWrap}>
             <TextInput
               style={styles.textInput}
-              placeholder="Type a message..."
+              placeholder={t('chat.placeholder')}
               placeholderTextColor={COLORS.textTertiary}
               value={inputText}
               onChangeText={setInputText}
@@ -275,7 +294,7 @@ const ChatScreen = () => {
         >
           <MaterialCommunityIcons name="phone-in-talk" size={20} color={COLORS.success} />
           <Text style={styles.requestCallText}>
-            {calling ? 'Sending request…' : 'Request Customer to Call (Privacy Protected)'}
+            {calling ? t('chat.requestingCall') : t('chat.requestCallButton')}
           </Text>
         </TouchableOpacity>
       </KeyboardAvoidingView>
@@ -454,7 +473,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     backgroundColor: COLORS.successLight,
     paddingVertical: SPACING.md,
-    paddingBottom: 34,
+            paddingBottom: SPACING.md,
   },
   requestCallText: {
     fontSize: FONT_SIZE.sm,

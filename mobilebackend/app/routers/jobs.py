@@ -36,6 +36,8 @@ from app.schemas.job import JobDetail, JobListItem, JobRejectRequest, JobStatusU
 from app.services.access import get_job_for_worker
 from app.services.geo import distance_and_eta
 from app.services.notify import notify, push_event
+from app.services.otp import generate_code
+from app.core.security import hash_password, verify_password
 from app.services.serialize import (
     serialize_job_detail,
     serialize_job_list_item,
@@ -196,6 +198,7 @@ def accept_job(job_id: int, worker: CurrentWorker, db: DbSession) -> JobDetail:
 
     job.worker_id = worker.id
     job.accepted_at = datetime.now(timezone.utc)
+    _issue_job_otp(job, "arrival")
     _record_status(db, job, JobStatus.ACCEPTED, note="Accepted by worker")
     db.commit()
     db.refresh(job)
@@ -261,7 +264,15 @@ def update_status(
                 f"Cannot go from '{job.status.value}' to '{payload.status.value}'. "
                 f"Allowed from here: {sorted(s.value for s in allowed) or 'nothing'}"
             ),
-        )
+            )
+
+    if payload.status == JobStatus.ARRIVED:
+        _verify_job_otp(db, job, payload.otp, "arrival")
+        job.arrival_verified_at = datetime.now(timezone.utc)
+        _issue_job_otp(job, "completion")
+    elif payload.status == JobStatus.COMPLETED:
+        _verify_job_otp(db, job, payload.otp, "completion")
+        job.completion_verified_at = datetime.now(timezone.utc)
 
     _record_status(db, job, payload.status)
 
@@ -274,6 +285,34 @@ def update_status(
 
     push_event(worker.id, WsEvent.JOB_UPDATE, {"job_id": job.id, "status": job.status.value})
     return serialize_job_detail(db, job, worker)
+
+
+def _issue_job_otp(job: Job, kind: str) -> str:
+    code = generate_code()
+    setattr(job, f"{kind}_otp_hash", hash_password(code))
+    setattr(job, f"{kind}_otp_expires_at", datetime.now(timezone.utc) + timedelta(minutes=30))
+    setattr(job, f"{kind}_otp_attempts", 0)
+    return code
+
+
+def issue_job_otp(job: Job, kind: str) -> str:
+    return _issue_job_otp(job, kind)
+
+
+def _verify_job_otp(db: Session, job: Job, code: str | None, kind: str) -> None:
+    if not code:
+        raise HTTPException(status_code=422, detail=f"Customer {kind} OTP is required")
+    expires = getattr(job, f"{kind}_otp_expires_at")
+    attempts = getattr(job, f"{kind}_otp_attempts")
+    stored = getattr(job, f"{kind}_otp_hash")
+    if not stored or not expires or expires < datetime.now(timezone.utc):
+        raise HTTPException(status_code=409, detail=f"Customer {kind} OTP has expired")
+    if attempts >= 5:
+        raise HTTPException(status_code=429, detail="Too many incorrect OTP attempts")
+    if not verify_password(code, stored):
+        setattr(job, f"{kind}_otp_attempts", attempts + 1)
+        db.commit()
+        raise HTTPException(status_code=422, detail=f"Incorrect customer {kind} OTP")
 
 
 def _settle_payment(db: Session, job: Job, worker: Worker) -> None:

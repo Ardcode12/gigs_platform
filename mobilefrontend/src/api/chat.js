@@ -1,7 +1,9 @@
 import client from './client';
 
-export const getMessages = (jobId) =>
-  client.get(`/api/jobs/${jobId}/messages`).then((r) => r.data);
+export const getMessages = (jobId, lang) =>
+  client
+    .get(`/api/jobs/${jobId}/messages`, { params: lang ? { lang } : undefined })
+    .then((r) => r.data);
 
 export const sendMessage = (jobId, text) =>
   client.post(`/api/jobs/${jobId}/messages`, { text }).then((r) => r.data);

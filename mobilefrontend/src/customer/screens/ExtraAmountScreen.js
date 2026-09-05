@@ -12,10 +12,12 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { COLORS, SPACING, RADIUS, FONT_SIZE, FONT_WEIGHT, SHADOWS } from '../../theme';
+import { useT } from '../../i18n/LanguageContext';
 import { ONGOING_BOOKING } from '../data/customerMockData';
 
 const ExtraAmountScreen = () => {
   const navigation = useNavigation();
+  const t = useT();
   const [status, setStatus] = useState('pending'); // 'pending' | 'accepted' | 'rejected'
   const worker = ONGOING_BOOKING.worker;
   const baseAmount = 650;
@@ -26,11 +28,11 @@ const ExtraAmountScreen = () => {
   const handleAccept = () => {
     setStatus('accepted');
     Alert.alert(
-      'Extra Amount Approved',
-      `You accepted ₹${extraAmount} for ${reason}. The updated final total is ₹${totalAmount}.`,
+      t('extra.approvedTitle'),
+      t('extra.approvedBody', { amount: `₹${extraAmount}`, reason, total: `₹${totalAmount}` }),
       [
         {
-          text: 'View Updated Booking',
+          text: t('extra.viewUpdated'),
           onPress: () => navigation.navigate('ConfirmBooking', { totalAmount, hasExtra: true }),
         },
       ]
@@ -40,9 +42,8 @@ const ExtraAmountScreen = () => {
   const handleReject = () => {
     setStatus('rejected');
     Alert.alert(
-      'Extra Amount Rejected',
-      'The worker has been notified. They will proceed only with the original scope of work.',
-      [{ text: 'OK', onPress: () => navigation.goBack() }]
+      t('extra.rejectedTitle'), t('extra.rejectedBody'),
+      [{ text: t('common.ok'), onPress: () => navigation.goBack() }]
     );
   };
 
@@ -53,7 +54,7 @@ const ExtraAmountScreen = () => {
         <TouchableOpacity style={styles.backButton} onPress={() => navigation.goBack()}>
           <MaterialCommunityIcons name="arrow-left" size={24} color={COLORS.textPrimary} />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>Extra Amount Request</Text>
+        <Text style={styles.headerTitle}>{t('extra.title')}</Text>
         <View style={{ width: 40 }} />
       </View>
 
@@ -63,9 +64,9 @@ const ExtraAmountScreen = () => {
           <View style={styles.alertIconCircle}>
             <MaterialCommunityIcons name="alert-decagram-outline" size={28} color="#D97706" />
           </View>
-          <Text style={styles.alertTitle}>Worker Approval Required</Text>
+           <Text style={styles.alertTitle}>{t('extra.approvalRequired')}</Text>
           <Text style={styles.alertSubtitle}>
-            Your assigned cooperative worker has requested an adjustment due to additional on-site materials or work.
+             {t('extra.approvalBody')}
           </Text>
         </View>
 
@@ -74,7 +75,7 @@ const ExtraAmountScreen = () => {
           <Image source={{ uri: worker.photo }} style={styles.workerAvatar} />
           <View style={styles.workerMeta}>
             <Text style={styles.workerName}>{worker.name}</Text>
-            <Text style={styles.workerTrade}>{worker.trade}</Text>
+            <Text style={styles.workerTrade}>{t(worker.tradeKey)}</Text>
           </View>
           <TouchableOpacity
             style={styles.chatIconBtn}
@@ -86,14 +87,14 @@ const ExtraAmountScreen = () => {
 
         {/* Breakdown Card */}
         <View style={styles.breakdownCard}>
-          <Text style={styles.breakdownCardHeader}>Price Adjustment Details</Text>
+           <Text style={styles.breakdownCardHeader}>{t('extra.detailsHeader')}</Text>
           <View style={styles.divider} />
 
           {/* Base Amount */}
           <View style={styles.rowItem}>
             <View>
-              <Text style={styles.rowItemTitle}>Base Amount</Text>
-              <Text style={styles.rowItemSub}>Initial agreed service estimate</Text>
+               <Text style={styles.rowItemTitle}>{t('customer.baseAmount')}</Text>
+               <Text style={styles.rowItemSub}>{t('extra.baseSub')}</Text>
             </View>
             <Text style={styles.rowItemValue}>₹{baseAmount}</Text>
           </View>
@@ -102,12 +103,12 @@ const ExtraAmountScreen = () => {
           <View style={[styles.rowItem, styles.extraRowHighlight]}>
             <View style={{ flex: 1 }}>
               <View style={styles.extraTagRow}>
-                <Text style={styles.extraTagTitle}>Extra Amount</Text>
+                 <Text style={styles.extraTagTitle}>{t('customer.extraAmount')}</Text>
                 <View style={styles.pendingPill}>
-                  <Text style={styles.pendingPillText}>REQUIRES CONSENT</Text>
+                   <Text style={styles.pendingPillText}>{t('extra.requiresConsent')}</Text>
                 </View>
               </View>
-              <Text style={styles.extraReasonText}>Reason: {reason}</Text>
+               <Text style={styles.extraReasonText}>{t('common.reason', { reason })}</Text>
             </View>
             <Text style={styles.extraValueText}>+₹{extraAmount}</Text>
           </View>
@@ -117,8 +118,8 @@ const ExtraAmountScreen = () => {
           {/* New Total */}
           <View style={styles.totalRow}>
             <View>
-              <Text style={styles.totalLabel}>Total</Text>
-              <Text style={styles.totalSub}>New payable on job completion</Text>
+               <Text style={styles.totalLabel}>{t('common.total')}</Text>
+               <Text style={styles.totalSub}>{t('extra.totalSub')}</Text>
             </View>
             <Text style={styles.totalValue}>₹{totalAmount}</Text>
           </View>
@@ -128,9 +129,9 @@ const ExtraAmountScreen = () => {
         <View style={styles.policyCard}>
           <MaterialCommunityIcons name="shield-check" size={20} color={COLORS.primary} />
           <View style={styles.policyTextWrapper}>
-            <Text style={styles.policyTitle}>Worker Cooperative Protection Policy</Text>
+             <Text style={styles.policyTitle}>{t('extra.policyTitle')}</Text>
             <Text style={styles.policyDesc}>
-              Cooperative technicians must seek customer digital approval before initiating any extra paid labor. If rejected, they will perform only the baseline task without penalty.
+               {t('extra.policyBody')}
             </Text>
           </View>
         </View>
@@ -144,7 +145,7 @@ const ExtraAmountScreen = () => {
               activeOpacity={0.8}
             >
               <MaterialCommunityIcons name="close-circle-outline" size={20} color={COLORS.danger} />
-              <Text style={styles.rejectButtonText}>Reject</Text>
+               <Text style={styles.rejectButtonText}>{t('common.reject')}</Text>
             </TouchableOpacity>
 
             <TouchableOpacity
@@ -153,13 +154,18 @@ const ExtraAmountScreen = () => {
               activeOpacity={0.85}
             >
               <MaterialCommunityIcons name="check-circle-outline" size={20} color={COLORS.white} />
-              <Text style={styles.acceptButtonText}>Accept ₹{totalAmount}</Text>
+               <Text style={styles.acceptButtonText}>{t('extra.acceptAmount', { amount: `₹${totalAmount}` })}</Text>
             </TouchableOpacity>
           </View>
         ) : (
           <View style={styles.statusResultBox}>
+            <MaterialCommunityIcons
+              name={status === 'accepted' ? 'check-circle' : 'close-circle'}
+              size={22}
+              color={status === 'accepted' ? COLORS.success : COLORS.danger}
+            />
             <Text style={styles.statusResultText}>
-              {status === 'accepted' ? '✓ Accepted ₹' + totalAmount : '✕ Request Rejected'}
+               {status === 'accepted' ? t('extra.acceptedAmount', { amount: `₹${totalAmount}` }) : t('extra.rejected')}
             </Text>
           </View>
         )}
@@ -438,6 +444,9 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.white,
     borderRadius: RADIUS.xl,
     alignItems: 'center',
+    flexDirection: 'row',
+    justifyContent: 'center',
+    gap: SPACING.sm,
     borderWidth: 1,
     borderColor: COLORS.border,
   },

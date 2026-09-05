@@ -9,40 +9,40 @@ export const CUSTOMER_PROFILE = {
   memberSince: 'March 2024',
   coopMemberId: 'WM-CUST-8821',
   savedAddresses: [
-    { id: 'addr_1', type: 'Home', address: 'Flat 402, Green Glen Layout, Bellandur, Bengaluru', isDefault: true },
-    { id: 'addr_2', type: 'Office', address: 'Workstation 12B, EcoWorld Tech Park, Bengaluru', isDefault: false },
+    { id: 'addr_1', typeKey: 'customer.homeAddress', address: 'Flat 402, Green Glen Layout, Bellandur, Bengaluru', isDefault: true },
+    { id: 'addr_2', typeKey: 'customer.officeAddress', address: 'Workstation 12B, EcoWorld Tech Park, Bengaluru', isDefault: false },
   ],
   paymentMethods: [
-    { id: 'pm_1', type: 'UPI', detail: 'ananya@oksbi', isDefault: true, icon: 'qrcode-scan' },
-    { id: 'pm_2', type: 'Card', detail: 'HDFC Bank ending in 4281', isDefault: false, icon: 'credit-card-outline' },
+    { id: 'pm_1', typeKey: 'customer.upi', detail: 'ananya@oksbi', isDefault: true, icon: 'qrcode-scan' },
+    { id: 'pm_2', typeKey: 'customer.card', detailKey: 'customer.cardEnding', detail: 'HDFC Bank ending in 4281', isDefault: false, icon: 'credit-card-outline' },
   ],
 };
 
 export const SERVICE_CATEGORIES = [
-  { id: 'cat_electrician', name: 'Electrician', icon: 'flash', color: '#F59E0B', bg: '#FEF3C7', count: '48 Workers Nearby', description: 'Wiring, switches, fans, appliances' },
-  { id: 'cat_plumber', name: 'Plumber', icon: 'water', color: '#0284C7', bg: '#E0F2FE', count: '32 Workers Nearby', description: 'Taps, pipes, leakage, fittings' },
-  { id: 'cat_carpenter', name: 'Carpenter', icon: 'hammer', color: '#D97706', bg: '#FEF3C7', count: '27 Workers Nearby', description: 'Furniture, doors, locks, woodwork' },
-  { id: 'cat_painter', name: 'Painter', icon: 'format-paint', color: '#7C3AED', bg: '#EDE9FE', count: '21 Workers Nearby', description: 'Interior, exterior, touchup' },
-  { id: 'cat_cleaner', name: 'Cleaner', icon: 'broom', color: '#059669', bg: '#D1FAE5', count: '54 Workers Nearby', description: 'Deep cleaning, kitchen, bathroom' },
-  { id: 'cat_gardener', name: 'Gardener', icon: 'sprout', color: '#16A34A', bg: '#DCFCE7', count: '15 Workers Nearby', description: 'Lawn care, pruning, repotting' },
+  { id: 'cat_electrician', nameKey: 'customer.category.electrician', descKey: 'customer.category.electricianDesc', workerCount: 48, icon: 'flash', color: '#F59E0B', bg: '#FEF3C7' },
+  { id: 'cat_plumber', nameKey: 'customer.category.plumber', descKey: 'customer.category.plumberDesc', workerCount: 32, icon: 'water', color: '#0284C7', bg: '#E0F2FE' },
+  { id: 'cat_carpenter', nameKey: 'customer.category.carpenter', descKey: 'customer.category.carpenterDesc', workerCount: 27, icon: 'hammer', color: '#D97706', bg: '#FEF3C7' },
+  { id: 'cat_painter', nameKey: 'customer.category.painter', descKey: 'customer.category.painterDesc', workerCount: 21, icon: 'format-paint', color: '#7C3AED', bg: '#EDE9FE' },
+  { id: 'cat_cleaner', nameKey: 'customer.category.cleaner', descKey: 'customer.category.cleanerDesc', workerCount: 54, icon: 'broom', color: '#059669', bg: '#D1FAE5' },
+  { id: 'cat_gardener', nameKey: 'customer.category.gardener', descKey: 'customer.category.gardenerDesc', workerCount: 15, icon: 'sprout', color: '#16A34A', bg: '#DCFCE7' },
 ];
 
 export const POPULAR_SERVICES = [
-  { id: 'pop_1', name: 'Ceiling Fan Repair', price: 'From ₹250', category: 'Electrician', rating: 4.8, icon: 'fan' },
-  { id: 'pop_2', name: 'Tap & Leak Repair', price: 'From ₹199', category: 'Plumber', rating: 4.9, icon: 'pipe-leak' },
-  { id: 'pop_3', name: 'Deep Home Cleaning', price: 'From ₹899', category: 'Cleaner', rating: 4.7, icon: 'sparkles' },
-  { id: 'pop_4', name: 'Door Lock Repair', price: 'From ₹299', category: 'Carpenter', rating: 4.8, icon: 'lock-reset' },
+  { id: 'pop_1', nameKey: 'customer.popular.ceilingFan', price: 250, categoryKey: 'customer.category.electrician', rating: 4.8, icon: 'fan' },
+  { id: 'pop_2', nameKey: 'customer.popular.tapLeak', price: 199, categoryKey: 'customer.category.plumber', rating: 4.9, icon: 'pipe-leak' },
+  { id: 'pop_3', nameKey: 'customer.popular.deepCleaning', price: 899, categoryKey: 'customer.category.cleaner', rating: 4.7, icon: 'sparkles' },
+  { id: 'pop_4', nameKey: 'customer.popular.doorLock', price: 299, categoryKey: 'customer.category.carpenter', rating: 4.8, icon: 'lock-reset' },
 ];
 
 export const AI_DETECTION_SAMPLE = {
   userInput: 'I need fan repair, two lights replaced and some wiring.',
-  analysisTimestamp: 'Just now',
-  detectedCategory: 'Electrician & Lighting Services',
+  analysisTimestampKey: 'customer.chatTimeNow',
+   detectedCategoryKey: 'customer.electricalCategory',
   detectedServices: [
     {
       id: 'srv_1',
-      name: 'Fan Repair & Servicing',
-      detail: 'Inspection and repair of 1 ceiling fan motor/capacitor',
+       nameKey: 'customer.service.fanRepair',
+       detailKey: 'customer.service.fanRepairDetail',
       quantity: 1,
       unitPrice: 250,
       totalPrice: 250,
@@ -50,8 +50,8 @@ export const AI_DETECTION_SAMPLE = {
     },
     {
       id: 'srv_2',
-      name: 'Light Replacement',
-      detail: 'Dismantling old fixtures & installing 2 new LED lights',
+       nameKey: 'customer.service.lightReplacement',
+       detailKey: 'customer.service.lightReplacementDetail',
       quantity: 2,
       unitPrice: 150,
       totalPrice: 300,
@@ -59,8 +59,8 @@ export const AI_DETECTION_SAMPLE = {
     },
     {
       id: 'srv_3',
-      name: 'Wiring & Point Check',
-      detail: 'Minor circuit wiring & switch testing up to 5 meters',
+       nameKey: 'customer.service.wiring',
+       detailKey: 'customer.service.wiringDetail',
       quantity: 1,
       unitPrice: 100,
       totalPrice: 100,
@@ -68,21 +68,21 @@ export const AI_DETECTION_SAMPLE = {
     },
   ],
   baseEstimatedTotal: 650,
-  cooperativeSavings: '₹120 lower than private market rates',
+  cooperativeSavings: 120,
 };
 
 export const RECOMMENDED_WORKERS = [
   {
     id: 'wkr_1',
     name: 'Ramesh Kumar',
+    tradeKey: 'customer.seniorElectrician',
     photo: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=400',
-    trade: 'Senior Cooperative Electrician',
     rating: 4.9,
     reviewsCount: 142,
     experience: '8+ Years',
     completedJobs: 512,
     distance: '1.4 km away',
-    availability: 'Available Now (15 mins)',
+    availabilityKey: 'customer.availableNowTime',
     skills: ['Fan Repair', 'House Wiring', 'Light Replacement', 'MCB Installation', 'Inverter Setup'],
     estimatedAmount: 650,
     coopBranch: 'South Bengaluru Workers Cooperative #14',
@@ -94,13 +94,13 @@ export const RECOMMENDED_WORKERS = [
     id: 'wkr_2',
     name: 'Suresh Patel',
     photo: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=400',
-    trade: 'Certified Electrician',
+    tradeKey: 'customer.certifiedElectrician',
     rating: 4.8,
     reviewsCount: 98,
     experience: '6 Years',
     completedJobs: 340,
     distance: '2.8 km away',
-    availability: 'Available Today at 4:30 PM',
+    availabilityKey: 'customer.availableToday', availabilityValues: { time: '4:30 PM' },
     skills: ['Fan Repair', 'Light Replacement', 'Appliance Wiring', 'Safety Audits'],
     estimatedAmount: 650,
     coopBranch: 'East Bengaluru Cooperative Society',
@@ -112,13 +112,13 @@ export const RECOMMENDED_WORKERS = [
     id: 'wkr_3',
     name: 'Rajesh Sharma',
     photo: 'https://images.unsplash.com/photo-1522075469751-3a6694fb2f61?w=400',
-    trade: 'Electrical & Hardware Technician',
+    tradeKey: 'customer.hardwareTechnician',
     rating: 4.7,
     reviewsCount: 76,
     experience: '5 Years',
     completedJobs: 265,
     distance: '3.5 km away',
-    availability: 'Available Tomorrow Morning',
+    availabilityKey: 'customer.availableTomorrow',
     skills: ['Wiring', 'Switchboard Repair', 'Ceiling Fan', 'LED Strips'],
     estimatedAmount: 650,
     coopBranch: 'Bengaluru Skilled Trades Cooperative',
@@ -142,9 +142,9 @@ export const ONGOING_BOOKING = {
     coordinates: { lat: 12.9279, lng: 77.6751 },
   },
   items: [
-    { name: 'Fan Repair & Servicing', qty: 1, price: 250 },
-    { name: 'Light Replacement ×2', qty: 2, price: 300 },
-    { name: 'Wiring & Point Check', qty: 1, price: 100 },
+    { nameKey: 'customer.service.fanRepair', qty: 1, price: 250 },
+    { nameKey: 'customer.service.lightReplacement', qty: 2, price: 300 },
+    { nameKey: 'customer.service.wiring', qty: 1, price: 100 },
   ],
   pricing: {
     baseAmount: 650,
@@ -164,11 +164,11 @@ export const ONGOING_BOOKING = {
 };
 
 export const CHAT_MESSAGES_SAMPLE = [
-  { id: 'm1', sender: 'worker', text: 'Namaste Ananya ji! I have accepted your electrical service request.', time: '03:16 PM' },
-  { id: 'm2', sender: 'customer', text: 'Hello Ramesh ji, will you bring the LED lights or should I keep them ready?', time: '03:17 PM' },
-  { id: 'm3', sender: 'worker', text: 'I have standard Phillips 12W warm & cool white LEDs in my vehicle toolkit. If you have your own, I will just install them!', time: '03:19 PM' },
-  { id: 'm4', sender: 'customer', text: 'Great! Also the fan makes a humming noise when set to high speed.', time: '03:20 PM' },
-  { id: 'm5', sender: 'worker', text: 'Understood, I have replacement capacitors and bearing oil ready. I am on my way now.', time: '03:31 PM' },
+  { id: 'm1', sender: 'worker', textKey: 'customer.chat.message1', time: '03:16 PM' },
+  { id: 'm2', sender: 'customer', textKey: 'customer.chat.message2', time: '03:17 PM' },
+  { id: 'm3', sender: 'worker', textKey: 'customer.chat.message3', time: '03:19 PM' },
+  { id: 'm4', sender: 'customer', textKey: 'customer.chat.message4', time: '03:20 PM' },
+  { id: 'm5', sender: 'worker', textKey: 'customer.chat.message5', time: '03:31 PM' },
 ];
 
 export const NOTIFICATIONS_SAMPLE = [

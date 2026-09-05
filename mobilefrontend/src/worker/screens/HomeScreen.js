@@ -28,17 +28,19 @@ import { getSummary } from '../../api/earnings';
 import { getUnreadCount } from '../../api/notifications';
 import { formatRupees, formatTime } from '../../utils/format';
 import { JOB_STEPS, STATUS_LABEL, STATUS_TONE, JOB_STATUS } from '../../constants/jobSteps';
+import { useT } from '../../i18n/LanguageContext';
 
-const greeting = () => {
+const greeting = (t) => {
   const hour = new Date().getHours();
-  if (hour < 12) return 'Good Morning 👋';
-  if (hour < 17) return 'Good Afternoon 👋';
-  return 'Good Evening 👋';
+  if (hour < 12) return t('worker.goodMorning');
+  if (hour < 17) return t('worker.goodAfternoon');
+  return t('worker.goodEvening');
 };
 
 const HomeScreen = () => {
   const navigation = useNavigation();
   const { worker, patchWorker } = useAuth();
+  const t = useT();
   const [toggling, setToggling] = useState(false);
   const isAvailable = worker?.is_available ?? false;
 
@@ -89,7 +91,7 @@ const HomeScreen = () => {
       dashboard.refetch();
     } catch (error) {
       patchWorker({ is_available: !next });
-      Alert.alert('Could not update availability', error.message);
+      Alert.alert(t('worker.couldNotUpdateAvailability'), error.message);
     } finally {
       setToggling(false);
     }
@@ -99,7 +101,7 @@ const HomeScreen = () => {
     return (
       <View style={styles.container}>
         <StatusBar barStyle="light-content" backgroundColor={COLORS.primary} />
-        <LoadingState message="Loading your day…" />
+          <LoadingState message={t('worker.loadingDay')} />
       </View>
     );
   }
@@ -109,9 +111,9 @@ const HomeScreen = () => {
       <View style={styles.container}>
         <EmptyState
           tone="error"
-          title="Can't reach the server"
+          title={t('worker.cantReach')}
           message={dashboard.error.message}
-          actionLabel="Try again"
+           actionLabel={t('common.tryAgain')}
           onAction={dashboard.reload}
         />
       </View>
@@ -140,7 +142,7 @@ const HomeScreen = () => {
               online={isAvailable}
             />
             <View style={styles.headerInfo}>
-              <Text style={styles.greeting}>{greeting()}</Text>
+               <Text style={styles.greeting}>{greeting(t)}</Text>
               <Text style={styles.workerName}>{worker?.name}</Text>
             </View>
           </View>
@@ -168,10 +170,10 @@ const HomeScreen = () => {
             />
             <View style={{ marginLeft: SPACING.md }}>
               <Text style={styles.availLabel}>
-                {isAvailable ? 'You are Available' : 'You are Unavailable'}
+                 {isAvailable ? t('worker.available') : t('worker.unavailable')}
               </Text>
               <Text style={styles.availSubtext}>
-                {isAvailable ? 'Ready to receive jobs' : 'Not receiving jobs'}
+                 {isAvailable ? t('worker.readyJobs') : t('worker.notReceiving')}
               </Text>
             </View>
           </View>
@@ -210,9 +212,9 @@ const HomeScreen = () => {
                   <MaterialCommunityIcons name="briefcase-clock" size={28} color={COLORS.white} />
                 </View>
                 <View style={styles.requestInfo}>
-                  <Text style={styles.requestTitle}>New Job Requests</Text>
+                   <Text style={styles.requestTitle}>{t('worker.newRequests')}</Text>
                   <Text style={styles.requestSubtext}>
-                    {pendingRequests} {pendingRequests === 1 ? 'request' : 'requests'} waiting
+                     {t('worker.request_one', { count: pendingRequests })}
                   </Text>
                 </View>
                 <View style={styles.requestBadge}>
@@ -229,8 +231,7 @@ const HomeScreen = () => {
             <View style={styles.offlineRow}>
               <MaterialCommunityIcons name="sleep" size={22} color={COLORS.warning} />
               <Text style={styles.offlineText}>
-                You&apos;re marked unavailable, so new job requests won&apos;t reach you. Flip the
-                switch above when you&apos;re ready.
+                {t('worker.unavailableNotice')}
               </Text>
             </View>
           </Card>
@@ -243,14 +244,14 @@ const HomeScreen = () => {
               <MaterialCommunityIcons name="currency-inr" size={22} color={COLORS.success} />
             </View>
             <Text style={styles.statValue}>{formatRupees(earnings?.total)}</Text>
-            <Text style={styles.statLabel}>Today&apos;s Earnings</Text>
+            <Text style={styles.statLabel}>{t('worker.todayEarnings')}</Text>
           </Card>
           <Card style={styles.statCard}>
             <View style={[styles.statIconWrap, { backgroundColor: COLORS.primaryLight }]}>
               <MaterialCommunityIcons name="briefcase-check" size={22} color={COLORS.primary} />
             </View>
             <Text style={styles.statValue}>{earnings?.jobs ?? 0}</Text>
-            <Text style={styles.statLabel}>Today&apos;s Jobs</Text>
+            <Text style={styles.statLabel}>{t('worker.todayJobs')}</Text>
           </Card>
         </View>
 
@@ -262,8 +263,8 @@ const HomeScreen = () => {
           >
             <Card style={styles.currentJobCard}>
               <View style={styles.currentJobHeader}>
-                <StatusBadge
-                  label={(STATUS_LABEL[current.status] ?? '').toUpperCase()}
+                 <StatusBadge
+                   label={t(STATUS_LABEL[current.status] ?? 'common.unknown').toUpperCase()}
                   color={STATUS_TONE[current.status] ?? 'warning'}
                   size="sm"
                 />
@@ -300,10 +301,10 @@ const HomeScreen = () => {
               <View style={styles.currentJobFooter}>
                 <View style={styles.currentJobStep}>
                   <View style={styles.stepDot} />
-                  <Text style={styles.stepText}>{currentStepLabel}</Text>
+                   <Text style={styles.stepText}>{t(currentStepLabel ?? 'common.unknown')}</Text>
                 </View>
                 <View style={styles.viewBtn}>
-                  <Text style={styles.viewBtnText}>View Details</Text>
+                   <Text style={styles.viewBtnText}>{t('worker.viewDetails')}</Text>
                   <MaterialCommunityIcons name="arrow-right" size={16} color={COLORS.primary} />
                 </View>
               </View>
@@ -316,26 +317,26 @@ const HomeScreen = () => {
               size={28}
               color={COLORS.textTertiary}
             />
-            <Text style={styles.noJobTitle}>No job in progress</Text>
+             <Text style={styles.noJobTitle}>{t('job.none')}</Text>
             <Text style={styles.noJobText}>
               {pendingRequests > 0
-                ? 'Open the requests above to pick up your next job.'
-                : 'You&apos;ll see a job here as soon as you accept one.'}
+                 ? t('worker.pickNext')
+                 : t('worker.acceptOne')}
             </Text>
           </Card>
         )}
 
         {/* Recent Jobs */}
         <View style={styles.sectionHeader}>
-          <Text style={styles.sectionTitle}>Recent Jobs</Text>
+           <Text style={styles.sectionTitle}>{t('worker.recentJobs')}</Text>
           <TouchableOpacity onPress={() => navigation.navigate('JobsTab')}>
-            <Text style={styles.seeAllText}>See All</Text>
+             <Text style={styles.seeAllText}>{t('worker.seeAll')}</Text>
           </TouchableOpacity>
         </View>
 
         {history.length === 0 ? (
           <Card style={styles.jobItem}>
-            <Text style={styles.noJobText}>No jobs yet. Your history will build up here.</Text>
+             <Text style={styles.noJobText}>{t('worker.noJobs')}</Text>
           </Card>
         ) : (
           history.map((job) => (
@@ -373,7 +374,7 @@ const HomeScreen = () => {
                 <View style={styles.jobItemRight}>
                   <Text style={styles.jobItemAmount}>{formatRupees(job.total_amount)}</Text>
                   <StatusBadge
-                    label={STATUS_LABEL[job.status] ?? job.status}
+                     label={t(STATUS_LABEL[job.status] ?? 'common.unknown')}
                     color={STATUS_TONE[job.status] ?? 'neutral'}
                     size="sm"
                   />

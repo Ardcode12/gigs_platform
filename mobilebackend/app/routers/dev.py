@@ -12,6 +12,7 @@ entirely. Nothing else imports it.
 
 import logging
 from datetime import datetime, timezone
+from datetime import timedelta
 
 from fastapi import APIRouter, HTTPException, status as http_status
 from pydantic import BaseModel, Field
@@ -31,9 +32,11 @@ from app.models import (
     JobService,
     JobStatus,
     JobStatusEvent,
+    JobReport,
     MessageSender,
     NotificationType,
     Payment,
+    PaymentMethod,
     PaymentStatus,
     Rating,
     Worker,
@@ -41,7 +44,11 @@ from app.models import (
 from app.schemas.auth import MessageResponse
 from app.schemas.chat import ChatMessageOut
 from app.schemas.job import ExtraAmountOut
+from app.schemas.misc import OtpRequest
 from app.services.notify import notify
+from app.core.security import hash_password, verify_password
+from app.services.otp import generate_code
+from app.routers.jobs import issue_job_otp
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/dev", tags=["dev-harness"])
@@ -81,6 +88,13 @@ class DevRating(BaseModel):
     feedback: str | None = Field(default=None, max_length=2000)
 
 
+class DevReport(BaseModel):
+    reporter_type: str = Field(pattern="^(worker|customer)$")
+    reporter_id: int
+    category: str = Field(min_length=2, max_length=100)
+    description: str | None = Field(default=None, max_length=2000)
+
+
 # -- what the customer side would do ---------------------------------------
 @router.get("/customers")
 def list_customers(db: DbSession) -> list[dict]:
@@ -103,6 +117,44 @@ def list_workers(db: DbSession) -> list[dict]:
         }
         for w in rows
     ]
+
+
+@router.post("/jobs/ramesh", status_code=http_status.HTTP_201_CREATED)
+def create_ramesh_test_request(db: DbSession) -> dict:
+    """Create one directed test request for Ramesh Kumar (WM1042).
+
+    This is intentionally a worker-test harness route. It does not add customer
+    functionality; it only supplies the request that the worker app needs to test
+    its pending, accept, and reject flows.
+    """
+    ramesh = db.scalars(select(Worker).where(Worker.worker_code == "WM1042")).first()
+    if ramesh is None:
+        raise HTTPException(
+            status_code=http_status.HTTP_409_CONFLICT,
+            detail="Ramesh Kumar (WM1042) was not found — run `python seed.py` first",
+        )
+
+    return create_job_request(
+        DevJobCreate(
+            worker_id=ramesh.id,
+            service_type="Plumbing",
+            service_icon="water-pump",
+            work_details=(
+                "Kitchen sink is leaking from the base of the tap. "
+                "Please bring a replacement washer."
+            ),
+            address="Flat 402, Sunrise Residency, Sector 62",
+            landmark="Opposite the community hall",
+            lat=28.6350,
+            lng=77.3650,
+            base_amount=450,
+            services=[
+                DevServiceLine(name="Tap washer replacement", price=250),
+                DevServiceLine(name="Leak inspection", price=200),
+            ],
+        ),
+        db,
+    )
 
 
 @router.post("/jobs", status_code=http_status.HTTP_201_CREATED)
@@ -172,6 +224,78 @@ def create_job_request(payload: DevJobCreate, db: DbSession) -> dict:
         "customer": customer.name,
         "alerted_workers": [{"id": w.id, "code": w.worker_code} for w in alerted],
     }
+
+
+@router.post("/jobs/{job_id}/verification-codes")
+def issue_verification_code(job_id: int, db: DbSession) -> dict:
+    """Development-only customer simulator for the next customer OTP."""
+    job = db.get(Job, job_id)
+    if job is None:
+        raise HTTPException(status_code=404, detail="Job not found")
+    if job.status == JobStatus.ON_THE_WAY:
+        kind = "arrival"
+    elif job.status == JobStatus.WORK_STARTED:
+        kind = "completion"
+    else:
+        raise HTTPException(status_code=409, detail="No arrival or completion OTP is due")
+    code = issue_job_otp(job, kind)
+    db.commit()
+    return {"job_id": job.id, "kind": kind, "otp": code, "expires_in_minutes": 30}
+
+
+@router.post("/jobs/{job_id}/cash-payment")
+def start_cash_payment(job_id: int, db: DbSession) -> dict:
+    """Development-only customer action that starts cash confirmation."""
+    job = db.get(Job, job_id)
+    if job is None or job.status != JobStatus.COMPLETED or job.worker_id is None:
+        raise HTTPException(status_code=409, detail="Cash payment is available after completion")
+    payment = db.scalars(select(Payment).where(Payment.job_id == job.id)).first()
+    if payment is None:
+        raise HTTPException(status_code=404, detail="Payment record not found")
+    code = generate_code()
+    payment.payment_method = PaymentMethod.CASH
+    payment.cash_otp_hash = hash_password(code)
+    payment.cash_otp_expires_at = datetime.now(timezone.utc) + timedelta(minutes=30)
+    payment.cash_otp_attempts = 0
+    db.commit()
+    return {"payment_id": payment.id, "job_id": job.id, "otp": code, "amount": float(payment.total_amount)}
+
+
+@router.post("/jobs/{job_id}/cash-payment/confirm")
+def confirm_cash_payment(job_id: int, payload: OtpRequest, db: DbSession) -> dict:
+    """Development-only customer confirmation after cash changes hands."""
+    payment = db.scalars(select(Payment).where(Payment.job_id == job_id)).first()
+    if payment is None or payment.payment_method != PaymentMethod.CASH:
+        raise HTTPException(status_code=404, detail="Cash payment not found")
+    if not payment.cash_otp_expires_at or payment.cash_otp_expires_at < datetime.now(timezone.utc):
+        raise HTTPException(status_code=409, detail="Cash confirmation OTP has expired")
+    if payment.cash_otp_attempts >= 5 or not verify_password(payload.otp, payment.cash_otp_hash):
+        payment.cash_otp_attempts += 1
+        db.commit()
+        raise HTTPException(status_code=422, detail="Incorrect cash confirmation OTP")
+    payment.status = PaymentStatus.PAID
+    payment.paid_at = datetime.now(timezone.utc)
+    payment.cash_verified_at = payment.paid_at
+    payment.cash_otp_hash = None
+    db.commit()
+    return {"job_id": job_id, "payment_id": payment.id, "status": "paid", "payment_method": "cash"}
+
+
+@router.post("/jobs/{job_id}/report", status_code=http_status.HTTP_201_CREATED)
+def create_job_report(job_id: int, payload: DevReport, db: DbSession) -> dict:
+    """Development-only report endpoint for either participant."""
+    if db.get(Job, job_id) is None:
+        raise HTTPException(status_code=404, detail="Job not found")
+    report = JobReport(
+        job_id=job_id,
+        reporter_type=payload.reporter_type,
+        reporter_id=payload.reporter_id,
+        category=payload.category,
+        description=payload.description,
+    )
+    db.add(report)
+    db.commit()
+    return {"report_id": report.id, "job_id": job_id, "status": report.status}
 
 
 def _workers_to_alert(db: Session, job: Job) -> list[Worker]:

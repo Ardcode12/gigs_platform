@@ -19,6 +19,7 @@ import { useAuth } from '../../context/AuthContext';
 import { useSocketEvent, WS_EVENTS } from '../../context/SocketContext';
 import { getRequests } from '../../api/jobs';
 import { formatRupees, formatDistance, formatEta, timeAgo } from '../../utils/format';
+import { useT } from '../../i18n/LanguageContext';
 
 /**
  * Spec #3 — the list of open requests, nearest first.
@@ -29,6 +30,7 @@ import { formatRupees, formatDistance, formatEta, timeAgo } from '../../utils/fo
 const JobRequestsListScreen = () => {
   const navigation = useNavigation();
   const { worker } = useAuth();
+  const t = useT();
   const requests = useApi(useCallback(() => getRequests(), []), []);
 
   // A request can arrive while this screen is the one being looked at.
@@ -58,7 +60,7 @@ const JobRequestsListScreen = () => {
             </View>
             <View style={styles.amountWrap}>
               <Text style={styles.amount}>{formatRupees(item.total_amount)}</Text>
-              <Text style={styles.amountLabel}>estimated</Text>
+               <Text style={styles.amountLabel}>{t('worker.estimated')}</Text>
             </View>
           </View>
 
@@ -94,7 +96,7 @@ const JobRequestsListScreen = () => {
                     color={COLORS.textTertiary}
                   />
                   <Text style={[styles.metaText, { color: COLORS.textTertiary }]}>
-                    Distance unknown
+                     {t('job.distanceUnknown')}
                   </Text>
                 </View>
               )}
@@ -107,15 +109,15 @@ const JobRequestsListScreen = () => {
   };
 
   const body = () => {
-    if (requests.loading && !requests.data) return <LoadingState message="Finding work near you…" />;
+     if (requests.loading && !requests.data) return <LoadingState message={t('worker.findingWork')} />;
 
     if (requests.error && !requests.data) {
       return (
         <EmptyState
           tone="error"
-          title="Couldn't load requests"
+           title={t('worker.loadRequests')}
           message={requests.error.message}
-          actionLabel="Try again"
+           actionLabel={t('common.tryAgain')}
           onAction={requests.reload}
         />
       );
@@ -127,13 +129,13 @@ const JobRequestsListScreen = () => {
       return (
         <EmptyState
           icon={worker?.is_available ? 'briefcase-search-outline' : 'sleep'}
-          title={worker?.is_available ? 'No requests right now' : "You're unavailable"}
+           title={worker?.is_available ? t('worker.noRequests') : t('worker.youUnavailable')}
           message={
             worker?.is_available
-              ? "New jobs matching your skills will show up here the moment they're posted."
-              : 'Turn availability on from the Home screen to start receiving job requests.'
+               ? t('worker.matchingRequests')
+               : t('worker.turnAvailability')
           }
-          actionLabel={worker?.is_available ? 'Refresh' : undefined}
+           actionLabel={worker?.is_available ? t('common.retry') : undefined}
           onAction={worker?.is_available ? requests.reload : undefined}
         />
       );
@@ -162,8 +164,8 @@ const JobRequestsListScreen = () => {
   return (
     <View style={styles.container}>
       <ScreenHeader
-        title="Job Requests"
-        subtitle={count > 0 ? `${count} waiting · nearest first` : 'Nothing waiting'}
+         title={t('worker.jobRequests')}
+         subtitle={count > 0 ? t('worker.waitingNearest', { count }) : t('worker.nothingWaiting')}
         onBack={() => navigation.goBack()}
       />
       {body()}

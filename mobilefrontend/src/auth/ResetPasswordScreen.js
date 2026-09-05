@@ -15,10 +15,12 @@ import ScreenHeader from '../components/ScreenHeader';
 import Input from '../components/Input';
 import IconButton from '../components/IconButton';
 import { resetPassword } from '../api/auth';
+import { useT } from '../i18n/LanguageContext';
 
 /** Step two of the reset flow: the 6-digit code plus the new password. */
 const ResetPasswordScreen = () => {
   const navigation = useNavigation();
+  const t = useT();
   const { identifier: initialIdentifier = '', maskedPhone, devCode } = useRoute().params ?? {};
 
   const [identifier, setIdentifier] = useState(initialIdentifier);
@@ -55,17 +57,17 @@ const ResetPasswordScreen = () => {
   if (done) {
     return (
       <View style={styles.container}>
-        <ScreenHeader title="Password Reset" />
+         <ScreenHeader title={t('auth.passwordReset')} />
         <View style={styles.success}>
           <View style={styles.successCircle}>
             <MaterialCommunityIcons name="check-bold" size={44} color={COLORS.white} />
           </View>
-          <Text style={styles.successTitle}>Password updated</Text>
+           <Text style={styles.successTitle}>{t('auth.passwordUpdated')}</Text>
           <Text style={styles.successBody}>
-            You can now sign in with your new password.
+             {t('auth.signInNewPassword')}
           </Text>
           <IconButton
-            label="Back to Sign In"
+             label={t('auth.backSignIn')}
             icon="login"
             onPress={() => navigation.navigate('Login')}
             size="lg"
@@ -80,8 +82,8 @@ const ResetPasswordScreen = () => {
   return (
     <View style={styles.container}>
       <ScreenHeader
-        title="Reset Password"
-        subtitle={maskedPhone ? `Code sent to ${maskedPhone}` : 'Enter the code you received'}
+        title={t('auth.resetTitle')}
+        subtitle={maskedPhone ? t('auth.codeSent', { phone: maskedPhone }) : t('auth.enterCode')}
         onBack={() => navigation.goBack()}
       />
 
@@ -107,48 +109,48 @@ const ResetPasswordScreen = () => {
 
             {!initialIdentifier && (
               <Input
-                label="Worker ID or Phone"
+                label={t('auth.workerIdOrPhone')}
                 value={identifier}
                 onChangeText={setIdentifier}
-                placeholder="WM1042 or 9876543210"
+                placeholder={t('auth.workerIdPlaceholder')}
                 icon="account-outline"
                 maxLength={32}
               />
             )}
 
             <Input
-              label="6-Digit Code"
+              label={t('auth.code')}
               value={code}
               onChangeText={(text) => setCode(text.replace(/[^0-9]/g, ''))}
-              placeholder="······"
+              placeholder={t('auth.codePlaceholder')}
               icon="numeric"
               keyboardType="number-pad"
               maxLength={6}
               textAlign="center"
               letterSpacing={10}
               inputStyle={styles.codeInput}
-              hint="The code expires 10 minutes after it was sent."
+              hint={t('auth.codeHint')}
             />
 
             <Input
-              label="New Password"
+              label={t('auth.newPassword')}
               value={password}
               onChangeText={setPassword}
-              placeholder="At least 6 characters"
+              placeholder={t('auth.passwordCreatePlaceholder')}
               icon="lock-outline"
               secure
               maxLength={128}
             />
 
             <Input
-              label="Confirm New Password"
+              label={t('auth.confirmPassword')}
               value={confirm}
               onChangeText={setConfirm}
-              placeholder="Type it again"
+              placeholder={t('auth.confirmPlaceholder')}
               icon="lock-check-outline"
               secure
               maxLength={128}
-              error={mismatch ? 'The two passwords do not match.' : undefined}
+               error={mismatch ? t('auth.passwordMismatch') : undefined}
               returnKeyType="go"
               onSubmitEditing={handleSubmit}
             />
@@ -156,7 +158,7 @@ const ResetPasswordScreen = () => {
             {!!error && <Text style={styles.error}>{error}</Text>}
 
             <IconButton
-              label="Set New Password"
+               label={t('auth.setPassword')}
               icon="lock-reset"
               onPress={handleSubmit}
               disabled={!canSubmit}

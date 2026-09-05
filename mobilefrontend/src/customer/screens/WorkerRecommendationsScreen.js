@@ -11,10 +11,12 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { COLORS, SPACING, RADIUS, FONT_SIZE, FONT_WEIGHT, SHADOWS } from '../../theme';
+import { useT } from '../../i18n/LanguageContext';
 import { RECOMMENDED_WORKERS, AI_DETECTION_SAMPLE } from '../data/customerMockData';
 
 const WorkerRecommendationsScreen = () => {
   const navigation = useNavigation();
+  const t = useT();
   const [workersList] = useState(RECOMMENDED_WORKERS);
   const [activeFilter, setActiveFilter] = useState('All');
 
@@ -29,7 +31,7 @@ const WorkerRecommendationsScreen = () => {
         <TouchableOpacity style={styles.backButton} onPress={() => navigation.goBack()}>
           <MaterialCommunityIcons name="arrow-left" size={24} color={COLORS.textPrimary} />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>Recommended Workers</Text>
+        <Text style={styles.headerTitle}>{t('customer.recommendedWorkers')}</Text>
         <TouchableOpacity style={styles.filterIconButton}>
           <MaterialCommunityIcons name="tune-variant" size={22} color={COLORS.textPrimary} />
         </TouchableOpacity>
@@ -42,9 +44,9 @@ const WorkerRecommendationsScreen = () => {
             <MaterialCommunityIcons name="flash" size={18} color={COLORS.primary} />
           </View>
           <View style={styles.summaryBarTextWrapper}>
-            <Text style={styles.summaryBarTitle}>Electrical Service (3 Tasks)</Text>
+            <Text style={styles.summaryBarTitle}>{t('customer.electricalTasks', { count: 3 })}</Text>
             <Text style={styles.summaryBarSubtitle}>
-              Fan repair, 2 lights replaced, wiring
+               {t('customer.summaryTasks')}
             </Text>
           </View>
           <View style={styles.summaryBarPriceTag}>
@@ -54,7 +56,7 @@ const WorkerRecommendationsScreen = () => {
 
         {/* Filter Pills */}
         <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.filtersScroll}>
-          {['All', 'Available Now', 'Highest Rated', 'Nearest (under 2 km)'].map((filter) => (
+           {[['All', 'customer.filterAll'], ['Available Now', 'customer.availableNow'], ['Highest Rated', 'customer.highestRated'], ['Nearest (under 2 km)', 'customer.nearest']].map(([filter, key]) => (
             <TouchableOpacity
               key={filter}
               style={[styles.filterChip, activeFilter === filter && styles.filterChipActive]}
@@ -66,14 +68,14 @@ const WorkerRecommendationsScreen = () => {
                   activeFilter === filter && styles.filterChipTextActive,
                 ]}
               >
-                {filter}
+                {t(key)}
               </Text>
             </TouchableOpacity>
           ))}
         </ScrollView>
 
         <Text style={styles.sectionNotice}>
-          Showing {workersList.length} verified cooperative members matching your requirement:
+          {t('customer.showingWorkers', { count: workersList.length })}
         </Text>
 
         {/* Worker Cards List */}
@@ -99,7 +101,7 @@ const WorkerRecommendationsScreen = () => {
                 </View>
 
                 <Text style={styles.workerName}>{worker.name}</Text>
-                <Text style={styles.workerTrade}>{worker.trade}</Text>
+                    <Text style={styles.workerTrade}>{t(worker.tradeKey)}</Text>
 
                 <View style={styles.statsRow}>
                   <View style={styles.ratingBox}>
@@ -109,10 +111,10 @@ const WorkerRecommendationsScreen = () => {
                   </View>
 
                   <Text style={styles.statDot}>•</Text>
-                  <Text style={styles.expText}>{worker.experience} exp</Text>
+                   <Text style={styles.expText}>{worker.experience} {t('customer.exp')}</Text>
 
                   <Text style={styles.statDot}>•</Text>
-                  <Text style={styles.jobsDoneText}>{worker.completedJobs} jobs</Text>
+                   <Text style={styles.jobsDoneText}>{worker.completedJobs} {t('customer.jobs')}</Text>
                 </View>
               </View>
             </View>
@@ -120,7 +122,7 @@ const WorkerRecommendationsScreen = () => {
             {/* Availability Alert */}
             <View style={styles.availabilityRow}>
               <MaterialCommunityIcons name="clock-outline" size={14} color={COLORS.primary} />
-              <Text style={styles.availabilityText}>{worker.availability}</Text>
+                   <Text style={styles.availabilityText}>{t(worker.availabilityKey, worker.availabilityValues)}</Text>
             </View>
 
             {/* Skills Pills */}
@@ -142,7 +144,7 @@ const WorkerRecommendationsScreen = () => {
             {/* Card Footer: Amount and Actions */}
             <View style={styles.cardFooterRow}>
               <View>
-                <Text style={styles.amountLabel}>Cooperative Standard</Text>
+                 <Text style={styles.amountLabel}>{t('customer.coopStandard')}</Text>
                 <Text style={styles.amountValue}>₹{worker.estimatedAmount}</Text>
               </View>
 
@@ -152,7 +154,7 @@ const WorkerRecommendationsScreen = () => {
                   onPress={() => handleSelectWorker(worker)}
                   activeOpacity={0.8}
                 >
-                  <Text style={styles.viewProfileText}>View Profile</Text>
+                   <Text style={styles.viewProfileText}>{t('customer.viewProfile')}</Text>
                 </TouchableOpacity>
 
                 <TouchableOpacity
@@ -160,7 +162,7 @@ const WorkerRecommendationsScreen = () => {
                   onPress={() => navigation.navigate('ConfirmBooking', { worker })}
                   activeOpacity={0.85}
                 >
-                  <Text style={styles.bookNowText}>Book</Text>
+                   <Text style={styles.bookNowText}>{t('customer.book')}</Text>
                   <MaterialCommunityIcons name="chevron-right" size={16} color={COLORS.white} />
                 </TouchableOpacity>
               </View>

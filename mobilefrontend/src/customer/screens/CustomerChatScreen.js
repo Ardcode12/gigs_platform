@@ -15,13 +15,21 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { COLORS, SPACING, RADIUS, FONT_SIZE, FONT_WEIGHT, SHADOWS } from '../../theme';
+import { useT } from '../../i18n/LanguageContext';
 import { RECOMMENDED_WORKERS, CHAT_MESSAGES_SAMPLE } from '../data/customerMockData';
 
 const CustomerChatScreen = () => {
   const navigation = useNavigation();
+  const t = useT();
   const worker = useRoute().params?.worker || RECOMMENDED_WORKERS[0];
   const [messages, setMessages] = useState(CHAT_MESSAGES_SAMPLE);
   const [inputText, setInputText] = useState('');
+
+  const messageText = (message) =>
+    message.textKey ? t(message.textKey) : message.text ?? '';
+
+  const messageTime = (message) =>
+    message.timeKey ? t(message.timeKey) : message.time ?? '';
 
   const handleSend = () => {
     if (!inputText.trim()) return;
@@ -29,17 +37,17 @@ const CustomerChatScreen = () => {
       id: `msg_${Date.now()}`,
       sender: 'customer',
       text: inputText.trim(),
-      time: 'Just now',
+       time: t('customer.chatTimeNow'),
     };
-    setMessages([...messages, newMsg]);
+    setMessages((currentMessages) => [...currentMessages, newMsg]);
     setInputText('');
   };
 
   const handleProtectedCall = () => {
     Alert.alert(
-      'Protected In-App Call',
-      `Calling ${worker.name} via WORKMAT Masked Exchange. Your phone number is strictly shielded and not revealed to the worker.`,
-      [{ text: 'Start Masked Call' }, { text: 'Cancel', style: 'cancel' }]
+      t('customer.chatCallTitle'),
+      t('customer.chatCallBody', { name: worker.name }),
+      [{ text: t('customer.startMaskedCall') }, { text: t('common.cancel'), style: 'cancel' }]
     );
   };
 
@@ -61,7 +69,7 @@ const CustomerChatScreen = () => {
               <Text style={styles.headerWorkerName}>{worker.name}</Text>
               <MaterialCommunityIcons name="check-decagram" size={14} color={COLORS.primary} />
             </View>
-            <Text style={styles.headerStatusText}>Online • South Coop #14</Text>
+             <Text style={styles.headerStatusText}>{t('customer.online')} • South Coop #14</Text>
           </View>
         </TouchableOpacity>
 
@@ -74,7 +82,7 @@ const CustomerChatScreen = () => {
       <View style={styles.privacyBanner}>
         <MaterialCommunityIcons name="shield-lock-outline" size={16} color={COLORS.primary} />
         <Text style={styles.privacyBannerText}>
-          Protected Channel: Phone numbers are hidden on both ends for your safety.
+           {t('customer.protectedChannel')}
         </Text>
       </View>
 
@@ -89,7 +97,7 @@ const CustomerChatScreen = () => {
           showsVerticalScrollIndicator={false}
         >
           <View style={styles.chatStartDateWrapper}>
-            <Text style={styles.chatStartDateText}>Today • Electrical Booking</Text>
+             <Text style={styles.chatStartDateText}>{t('customer.todayBooking')}</Text>
           </View>
 
           {messages.map((item) => {
@@ -107,12 +115,12 @@ const CustomerChatScreen = () => {
                     styles.messageBubble,
                     isMe ? styles.bubbleMeColor : styles.bubbleWorkerColor,
                   ]}
-                >
+                  >
                   <Text style={[styles.messageText, isMe ? styles.textMe : styles.textWorker]}>
-                    {item.text}
+                    {messageText(item)}
                   </Text>
                   <Text style={[styles.messageTime, isMe ? styles.timeMe : styles.timeWorker]}>
-                    {item.time}
+                    {messageTime(item)}
                   </Text>
                 </View>
               </View>
@@ -123,18 +131,13 @@ const CustomerChatScreen = () => {
         {/* Quick Clarification Chips */}
         <View style={styles.quickRepliesContainer}>
           <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-            {[
-              'Are you bringing spare parts?',
-              'What time will you reach?',
-              'I have uploaded a photo.',
-              'Please bring safety ladders.',
-            ].map((chip, idx) => (
+             {['customer.quickParts', 'customer.quickReach', 'customer.quickPhoto', 'customer.quickLadders'].map((key, idx) => (
               <TouchableOpacity
                 key={idx}
                 style={styles.quickChip}
-                onPress={() => setInputText(chip)}
+               onPress={() => setInputText(t(key))}
               >
-                <Text style={styles.quickChipText}>{chip}</Text>
+                 <Text style={styles.quickChipText}>{t(key)}</Text>
               </TouchableOpacity>
             ))}
           </ScrollView>
@@ -148,7 +151,7 @@ const CustomerChatScreen = () => {
 
           <TextInput
             style={styles.chatTextInput}
-            placeholder="Type a message or question..."
+             placeholder={t('customer.chatPlaceholder')}
             placeholderTextColor={COLORS.textTertiary}
             value={inputText}
             onChangeText={setInputText}

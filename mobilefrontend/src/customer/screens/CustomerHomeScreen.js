@@ -11,6 +11,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { COLORS, SPACING, RADIUS, FONT_SIZE, FONT_WEIGHT, SHADOWS } from '../../theme';
+import { useT } from '../../i18n/LanguageContext';
 import {
   CUSTOMER_PROFILE,
   SERVICE_CATEGORIES,
@@ -20,6 +21,7 @@ import {
 
 const CustomerHomeScreen = () => {
   const navigation = useNavigation();
+  const t = useT();
   const defaultAddress = CUSTOMER_PROFILE.savedAddresses.find((a) => a.isDefault) || CUSTOMER_PROFILE.savedAddresses[0];
 
   return (
@@ -33,7 +35,7 @@ const CustomerHomeScreen = () => {
             </View>
             <View style={styles.locationTextWrapper}>
               <View style={styles.locationTitleRow}>
-                <Text style={styles.locationType}>{defaultAddress.type}</Text>
+                <Text style={styles.locationType}>{t('customer.homeAddress')}</Text>
                 <MaterialCommunityIcons name="chevron-down" size={18} color={COLORS.primary} />
               </View>
               <Text style={styles.locationAddress} numberOfLines={1}>
@@ -57,14 +59,14 @@ const CustomerHomeScreen = () => {
           <View style={styles.coopBannerLeft}>
             <View style={styles.coopBadge}>
               <MaterialCommunityIcons name="shield-check" size={14} color={COLORS.white} />
-              <Text style={styles.coopBadgeText}>WORKMAT COOPERATIVE</Text>
+              <Text style={styles.coopBadgeText}>{t('customer.cooperative')}</Text>
             </View>
-            <Text style={styles.coopBannerTitle}>Direct Skilled Cooperative</Text>
-            <Text style={styles.coopBannerSub}>Fair wages to workers • 0% Middleman cuts</Text>
+            <Text style={styles.coopBannerTitle}>{t('customer.directSkilled')}</Text>
+            <Text style={styles.coopBannerSub}>{t('customer.fairWages')}</Text>
           </View>
           <View style={styles.coopSavingsBadge}>
             <Text style={styles.savingsPercent}>₹0</Text>
-            <Text style={styles.savingsLabel}>Platform Fee</Text>
+            <Text style={styles.savingsLabel}>{t('customer.platformFee')}</Text>
           </View>
         </View>
 
@@ -77,10 +79,11 @@ const CustomerHomeScreen = () => {
           <MaterialCommunityIcons name="magnify" size={24} color={COLORS.primary} />
           <View style={styles.searchPlaceholderWrapper}>
             <Text style={styles.searchPlaceholderText}>
-              Search service (e.g. Electrician, Plumber)...
+              {t('customer.searchPrompt')}
             </Text>
             <Text style={styles.searchNaturalHint}>
-              💡 Or describe: “Fan repair & 2 lights...”
+              <MaterialCommunityIcons name="lightbulb-on-outline" size={14} color={COLORS.textSecondary} />{' '}
+               {t('customer.describeHint')}
             </Text>
           </View>
           <View style={styles.searchAiChip}>
@@ -93,10 +96,10 @@ const CustomerHomeScreen = () => {
         {ONGOING_BOOKING && (
           <View style={styles.sectionContainer}>
             <View style={styles.sectionHeaderRow}>
-              <Text style={styles.sectionTitle}>Ongoing Booking</Text>
+              <Text style={styles.sectionTitle}>{t('customer.ongoingBooking')}</Text>
               <View style={styles.livePulseContainer}>
                 <View style={styles.liveDot} />
-                <Text style={styles.liveStatusText}>LIVE TRACKING</Text>
+                <Text style={styles.liveStatusText}>{t('customer.liveTracking')}</Text>
               </View>
             </View>
 
@@ -114,20 +117,20 @@ const CustomerHomeScreen = () => {
                   <View style={styles.ongoingStatusPill}>
                     <MaterialCommunityIcons name="motorbike" size={14} color={COLORS.primary} />
                     <Text style={styles.ongoingStatusPillText}>
-                      {ONGOING_BOOKING.status}
+                      {t('status.on_the_way')}
                     </Text>
                   </View>
                   <Text style={styles.ongoingWorkerName}>
                     {ONGOING_BOOKING.worker.name}
                   </Text>
                   <Text style={styles.ongoingServiceType}>
-                    {ONGOING_BOOKING.serviceType}
+                    {t('customer.electricalRepair')}
                   </Text>
                 </View>
 
                 <View style={styles.etaBox}>
                   <Text style={styles.etaNumber}>15</Text>
-                  <Text style={styles.etaUnit}>MINS</Text>
+                    <Text style={styles.etaUnit}>{t('customer.mins')}</Text>
                 </View>
               </View>
 
@@ -135,7 +138,7 @@ const CustomerHomeScreen = () => {
 
               <View style={styles.ongoingCardBottom}>
                 <View style={styles.otpWrapper}>
-                  <Text style={styles.otpLabel}>Start OTP: </Text>
+                  <Text style={styles.otpLabel}>{t('customer.startOtp')} </Text>
                   <Text style={styles.otpValue}>{ONGOING_BOOKING.otpCode}</Text>
                 </View>
 
@@ -143,7 +146,7 @@ const CustomerHomeScreen = () => {
                   style={styles.trackButton}
                   onPress={() => navigation.navigate('TrackBooking')}
                 >
-                  <Text style={styles.trackButtonText}>Track Live</Text>
+                  <Text style={styles.trackButtonText}>{t('customer.trackLive')}</Text>
                   <MaterialCommunityIcons name="arrow-right" size={16} color={COLORS.white} />
                 </TouchableOpacity>
               </View>
@@ -154,9 +157,9 @@ const CustomerHomeScreen = () => {
         {/* Service Categories Grid */}
         <View style={styles.sectionContainer}>
           <View style={styles.sectionHeaderRow}>
-            <Text style={styles.sectionTitle}>Service Categories</Text>
+              <Text style={styles.sectionTitle}>{t('customer.serviceCategories')}</Text>
             <TouchableOpacity onPress={() => navigation.navigate('SearchService')}>
-              <Text style={styles.seeAllText}>View All</Text>
+              <Text style={styles.seeAllText}>{t('customer.viewAll')}</Text>
             </TouchableOpacity>
           </View>
 
@@ -165,15 +168,15 @@ const CustomerHomeScreen = () => {
               <TouchableOpacity
                 key={cat.id}
                 style={styles.categoryCard}
-                onPress={() => navigation.navigate('SearchService', { category: cat.name })}
+                onPress={() => navigation.navigate('SearchService', { category: t(cat.nameKey) })}
                 activeOpacity={0.8}
               >
                 <View style={[styles.categoryIconCircle, { backgroundColor: cat.bg }]}>
                   <MaterialCommunityIcons name={cat.icon} size={28} color={cat.color} />
                 </View>
-                <Text style={styles.categoryName}>{cat.name}</Text>
+                <Text style={styles.categoryName}>{t(cat.nameKey)}</Text>
                 <Text style={styles.categoryCount} numberOfLines={1}>
-                  {cat.count.split(' ')[0]} verified
+                  {t('customer.nearbyWorkers', { count: cat.workerCount })}
                 </Text>
               </TouchableOpacity>
             ))}
@@ -183,8 +186,8 @@ const CustomerHomeScreen = () => {
         {/* Popular Services Section */}
         <View style={styles.sectionContainer}>
           <View style={styles.sectionHeaderRow}>
-            <Text style={styles.sectionTitle}>Popular Services</Text>
-            <Text style={styles.subTagline}>Transparent cooperative rates</Text>
+            <Text style={styles.sectionTitle}>{t('customer.popularServices')}</Text>
+            <Text style={styles.subTagline}>{t('customer.transparentRates')}</Text>
           </View>
 
           <ScrollView
@@ -203,15 +206,15 @@ const CustomerHomeScreen = () => {
                   <MaterialCommunityIcons name={item.icon} size={26} color={COLORS.primary} />
                 </View>
                 <Text style={styles.popularName} numberOfLines={2}>
-                  {item.name}
+                  {t(item.nameKey)}
                 </Text>
                 <View style={styles.popularRatingRow}>
                   <MaterialCommunityIcons name="star" size={14} color="#F59E0B" />
                   <Text style={styles.popularRatingText}>{item.rating}</Text>
-                  <Text style={styles.popularCategoryBadge}>• {item.category}</Text>
+                  <Text style={styles.popularCategoryBadge}>• {t(item.categoryKey)}</Text>
                 </View>
                 <View style={styles.popularPriceRow}>
-                  <Text style={styles.popularPrice}>{item.price}</Text>
+                  <Text style={styles.popularPrice}>{t('customer.fromPrice', { amount: `₹${item.price}` })}</Text>
                   <View style={styles.addPill}>
                     <MaterialCommunityIcons name="plus" size={16} color={COLORS.primary} />
                   </View>
@@ -231,9 +234,9 @@ const CustomerHomeScreen = () => {
             <MaterialCommunityIcons name="robot" size={28} color={COLORS.white} />
           </View>
           <View style={styles.aiHelperTextWrap}>
-            <Text style={styles.aiHelperTitle}>Describe in Plain Words ✨</Text>
+            <Text style={styles.aiHelperTitle}>{t('customer.describePlain')}</Text>
             <Text style={styles.aiHelperDesc}>
-              Say “Need fan repair & 2 light bulbs” — our AI detects all services and calculates fair prices instantly.
+              {t('customer.aiDescription')}
             </Text>
           </View>
           <MaterialCommunityIcons name="chevron-right" size={24} color={COLORS.primary} />

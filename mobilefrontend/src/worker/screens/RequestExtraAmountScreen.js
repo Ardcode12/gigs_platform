@@ -20,6 +20,7 @@ import useApi from '../../hooks/useApi';
 import { useSocketEvent, WS_EVENTS } from '../../context/SocketContext';
 import { getJob, requestExtraAmount } from '../../api/jobs';
 import { formatRupees, formatDate } from '../../utils/format';
+import { useT } from '../../i18n/LanguageContext';
 
 const QUICK_AMOUNTS = [100, 200, 300, 500];
 
@@ -36,6 +37,7 @@ const RequestExtraAmountScreen = () => {
   const [extraAmount, setExtraAmount] = useState('');
   const [reason, setReason] = useState('');
   const [sending, setSending] = useState(false);
+  const t = useT();
 
   const request = useApi(useCallback(() => getJob(jobId), [jobId]), [jobId]);
   const job = request.data;
@@ -54,11 +56,11 @@ const RequestExtraAmountScreen = () => {
 
   const handleSend = async () => {
     if (numericExtra <= 0) {
-      Alert.alert('Enter Amount', 'Please enter an extra amount to request.');
+      Alert.alert(t('worker.enterAmount'), t('worker.enterAmountBody'));
       return;
     }
     if (!reason.trim()) {
-      Alert.alert('Enter Reason', 'Please provide a reason for the extra amount.');
+      Alert.alert(t('worker.enterReason'), t('worker.enterReasonBody'));
       return;
     }
 
@@ -66,13 +68,13 @@ const RequestExtraAmountScreen = () => {
     try {
       await requestExtraAmount(jobId, numericExtra, reason.trim());
       Alert.alert(
-        'Request sent',
-        `${formatRupees(numericExtra)} has been sent for the customer's approval. You'll be notified when they decide.`,
-        [{ text: 'OK', onPress: () => navigation.goBack() }],
+        t('worker.requestSent'),
+        t('worker.requestSentBody', { amount: formatRupees(numericExtra) }),
+        [{ text: t('common.ok'), onPress: () => navigation.goBack() }],
       );
     } catch (error) {
       // 409 = the job isn't in progress, or another request is already pending.
-      Alert.alert('Could not send the request', error.message);
+      Alert.alert(t('worker.couldNotCall'), error.message);
       request.refetch();
     } finally {
       setSending(false);
@@ -84,7 +86,7 @@ const RequestExtraAmountScreen = () => {
       <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
         <MaterialCommunityIcons name="arrow-left" size={24} color={COLORS.textPrimary} />
       </TouchableOpacity>
-      <Text style={styles.headerTitle}>Request Extra Amount</Text>
+      <Text style={styles.headerTitle}>{t('worker.requestExtra')}</Text>
       <View style={{ width: 40 }} />
     </View>
   );
@@ -106,9 +108,9 @@ const RequestExtraAmountScreen = () => {
         {header}
         <EmptyState
           tone="error"
-          title="Couldn't load the job"
+          title={t('job.loadFailed')}
           message={request.error?.message}
-          actionLabel="Try again"
+          actionLabel={t('common.tryAgain')}
           onAction={request.reload}
         />
       </View>
@@ -135,7 +137,7 @@ const RequestExtraAmountScreen = () => {
               <MaterialCommunityIcons name="receipt" size={24} color={COLORS.primary} />
             </View>
             <View style={{ flex: 1 }}>
-              <Text style={styles.amountLabel}>Base Estimated Amount</Text>
+              <Text style={styles.amountLabel}>{t('worker.baseEstimated')}</Text>
               <Text style={styles.amountValue}>{formatRupees(baseAmount)}</Text>
             </View>
           </View>
@@ -146,20 +148,19 @@ const RequestExtraAmountScreen = () => {
           <Card style={[styles.card, styles.pendingCard]}>
             <View style={styles.pendingHead}>
               <MaterialCommunityIcons name="clock-alert-outline" size={26} color="#B45309" />
-              <Text style={styles.pendingTitle}>Waiting for the customer</Text>
+              <Text style={styles.pendingTitle}>{t('worker.waitingCustomer')}</Text>
             </View>
             <Text style={styles.pendingAmount}>{formatRupees(pending.amount)}</Text>
             <Text style={styles.pendingReason}>{pending.reason}</Text>
             <Text style={styles.pendingHint}>
-              You&apos;ll get a notification the moment they approve or reject it. Only approved
-              extras are added to the job total.
+               {t('worker.extraHint')}
             </Text>
           </Card>
         ) : (
           <>
             {/* Extra Amount Input */}
             <Card style={styles.card}>
-              <Text style={styles.inputLabel}>Extra Amount (₹)</Text>
+              <Text style={styles.inputLabel}>{t('worker.extraInput')}</Text>
               <View style={styles.amountInputWrap}>
                 <Text style={styles.rupeeSign}>₹</Text>
                 <TextInput
@@ -199,10 +200,10 @@ const RequestExtraAmountScreen = () => {
 
             {/* Reason Input */}
             <Card style={styles.card}>
-              <Text style={styles.inputLabel}>Reason for Extra Amount</Text>
+              <Text style={styles.inputLabel}>{t('worker.reasonExtra')}</Text>
               <TextInput
                 style={styles.reasonInput}
-                placeholder="E.g., Extra materials needed, additional repair work..."
+                placeholder={t('worker.reasonPlaceholder')}
                 placeholderTextColor={COLORS.textTertiary}
                 value={reason}
                 onChangeText={setReason}
@@ -217,26 +218,26 @@ const RequestExtraAmountScreen = () => {
             {/* Total Summary */}
             <Card style={[styles.card, styles.totalCard]}>
               <View style={styles.summaryRow}>
-                <Text style={styles.summaryLabel}>Base Amount</Text>
+                <Text style={styles.summaryLabel}>{t('job.baseAmount')}</Text>
                 <Text style={styles.summaryValue}>{formatRupees(baseAmount)}</Text>
               </View>
               {job.amounts.extra_amount > 0 && (
                 <View style={styles.summaryRow}>
-                  <Text style={styles.summaryLabel}>Already approved</Text>
+                  <Text style={styles.summaryLabel}>{t('worker.alreadyApproved')}</Text>
                   <Text style={[styles.summaryValue, { color: COLORS.success }]}>
                     +{formatRupees(job.amounts.extra_amount)}
                   </Text>
                 </View>
               )}
               <View style={styles.summaryRow}>
-                <Text style={styles.summaryLabel}>Extra Amount</Text>
+                <Text style={styles.summaryLabel}>{t('job.extraAmount')}</Text>
                 <Text style={[styles.summaryValue, { color: COLORS.warning }]}>
                   +{formatRupees(numericExtra)}
                 </Text>
               </View>
               <View style={styles.divider} />
               <View style={styles.summaryRow}>
-                <Text style={styles.totalLabel}>Requested Total</Text>
+                <Text style={styles.totalLabel}>{t('worker.requestedTotal')}</Text>
                 <Text style={styles.totalValue}>
                   {formatRupees(requestedTotal + job.amounts.extra_amount)}
                 </Text>
@@ -257,7 +258,7 @@ const RequestExtraAmountScreen = () => {
         {/* Earlier requests on this job */}
         {history.filter((item) => item.status !== 'pending').length > 0 && (
           <View style={styles.historyBlock}>
-            <Text style={styles.historyTitle}>Earlier requests</Text>
+             <Text style={styles.historyTitle}>{t('worker.earlierRequests')}</Text>
             {history
               .filter((item) => item.status !== 'pending')
               .map((item) => {
@@ -301,7 +302,7 @@ const RequestExtraAmountScreen = () => {
             ) : (
               <>
                 <MaterialCommunityIcons name="send" size={22} color={COLORS.white} />
-                <Text style={styles.sendBtnText}>Send Request to Customer</Text>
+                 <Text style={styles.sendBtnText}>{t('worker.sendCustomer')}</Text>
               </>
             )}
           </TouchableOpacity>

@@ -12,12 +12,14 @@ import EmptyState from '../../components/EmptyState';
 import useApi from '../../hooks/useApi';
 import { getRatings, getRatingSummary } from '../../api/ratings';
 import { formatDate } from '../../utils/format';
+import { useT } from '../../i18n/LanguageContext';
 
 const STAR_ROWS = [5, 4, 3, 2, 1];
 
 /** Spec #11 — the overall rating, how it breaks down, and what customers wrote. */
 const RatingsScreen = () => {
   const navigation = useNavigation();
+  const t = useT();
   const ratings = useApi(
     useCallback(
       () =>
@@ -33,8 +35,8 @@ const RatingsScreen = () => {
   if (ratings.loading && !ratings.data) {
     return (
       <View style={styles.container}>
-        <ScreenHeader title="Ratings & Feedback" onBack={() => navigation.goBack()} />
-        <LoadingState message="Loading your ratings…" />
+         <ScreenHeader title={t('worker.ratings')} onBack={() => navigation.goBack()} />
+         <LoadingState message={t('worker.loadingRatings')} />
       </View>
     );
   }
@@ -42,12 +44,12 @@ const RatingsScreen = () => {
   if (!ratings.data) {
     return (
       <View style={styles.container}>
-        <ScreenHeader title="Ratings & Feedback" onBack={() => navigation.goBack()} />
+         <ScreenHeader title={t('worker.ratings')} onBack={() => navigation.goBack()} />
         <EmptyState
           tone="error"
-          title="Couldn't load ratings"
+           title={t('worker.loadRatings')}
           message={ratings.error?.message}
-          actionLabel="Try again"
+           actionLabel={t('common.tryAgain')}
           onAction={ratings.reload}
         />
       </View>
@@ -60,8 +62,8 @@ const RatingsScreen = () => {
   return (
     <View style={styles.container}>
       <ScreenHeader
-        title="Ratings & Feedback"
-        subtitle={total > 0 ? `${total} ${total === 1 ? 'rating' : 'ratings'}` : 'No ratings yet'}
+         title={t('worker.ratings')}
+         subtitle={total > 0 ? t(total === 1 ? 'worker.rating_one' : 'worker.rating_other', { count: total }) : t('worker.noRatings')}
         onBack={() => navigation.goBack()}
       />
 
@@ -83,7 +85,7 @@ const RatingsScreen = () => {
               <Text style={styles.overallValue}>{(summary.overall ?? 0).toFixed(1)}</Text>
               <RatingStars rating={summary.overall} size={18} />
               <Text style={styles.overallCount}>
-                {total} {total === 1 ? 'review' : 'reviews'}
+                 {t(total === 1 ? 'worker.review_one' : 'worker.review_other', { count: total })}
               </Text>
             </View>
 
@@ -107,7 +109,7 @@ const RatingsScreen = () => {
         </Card>
 
         {/* Feedback list */}
-        <Text style={styles.sectionTitle}>What customers said</Text>
+         <Text style={styles.sectionTitle}>{t('worker.whatCustomersSaid')}</Text>
 
         {list.length === 0 ? (
           <Card style={styles.emptyCard}>
@@ -116,9 +118,9 @@ const RatingsScreen = () => {
               size={30}
               color={COLORS.textTertiary}
             />
-            <Text style={styles.emptyTitle}>No feedback yet</Text>
+             <Text style={styles.emptyTitle}>{t('worker.noFeedback')}</Text>
             <Text style={styles.emptyText}>
-              Complete jobs and your customers&apos; ratings will appear here.
+               {t('worker.feedbackBody')}
             </Text>
           </Card>
         ) : (

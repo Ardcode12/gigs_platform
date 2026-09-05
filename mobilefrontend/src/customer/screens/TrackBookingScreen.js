@@ -12,18 +12,20 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { COLORS, SPACING, RADIUS, FONT_SIZE, FONT_WEIGHT, SHADOWS } from '../../theme';
+import { useT } from '../../i18n/LanguageContext';
 import { ONGOING_BOOKING } from '../data/customerMockData';
 
 const TRACKING_STEPS = [
-  { id: 1, title: 'Booking Confirmed', sub: 'Assigned to Ramesh Kumar', icon: 'check-circle' },
-  { id: 2, title: 'Worker On The Way', sub: '1.4 km away • Arriving in 15 mins', icon: 'motorbike' },
-  { id: 3, title: 'Worker Arrived', sub: 'Share OTP 4829 to start service', icon: 'map-marker-check' },
-  { id: 4, title: 'Work Started', sub: 'Inspection, repair & wiring in progress', icon: 'tools' },
-  { id: 5, title: 'Work Completed', sub: 'Review, payment & digital receipt', icon: 'star-check' },
+  { id: 1, titleKey: 'customer.bookingConfirmedStep', subKey: 'customer.assignedTo', icon: 'check-circle' },
+  { id: 2, titleKey: 'customer.workerOnWay', subKey: 'customer.distanceArriving', icon: 'motorbike' },
+  { id: 3, titleKey: 'customer.workerArrived', subKey: 'customer.shareOtpStep', icon: 'map-marker-check' },
+  { id: 4, titleKey: 'customer.workStarted', subKey: 'customer.inspectionProgress', icon: 'tools' },
+  { id: 5, titleKey: 'customer.workCompleted', subKey: 'customer.reviewPayment', icon: 'star-check' },
 ];
 
 const TrackBookingScreen = () => {
   const navigation = useNavigation();
+  const t = useT();
   const [currentStep, setCurrentStep] = useState(2); // 2: Worker On The Way
   const booking = ONGOING_BOOKING;
 
@@ -37,9 +39,8 @@ const TrackBookingScreen = () => {
 
   const handleCallWorker = () => {
     Alert.alert(
-      'Masked Call',
-      `Calling ${booking.worker.name} through WORKMAT protected line.`,
-      [{ text: 'Start Call' }, { text: 'Cancel', style: 'cancel' }]
+       t('customer.maskedCall'), t('customer.callingWorker', { name: booking.worker.name }),
+       [{ text: t('customer.startCall') }, { text: t('common.cancel'), style: 'cancel' }]
     );
   };
 
@@ -50,10 +51,10 @@ const TrackBookingScreen = () => {
         <TouchableOpacity style={styles.backButton} onPress={() => navigation.goBack()}>
           <MaterialCommunityIcons name="arrow-left" size={24} color={COLORS.textPrimary} />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>Live Tracking</Text>
+         <Text style={styles.headerTitle}>{t('customer.liveTrackingTitle')}</Text>
         <TouchableOpacity
           style={styles.helpButton}
-          onPress={() => Alert.alert('Support', 'Connecting with Cooperative Support Agent...')}
+           onPress={() => Alert.alert(t('customer.support'), t('customer.supportConnecting'))}
         >
           <MaterialCommunityIcons name="lifebuoy" size={22} color={COLORS.primary} />
         </TouchableOpacity>
@@ -74,7 +75,7 @@ const TrackBookingScreen = () => {
               <View style={styles.homeMarkerPin}>
                 <MaterialCommunityIcons name="home-account" size={18} color={COLORS.white} />
               </View>
-              <Text style={styles.homeMarkerText}>Your Home</Text>
+               <Text style={styles.homeMarkerText}>{t('customer.yourHome')}</Text>
             </View>
 
             {/* Moving Worker Marker */}
@@ -83,23 +84,23 @@ const TrackBookingScreen = () => {
                 <MaterialCommunityIcons name="motorbike" size={18} color={COLORS.white} />
               </View>
               <View style={styles.workerPulseCircle} />
-              <Text style={styles.workerMarkerText}>Ramesh (1.4 km)</Text>
+               <Text style={styles.workerMarkerText}>{t('customer.workerDistance', { name: booking.worker.name, distance: '1.4 km' })}</Text>
             </View>
 
             {/* Floating Live Badge */}
             <View style={styles.liveTrackingPill}>
               <View style={styles.liveGreenDot} />
-              <Text style={styles.liveTrackingPillText}>LIVE GPS TRACKING</Text>
+               <Text style={styles.liveTrackingPillText}>{t('customer.liveGps')}</Text>
             </View>
 
             {/* Floating ETA Card */}
             <View style={styles.etaFloatingCard}>
               <View>
-                <Text style={styles.etaTitle}>Estimated Arrival</Text>
-                <Text style={styles.etaTimeText}>3:45 PM (in 15 mins)</Text>
+                 <Text style={styles.etaTitle}>{t('customer.estimatedArrival')}</Text>
+                 <Text style={styles.etaTimeText}>{t('customer.arriving', { time: '3:45 PM', minutes: 15 })}</Text>
               </View>
               <View style={styles.speedPill}>
-                <Text style={styles.speedText}>Normal Traffic</Text>
+                 <Text style={styles.speedText}>{t('customer.normalTraffic')}</Text>
               </View>
             </View>
           </View>
@@ -108,9 +109,9 @@ const TrackBookingScreen = () => {
         {/* Start OTP Code Card */}
         <View style={styles.otpCard}>
           <View style={styles.otpLeft}>
-            <Text style={styles.otpTitle}>Share Start OTP with Worker</Text>
+             <Text style={styles.otpTitle}>{t('customer.shareOtp')}</Text>
             <Text style={styles.otpDesc}>
-              Do not share OTP until the worker arrives at your doorstep.
+               {t('customer.otpWarning')}
             </Text>
           </View>
           <View style={styles.otpCodeContainer}>
@@ -126,7 +127,7 @@ const TrackBookingScreen = () => {
               <Text style={styles.workerName}>{booking.worker.name}</Text>
               <MaterialCommunityIcons name="check-decagram" size={16} color={COLORS.primary} />
             </View>
-            <Text style={styles.workerTrade}>{booking.worker.trade}</Text>
+            <Text style={styles.workerTrade}>{t(booking.worker.tradeKey)}</Text>
             <Text style={styles.coopBranch}>{booking.worker.coopBranch}</Text>
           </View>
 
@@ -157,8 +158,8 @@ const TrackBookingScreen = () => {
             <MaterialCommunityIcons name="cash-plus" size={20} color="#B45309" />
           </View>
           <View style={styles.extraBannerTextWrap}>
-            <Text style={styles.extraBannerTitle}>Extra Amount Requested (₹100)</Text>
-            <Text style={styles.extraBannerSub}>Worker requested for additional wiring. Tap to review.</Text>
+            <Text style={styles.extraBannerTitle}>{t('customer.extraRequested', { amount: '₹100' })}</Text>
+            <Text style={styles.extraBannerSub}>{t('customer.extraRequestedBody')}</Text>
           </View>
           <MaterialCommunityIcons name="chevron-right" size={22} color="#B45309" />
         </TouchableOpacity>
@@ -166,10 +167,10 @@ const TrackBookingScreen = () => {
         {/* 5-Step Progress Stepper */}
         <View style={styles.progressCard}>
           <View style={styles.progressHeaderRow}>
-            <Text style={styles.progressCardTitle}>Booking Progress</Text>
+            <Text style={styles.progressCardTitle}>{t('customer.bookingProgress')}</Text>
             <TouchableOpacity onPress={handleNextSimulationStep}>
               <Text style={styles.simLink}>
-                {currentStep < 5 ? 'Advance Step (Simulate)' : 'Proceed to Payment →'}
+                 {currentStep < 5 ? t('customer.advanceStep') : t('customer.proceedPayment')}
               </Text>
             </TouchableOpacity>
           </View>
@@ -216,15 +217,19 @@ const TrackBookingScreen = () => {
                           (isCompleted || isCurrent) && styles.stepTitleActive,
                         ]}
                       >
-                        {step.title}
+                         {t(step.titleKey)}
                       </Text>
                       {isCurrent && (
                         <View style={styles.currentActivePill}>
-                          <Text style={styles.currentActiveText}>IN PROGRESS</Text>
+                           <Text style={styles.currentActiveText}>{t('customer.inProgress')}</Text>
                         </View>
                       )}
                     </View>
-                    <Text style={styles.stepSubtitle}>{step.sub}</Text>
+                     <Text style={styles.stepSubtitle}>{
+                       step.id === 1 ? t(step.subKey, { name: booking.worker.name }) :
+                       step.id === 2 ? t(step.subKey, { distance: '1.4 km', minutes: 15 }) :
+                       step.id === 3 ? t(step.subKey, { otp: booking.otpCode }) : t(step.subKey)
+                     }</Text>
                   </View>
                 </View>
               );
@@ -240,7 +245,7 @@ const TrackBookingScreen = () => {
             style={styles.paymentCTAButton}
             onPress={() => navigation.navigate('Payment', { amount: 650 })}
           >
-            <Text style={styles.paymentCTAText}>Work Completed • Pay ₹650</Text>
+             <Text style={styles.paymentCTAText}>{t('customer.workCompletedPay', { amount: '₹650' })}</Text>
             <MaterialCommunityIcons name="arrow-right" size={20} color={COLORS.white} />
           </TouchableOpacity>
         </View>

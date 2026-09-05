@@ -26,6 +26,7 @@ import {
   STATUS_TONE,
   ACTIVE_STATUSES,
 } from '../../constants/jobSteps';
+import { useT } from '../../i18n/LanguageContext';
 
 const FILTERS = [
   { key: 'all', label: 'All' },
@@ -35,6 +36,7 @@ const FILTERS = [
 
 const JobsScreen = () => {
   const navigation = useNavigation();
+  const t = useT();
   const [filter, setFilter] = useState('all');
 
   const jobs = useApi(
@@ -75,21 +77,21 @@ const JobsScreen = () => {
     <View style={styles.container}>
       <StatusBar barStyle="light-content" backgroundColor={COLORS.primary} />
       <View style={styles.header}>
-        <Text style={styles.headerTitle}>My Jobs</Text>
+        <Text style={styles.headerTitle}>{t('worker.myJobs')}</Text>
       </View>
       {children}
     </View>
   );
 
-  if (jobs.loading && !jobs.data) return chrome(<LoadingState message="Loading your jobs…" />);
+  if (jobs.loading && !jobs.data) return chrome(<LoadingState message={t('worker.loadingJobs')} />);
 
   if (!jobs.data) {
     return chrome(
       <EmptyState
         tone="error"
-        title="Couldn't load your jobs"
+        title={t('worker.loadYourJobs')}
         message={jobs.error?.message}
-        actionLabel="Try again"
+        actionLabel={t('common.tryAgain')}
         onAction={jobs.reload}
       />,
     );
@@ -101,24 +103,24 @@ const JobsScreen = () => {
 
       {/* Header */}
       <View style={styles.header}>
-        <Text style={styles.headerTitle}>My Jobs</Text>
+        <Text style={styles.headerTitle}>{t('worker.myJobs')}</Text>
       </View>
 
       {/* Quick Stats */}
       <View style={styles.statsBar}>
         <View style={styles.statItem}>
           <Text style={styles.statNum}>{activeCount}</Text>
-          <Text style={styles.statText}>Active</Text>
+          <Text style={styles.statText}>{t('worker.active')}</Text>
         </View>
         <View style={styles.statDivider} />
         <View style={styles.statItem}>
           <Text style={styles.statNum}>{completed.length}</Text>
-          <Text style={styles.statText}>Completed</Text>
+          <Text style={styles.statText}>{t('worker.completed')}</Text>
         </View>
         <View style={styles.statDivider} />
         <View style={styles.statItem}>
           <Text style={styles.statNum}>{history.length}</Text>
-          <Text style={styles.statText}>Total</Text>
+          <Text style={styles.statText}>{t('worker.total')}</Text>
         </View>
       </View>
 
@@ -132,7 +134,7 @@ const JobsScreen = () => {
             activeOpacity={0.8}
           >
             <Text style={[styles.filterText, filter === item.key && styles.filterTextActive]}>
-              {item.label}
+              {t(`worker.${item.key}`)}
             </Text>
           </TouchableOpacity>
         ))}
@@ -153,7 +155,7 @@ const JobsScreen = () => {
         {/* Active Job Section */}
         {!!current && filter !== 'completed' && (
           <>
-            <Text style={styles.sectionTitle}>Active Job</Text>
+             <Text style={styles.sectionTitle}>{t('worker.activeJob')}</Text>
 
             <TouchableOpacity
               activeOpacity={0.85}
@@ -162,7 +164,7 @@ const JobsScreen = () => {
               <Card style={styles.activeJobCard}>
                 <View style={styles.activeJobHeader}>
                   <StatusBadge
-                    label={(STATUS_LABEL[current.status] ?? '').toUpperCase()}
+                    label={t(STATUS_LABEL[current.status] ?? 'common.unknown').toUpperCase()}
                     color={STATUS_TONE[current.status] ?? 'warning'}
                     size="sm"
                   />
@@ -199,11 +201,11 @@ const JobsScreen = () => {
                   <View style={styles.stepIndicator}>
                     <View style={[styles.stepCircle, { backgroundColor: COLORS.warning }]} />
                     <Text style={styles.stepLabel}>
-                      {JOB_STEPS[current.current_step] ?? STATUS_LABEL[current.status]}
+                      {t(JOB_STEPS[current.current_step] ?? STATUS_LABEL[current.status] ?? 'common.unknown')}
                     </Text>
                   </View>
                   <View style={styles.tapView}>
-                    <Text style={styles.tapText}>Tap to view</Text>
+                    <Text style={styles.tapText}>{t('worker.tapView')}</Text>
                     <MaterialCommunityIcons name="arrow-right" size={16} color={COLORS.primary} />
                   </View>
                 </View>
@@ -214,7 +216,7 @@ const JobsScreen = () => {
 
         {/* History */}
         <Text style={[styles.sectionTitle, !!current && { marginTop: SPACING.xl }]}>
-          {filter === 'completed' ? 'Completed Jobs' : filter === 'active' ? 'In Progress' : 'History'}
+          {filter === 'completed' ? t('worker.completedJobs') : filter === 'active' ? t('worker.inProgress') : t('worker.history')}
         </Text>
 
         {visible.length === 0 ? (
@@ -224,11 +226,11 @@ const JobsScreen = () => {
               size={30}
               color={COLORS.textTertiary}
             />
-            <Text style={styles.emptyTitle}>Nothing here yet</Text>
+            <Text style={styles.emptyTitle}>{t('worker.nothingYet')}</Text>
             <Text style={styles.emptyText}>
               {filter === 'completed'
-                ? 'Jobs you finish will be listed here with what you earned.'
-                : 'Accepted and finished jobs show up on this tab.'}
+                ? t('worker.finishedListed')
+                : t('worker.acceptedFinished')}
             </Text>
           </Card>
         ) : (
@@ -266,7 +268,7 @@ const JobsScreen = () => {
                     <View style={styles.completedRight}>
                       <Text style={styles.completedAmount}>{formatRupees(job.total_amount)}</Text>
                       <StatusBadge
-                        label={done ? 'Done' : (STATUS_LABEL[job.status] ?? job.status)}
+                         label={done ? t('worker.completed') : t(STATUS_LABEL[job.status] ?? 'common.unknown')}
                         color={STATUS_TONE[job.status] ?? 'neutral'}
                         size="sm"
                       />

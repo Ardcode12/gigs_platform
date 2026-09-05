@@ -61,6 +61,15 @@ class Job(Base):
     accepted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
+    arrival_otp_hash: Mapped[str | None] = mapped_column(String(255))
+    arrival_otp_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    arrival_otp_attempts: Mapped[int] = mapped_column(default=0, nullable=False)
+    arrival_verified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    completion_otp_hash: Mapped[str | None] = mapped_column(String(255))
+    completion_otp_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    completion_otp_attempts: Mapped[int] = mapped_column(default=0, nullable=False)
+    completion_verified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
     customer: Mapped["Customer"] = relationship(lazy="joined")  # noqa: F821
     services: Mapped[list["JobService"]] = relationship(
         back_populates="job", cascade="all, delete-orphan", order_by="JobService.id"

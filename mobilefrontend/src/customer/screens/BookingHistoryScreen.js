@@ -12,10 +12,12 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { COLORS, SPACING, RADIUS, FONT_SIZE, FONT_WEIGHT, SHADOWS } from '../../theme';
+import { useT } from '../../i18n/LanguageContext';
 import { BOOKING_HISTORY_SAMPLE } from '../data/customerMockData';
 
 const BookingHistoryScreen = () => {
   const navigation = useNavigation();
+  const t = useT();
   const [activeTab, setActiveTab] = useState('completed'); // 'completed' | 'cancelled'
   const [selectedInvoice, setSelectedInvoice] = useState(null);
 
@@ -24,14 +26,13 @@ const BookingHistoryScreen = () => {
 
   const handleBookAgain = (booking) => {
     Alert.alert(
-      'Book Service Again',
-      `Re-book ${booking.serviceType} with cooperative technician?`,
+       t('booking.rebookTitle'), t('booking.rebookBody', { service: booking.serviceType }),
       [
         {
-          text: 'Proceed',
+           text: t('common.proceed'),
           onPress: () => navigation.navigate('SearchService', { category: booking.serviceType }),
         },
-        { text: 'Cancel', style: 'cancel' },
+         { text: t('common.cancel'), style: 'cancel' },
       ]
     );
   };
@@ -40,7 +41,7 @@ const BookingHistoryScreen = () => {
     <SafeAreaView style={styles.safeArea}>
       {/* Header */}
       <View style={styles.headerRow}>
-        <Text style={styles.headerTitle}>My Bookings & Invoices</Text>
+         <Text style={styles.headerTitle}>{t('booking.title')}</Text>
         <TouchableOpacity
           style={styles.filterButton}
           onPress={() => navigation.navigate('Notifications')}
@@ -56,7 +57,7 @@ const BookingHistoryScreen = () => {
           onPress={() => setActiveTab('completed')}
         >
           <Text style={[styles.tabButtonText, activeTab === 'completed' && styles.tabButtonTextActive]}>
-            Completed ({completedList.length})
+             {t('booking.tabCompleted', { count: completedList.length })}
           </Text>
         </TouchableOpacity>
 
@@ -65,7 +66,7 @@ const BookingHistoryScreen = () => {
           onPress={() => setActiveTab('cancelled')}
         >
           <Text style={[styles.tabButtonText, activeTab === 'cancelled' && styles.tabButtonTextActive]}>
-            Cancelled ({cancelledList.length})
+             {t('booking.tabCancelled', { count: cancelledList.length })}
           </Text>
         </TouchableOpacity>
       </View>
@@ -79,7 +80,7 @@ const BookingHistoryScreen = () => {
                   <View style={styles.statusRow}>
                     <View style={styles.completedBadge}>
                       <MaterialCommunityIcons name="check-circle" size={12} color={COLORS.success} />
-                      <Text style={styles.completedBadgeText}>COMPLETED</Text>
+                       <Text style={styles.completedBadgeText}>{t('booking.badgeCompleted')}</Text>
                     </View>
                     <Text style={styles.bookingIdText}>#{item.bookingId}</Text>
                   </View>
@@ -93,7 +94,7 @@ const BookingHistoryScreen = () => {
 
               <View style={styles.metaRow}>
                 <MaterialCommunityIcons name="account-outline" size={16} color={COLORS.textSecondary} />
-                <Text style={styles.metaText}>Technician: {item.workerName}</Text>
+                 <Text style={styles.metaText}>{t('booking.technician', { name: item.workerName })}</Text>
               </View>
 
               <View style={styles.metaRow}>
@@ -121,7 +122,7 @@ const BookingHistoryScreen = () => {
                   activeOpacity={0.8}
                 >
                   <MaterialCommunityIcons name="receipt" size={16} color={COLORS.primary} />
-                  <Text style={styles.invoiceBtnText}>View Invoice</Text>
+                   <Text style={styles.invoiceBtnText}>{t('booking.viewInvoice')}</Text>
                 </TouchableOpacity>
 
                 <TouchableOpacity
@@ -130,7 +131,7 @@ const BookingHistoryScreen = () => {
                   activeOpacity={0.85}
                 >
                   <MaterialCommunityIcons name="repeat" size={16} color={COLORS.white} />
-                  <Text style={styles.bookAgainBtnText}>Book Again</Text>
+                   <Text style={styles.bookAgainBtnText}>{t('booking.bookAgain')}</Text>
                 </TouchableOpacity>
               </View>
             </View>
@@ -143,7 +144,7 @@ const BookingHistoryScreen = () => {
                   <View style={styles.statusRow}>
                     <View style={styles.cancelledBadge}>
                       <MaterialCommunityIcons name="close-circle" size={12} color={COLORS.danger} />
-                      <Text style={styles.cancelledBadgeText}>CANCELLED</Text>
+                       <Text style={styles.cancelledBadgeText}>{t('booking.badgeCancelled')}</Text>
                     </View>
                     <Text style={styles.bookingIdText}>#{item.bookingId}</Text>
                   </View>
@@ -155,7 +156,7 @@ const BookingHistoryScreen = () => {
 
               <View style={styles.divider} />
 
-              <Text style={styles.cancelReasonText}>Reason: {item.reason}</Text>
+               <Text style={styles.cancelReasonText}>{t('common.reason', { reason: item.reason })}</Text>
               <View style={styles.refundPill}>
                 <MaterialCommunityIcons name="cash-refund" size={14} color={COLORS.success} />
                 <Text style={styles.refundText}>{item.refundStatus}</Text>
@@ -167,7 +168,7 @@ const BookingHistoryScreen = () => {
                 style={styles.rebookCancelledBtn}
                 onPress={() => handleBookAgain(item)}
               >
-                <Text style={styles.rebookCancelledText}>Book this service now</Text>
+                 <Text style={styles.rebookCancelledText}>{t('booking.bookThisNow')}</Text>
               </TouchableOpacity>
             </View>
           ))
@@ -180,32 +181,35 @@ const BookingHistoryScreen = () => {
           <View style={styles.modalOverlay}>
             <View style={styles.modalContainer}>
               <View style={styles.modalHeader}>
-                <Text style={styles.modalHeaderTitle}>COOPERATIVE INVOICE</Text>
+                 <Text style={styles.modalHeaderTitle}>{t('invoice.heading')}</Text>
                 <TouchableOpacity onPress={() => setSelectedInvoice(null)}>
                   <MaterialCommunityIcons name="close" size={24} color={COLORS.textSecondary} />
                 </TouchableOpacity>
               </View>
 
-              <Text style={styles.invoiceNumberText}>Invoice: {selectedInvoice.invoiceNumber}</Text>
+               <Text style={styles.invoiceNumberText}>{t('invoice.number', { number: selectedInvoice.invoiceNumber })}</Text>
               <Text style={styles.invoiceDateText}>{selectedInvoice.date}</Text>
 
               <View style={styles.divider} />
 
-              <Text style={styles.invoiceSectionTitle}>Service Provided</Text>
+               <Text style={styles.invoiceSectionTitle}>{t('invoice.serviceProvided')}</Text>
               <Text style={styles.invoiceServiceType}>{selectedInvoice.serviceType}</Text>
-              <Text style={styles.invoiceWorker}>Technician: {selectedInvoice.workerName}</Text>
+               <Text style={styles.invoiceWorker}>{t('booking.technician', { name: selectedInvoice.workerName })}</Text>
 
               <View style={styles.divider} />
 
-              <Text style={styles.invoiceSectionTitle}>Tasks Completed</Text>
+               <Text style={styles.invoiceSectionTitle}>{t('invoice.tasksCompleted')}</Text>
               {selectedInvoice.items.map((it, i) => (
-                <Text key={i} style={styles.invoiceItemText}>✓ {it}</Text>
+                <View key={i} style={styles.invoiceItemRow}>
+                  <MaterialCommunityIcons name="check" size={14} color={COLORS.success} />
+                  <Text style={styles.invoiceItemText}>{it}</Text>
+                </View>
               ))}
 
               <View style={styles.divider} />
 
               <View style={styles.invoiceTotalRow}>
-                <Text style={styles.invoiceTotalLabel}>Paid in Full</Text>
+                 <Text style={styles.invoiceTotalLabel}>{t('invoice.paidInFull')}</Text>
                 <Text style={styles.invoiceTotalVal}>₹{selectedInvoice.amount}</Text>
               </View>
 
@@ -213,7 +217,7 @@ const BookingHistoryScreen = () => {
                 style={styles.modalCloseBtn}
                 onPress={() => setSelectedInvoice(null)}
               >
-                <Text style={styles.modalCloseBtnText}>Close Invoice</Text>
+                 <Text style={styles.modalCloseBtnText}>{t('invoice.close')}</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -494,6 +498,11 @@ const styles = StyleSheet.create({
   invoiceWorker: {
     fontSize: FONT_SIZE.xs,
     color: COLORS.textSecondary,
+  },
+  invoiceItemRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.xs,
   },
   invoiceItemText: {
     fontSize: FONT_SIZE.xs,

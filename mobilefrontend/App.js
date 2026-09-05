@@ -15,6 +15,8 @@ import { AuthProvider, useAuth } from './src/context/AuthContext';
 import { SocketProvider } from './src/context/SocketContext';
 import LoadingState from './src/components/LoadingState';
 import { COLORS } from './src/theme';
+import { LanguageProvider, useLanguageState } from './src/i18n/LanguageContext';
+import LanguageSelectScreen from './src/i18n/LanguageSelectScreen';
 import './src/utils/globalFonts';
 
 /**
@@ -23,14 +25,17 @@ import './src/utils/globalFonts';
  */
 const Gate = () => {
   const { restoring } = useAuth();
+  const { restoring: languageRestoring, needsChoice } = useLanguageState();
 
-  if (restoring) {
+  if (restoring || languageRestoring) {
     return (
       <View style={styles.splash}>
         <LoadingState message="" />
       </View>
     );
   }
+
+  if (needsChoice) return <LanguageSelectScreen />;
 
   // The socket only opens for a signed-in worker, so wrapping both roles is safe.
   return (
@@ -61,9 +66,11 @@ export default function App() {
     <GestureHandlerRootView style={styles.flex}>
       <SafeAreaProvider>
         <StatusBar barStyle="light-content" />
-        <AuthProvider>
-          <Gate />
-        </AuthProvider>
+        <LanguageProvider>
+          <AuthProvider>
+            <Gate />
+          </AuthProvider>
+        </LanguageProvider>
       </SafeAreaProvider>
     </GestureHandlerRootView>
   );

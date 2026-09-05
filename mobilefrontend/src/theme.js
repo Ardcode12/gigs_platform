@@ -83,14 +83,10 @@ export const FONT_WEIGHT = {
   extrabold: '800',
 };
 
-// Poppins font family names (loaded in App.js via expo-font)
-export const FONTS = {
-  regular: 'Poppins_400Regular',
-  medium: 'Poppins_500Medium',
-  semibold: 'Poppins_600SemiBold',
-  bold: 'Poppins_700Bold',
-  extrabold: 'Poppins_800ExtraBold',
-};
+// Font families are per-language and live in src/i18n/fonts.js — Poppins has no
+// Tamil, Malayalam, Telugu or Devanagari glyphs, so the family depends on the
+// active language. Screens never set fontFamily themselves: they set
+// FONT_WEIGHT and src/utils/globalFonts.js resolves the face.
 
 export const SHADOWS = {
   sm: {

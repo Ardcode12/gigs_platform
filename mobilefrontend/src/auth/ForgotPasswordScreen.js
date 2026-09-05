@@ -15,6 +15,7 @@ import ScreenHeader from '../components/ScreenHeader';
 import Input from '../components/Input';
 import IconButton from '../components/IconButton';
 import { forgotPassword } from '../api/auth';
+import { useT } from '../i18n/LanguageContext';
 
 /**
  * Step one of the reset flow: identify the account, receive a code on the phone
@@ -25,6 +26,7 @@ import { forgotPassword } from '../api/auth';
  */
 const ForgotPasswordScreen = () => {
   const navigation = useNavigation();
+  const t = useT();
   const [identifier, setIdentifier] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState(null);
@@ -53,8 +55,8 @@ const ForgotPasswordScreen = () => {
   return (
     <View style={styles.container}>
       <ScreenHeader
-        title="Forgot Password"
-        subtitle="We'll send a code to your registered phone"
+        title={t('auth.forgotTitle')}
+        subtitle={t('auth.forgotSubtitle')}
         onBack={() => navigation.goBack()}
       />
 
@@ -79,15 +81,14 @@ const ForgotPasswordScreen = () => {
             </View>
 
             <Text style={styles.lead}>
-              Enter your worker ID or phone number. We&apos;ll send a 6-digit code to the phone
-              number your society has on file.
+              {t('auth.forgotLead')}
             </Text>
 
             <Input
-              label="Worker ID or Phone"
+              label={t('auth.workerIdOrPhone')}
               value={identifier}
               onChangeText={setIdentifier}
-              placeholder="WM1042 or 9876543210"
+              placeholder={t('auth.workerIdPlaceholder')}
               icon="account-outline"
               maxLength={32}
               returnKeyType="go"
@@ -97,7 +98,7 @@ const ForgotPasswordScreen = () => {
             {!!error && <Text style={styles.error}>{error}</Text>}
 
             <IconButton
-              label="Send Reset Code"
+              label={t('auth.sendResetCode')}
               icon="send"
               onPress={handleSubmit}
               disabled={!canSubmit}
@@ -107,7 +108,7 @@ const ForgotPasswordScreen = () => {
             />
 
             <IconButton
-              label="I already have a code"
+              label={t('auth.haveCode')}
               onPress={() =>
                 navigation.navigate('ResetPassword', { identifier: identifier.trim() })
               }

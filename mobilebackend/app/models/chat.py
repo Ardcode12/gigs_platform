@@ -8,6 +8,7 @@ from sqlalchemy import (
     ForeignKey,
     String,
     Text,
+    UniqueConstraint,
     func,
 )
 from sqlalchemy.orm import Mapped, mapped_column
@@ -36,10 +37,31 @@ class ChatMessage(Base):
     )
     sender: Mapped[MessageSender] = mapped_column(message_sender_enum, nullable=False)
     text: Mapped[str] = mapped_column(Text, nullable=False)
+    source_lang: Mapped[str] = mapped_column(String(16), nullable=False, default="en")
     sent_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False, index=True
     )
     read_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class ChatMessageTranslation(Base):
+    """Cached provider output; the original chat message remains authoritative."""
+
+    __tablename__ = "chat_message_translations"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    message_id: Mapped[int] = mapped_column(
+        ForeignKey("chat_messages.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    target_lang: Mapped[str] = mapped_column(String(16), nullable=False)
+    translated_text: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+    __table_args__ = (
+        UniqueConstraint("message_id", "target_lang", name="uq_chat_translation_message_lang"),
+    )
 
 
 class CallRequest(Base):

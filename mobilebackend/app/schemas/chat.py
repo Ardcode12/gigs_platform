@@ -14,6 +14,8 @@ class ChatMessageOut(BaseModel):
     job_id: int
     sender: MessageSender
     text: str
+    source_lang: str
+    original_text: str | None = None
     sent_at: datetime
     read_at: datetime | None
 

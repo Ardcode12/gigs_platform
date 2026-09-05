@@ -15,8 +15,8 @@ export const acceptJob = (jobId) =>
 export const rejectJob = (jobId, reason) =>
   client.post(`/api/jobs/${jobId}/reject`, { reason: reason || null }).then((r) => r.data);
 
-export const updateJobStatus = (jobId, status) =>
-  client.post(`/api/jobs/${jobId}/status`, { status }).then((r) => r.data);
+export const updateJobStatus = (jobId, status, otp) =>
+  client.post(`/api/jobs/${jobId}/status`, { status, otp }).then((r) => r.data);
 
 export const getExtraRequests = (jobId) =>
   client.get(`/api/jobs/${jobId}/extra-amount`).then((r) => r.data);

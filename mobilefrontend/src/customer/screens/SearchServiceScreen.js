@@ -11,29 +11,27 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { COLORS, SPACING, RADIUS, FONT_SIZE, FONT_WEIGHT, SHADOWS } from '../../theme';
+import { useT } from '../../i18n/LanguageContext';
 import { SERVICE_CATEGORIES } from '../data/customerMockData';
 
 const SUGGESTED_NATURAL_PROMPTS = [
-  'I need fan repair, two lights replaced and some wiring.',
-  'Kitchen tap leaking and bathroom drain clogged.',
-  'Fix wardrobe wooden hinges and install lock.',
-  'Full 2BHK deep cleaning before housewarming.',
-  'Repaint living room wall and repair ceiling dampness.',
-  'Lawn mowing, flower bed pruning and plant repotting.',
+  'customer.searchPrompt1', 'customer.searchPrompt2', 'customer.searchPrompt3',
+  'customer.searchPrompt4', 'customer.searchPrompt5', 'customer.searchPrompt6',
 ];
 
 const SearchServiceScreen = () => {
   const navigation = useNavigation();
+  const t = useT();
   const initialCategory = useRoute().params?.category || '';
   const [searchQuery, setSearchQuery] = useState(initialCategory);
   const [selectedCategory, setSelectedCategory] = useState(initialCategory);
   const [naturalText, setNaturalText] = useState(
-    'I need fan repair, two lights replaced and some wiring.'
+    t('customer.searchPrompt1')
   );
 
   const filteredCategories = SERVICE_CATEGORIES.filter((c) =>
-    c.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    c.description.toLowerCase().includes(searchQuery.toLowerCase())
+    t(c.nameKey).toLowerCase().includes(searchQuery.toLowerCase()) ||
+    t(c.descKey).toLowerCase().includes(searchQuery.toLowerCase())
   );
 
   const handleApplyPrompt = (prompt) => {
@@ -54,7 +52,7 @@ const SearchServiceScreen = () => {
         >
           <MaterialCommunityIcons name="arrow-left" size={24} color={COLORS.textPrimary} />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>Search & Describe Service</Text>
+        <Text style={styles.headerTitle}>{t('customer.searchDescribe')}</Text>
         <View style={{ width: 40 }} />
       </View>
 
@@ -64,13 +62,13 @@ const SearchServiceScreen = () => {
           <View style={styles.naturalHeaderRow}>
             <View style={styles.aiBadge}>
               <MaterialCommunityIcons name="auto-fix" size={16} color={COLORS.white} />
-              <Text style={styles.aiBadgeText}>AI NATURAL REQUIREMENT</Text>
+              <Text style={styles.aiBadgeText}>{t('customer.aiNatural')}</Text>
             </View>
-            <Text style={styles.naturalHelper}>Instant breakdown</Text>
+            <Text style={styles.naturalHelper}>{t('customer.instantBreakdown')}</Text>
           </View>
 
           <Text style={styles.naturalLabel}>
-            Describe what you need in plain English, Hindi, or your language:
+            {t('customer.describeLanguage')}
           </Text>
 
           <View style={styles.textAreaWrapper}>
@@ -78,7 +76,7 @@ const SearchServiceScreen = () => {
               style={styles.textAreaInput}
               multiline
               numberOfLines={4}
-              placeholder="e.g. My ceiling fan stopped spinning and I want two new LED bulbs fitted in the hall..."
+              placeholder={t('search.describePlaceholder')}
               placeholderTextColor={COLORS.textTertiary}
               value={naturalText}
               onChangeText={setNaturalText}
@@ -94,9 +92,14 @@ const SearchServiceScreen = () => {
           </View>
 
           {/* Suggested Prompts */}
-          <Text style={styles.suggestionsHeader}>💡 Or tap a common requirement:</Text>
+          <Text style={styles.suggestionsHeader}>
+            <MaterialCommunityIcons name="lightbulb-on-outline" size={14} color={COLORS.textSecondary} />{' '}
+             {t('customer.commonRequirement')}
+          </Text>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.promptsScroll}>
-            {SUGGESTED_NATURAL_PROMPTS.map((prompt, idx) => (
+            {SUGGESTED_NATURAL_PROMPTS.map((promptKey, idx) => {
+              const prompt = t(promptKey);
+              return (
               <TouchableOpacity
                 key={idx}
                 style={[
@@ -115,7 +118,8 @@ const SearchServiceScreen = () => {
                   {prompt}
                 </Text>
               </TouchableOpacity>
-            ))}
+              );
+            })}
           </ScrollView>
 
           {/* AI Analyse Button */}
@@ -125,21 +129,21 @@ const SearchServiceScreen = () => {
             activeOpacity={0.85}
           >
             <MaterialCommunityIcons name="sparkles" size={20} color={COLORS.white} />
-            <Text style={styles.aiAnalyseButtonText}>Analyze & Detect Services</Text>
+             <Text style={styles.aiAnalyseButtonText}>{t('customer.analyze')}</Text>
             <MaterialCommunityIcons name="arrow-right" size={20} color={COLORS.white} />
           </TouchableOpacity>
         </View>
 
         {/* Standard Search Bar */}
         <View style={styles.sectionHeadingRow}>
-          <Text style={styles.sectionHeading}>Browse by Skill Category</Text>
+          <Text style={styles.sectionHeading}>{t('customer.browseSkills')}</Text>
         </View>
 
         <View style={styles.searchBarWrapper}>
           <MaterialCommunityIcons name="magnify" size={22} color={COLORS.textSecondary} />
           <TextInput
             style={styles.searchBarInput}
-            placeholder="Search Electrician, Plumber, Cleaner..."
+             placeholder={t('customer.categorySearch')}
             placeholderTextColor={COLORS.textTertiary}
             value={searchQuery}
             onChangeText={setSearchQuery}
@@ -154,14 +158,15 @@ const SearchServiceScreen = () => {
         {/* Categories List */}
         <View style={styles.categoriesList}>
           {filteredCategories.map((cat) => {
-            const isSelected = selectedCategory === cat.name;
+            const categoryName = t(cat.nameKey);
+            const isSelected = selectedCategory === categoryName;
             return (
               <TouchableOpacity
                 key={cat.id}
                 style={[styles.categoryItem, isSelected && styles.categoryItemActive]}
                 onPress={() => {
-                  setSelectedCategory(cat.name);
-                  navigation.navigate('WorkerRecommendations', { category: cat.name });
+                  setSelectedCategory(categoryName);
+                  navigation.navigate('WorkerRecommendations', { category: categoryName });
                 }}
                 activeOpacity={0.8}
               >
@@ -171,13 +176,13 @@ const SearchServiceScreen = () => {
 
                 <View style={styles.categoryItemDetails}>
                   <View style={styles.categoryTitleRow}>
-                    <Text style={styles.categoryTitleText}>{cat.name}</Text>
+                    <Text style={styles.categoryTitleText}>{t(cat.nameKey)}</Text>
                     <View style={styles.verifiedCountPill}>
-                      <Text style={styles.verifiedCountText}>{cat.count}</Text>
+                      <Text style={styles.verifiedCountText}>{t('customer.nearbyWorkers', { count: cat.workerCount })}</Text>
                     </View>
                   </View>
                   <Text style={styles.categoryDescription} numberOfLines={1}>
-                    {cat.description}
+                    {t(cat.descKey)}
                   </Text>
                 </View>
 

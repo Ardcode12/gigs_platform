@@ -113,6 +113,8 @@ class JobRejectRequest(BaseModel):
 
 class JobStatusUpdate(BaseModel):
     status: JobStatus
+    otp: str | None = Field(default=None, min_length=4, max_length=8)
+    otp: str | None = Field(default=None, min_length=4, max_length=8)
 
 
 class ExtraAmountCreate(BaseModel):

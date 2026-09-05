@@ -3,9 +3,9 @@
 from datetime import date, datetime
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
-from app.models.enums import NotificationType, PaymentStatus
+from app.models.enums import NotificationType, PaymentMethod, PaymentStatus
 
 
 # -- earnings (spec #10) ---------------------------------------------------
@@ -44,10 +44,15 @@ class PaymentOut(BaseModel):
     extra_amount: float
     total_amount: float
     status: PaymentStatus
+    payment_method: PaymentMethod
     created_at: datetime
     paid_at: datetime | None
     service_type: str | None = None
     customer_name: str | None = None
+
+
+class OtpRequest(BaseModel):
+    otp: str = Field(min_length=4, max_length=8)
 
 
 # -- ratings (spec #11) ----------------------------------------------------

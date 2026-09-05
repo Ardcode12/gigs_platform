@@ -60,6 +60,11 @@ class PaymentStatus(str, enum.Enum):
     PAID = "paid"
 
 
+class PaymentMethod(str, enum.Enum):
+    DIGITAL = "digital"
+    CASH = "cash"
+
+
 class NotificationType(str, enum.Enum):
     NEW_JOB = "new_job"
     CHAT = "chat"

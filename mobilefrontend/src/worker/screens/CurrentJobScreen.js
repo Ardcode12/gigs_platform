@@ -10,6 +10,8 @@ import {
   Alert,
   ActivityIndicator,
   RefreshControl,
+  Modal,
+  TextInput,
 } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { COLORS, SPACING, RADIUS, FONT_SIZE, FONT_WEIGHT, SHADOWS } from '../../theme';
@@ -26,6 +28,7 @@ import { getJob, getCurrentJob, updateJobStatus } from '../../api/jobs';
 import { requestCall } from '../../api/chat';
 import { formatRupees, formatDistance, formatEta } from '../../utils/format';
 import { JOB_STEPS, JOB_STATUS, NEXT_ACTION, STATUS_LABEL } from '../../constants/jobSteps';
+import { useT } from '../../i18n/LanguageContext';
 
 /**
  * Spec #8 — the job in progress: on the way → arrived → start work → complete.
@@ -35,9 +38,12 @@ import { JOB_STEPS, JOB_STATUS, NEXT_ACTION, STATUS_LABEL } from '../../constant
  */
 const CurrentJobScreen = () => {
   const navigation = useNavigation();
+  const t = useT();
   const jobId = useRoute().params?.jobId;
   const [advancing, setAdvancing] = useState(false);
   const [calling, setCalling] = useState(false);
+  const [otp, setOtp] = useState('');
+  const [otpStep, setOtpStep] = useState(null);
 
   // Reached from the tab bar there is no id yet — ask the server which job is live.
   const request = useApi(
@@ -59,48 +65,40 @@ const CurrentJobScreen = () => {
   const currentStep = job?.current_step ?? 0;
   const pendingExtra = job?.extra_requests?.find((r) => r.status === 'pending');
 
-  const advance = async () => {
+  const submitStatus = async (code = null) => {
     if (!nextAction) return;
-
-    const run = async () => {
-      setAdvancing(true);
-      try {
-        const updated = await updateJobStatus(job.id, nextAction.status);
-        request.setData(updated);
-        if (nextAction.status === JOB_STATUS.COMPLETED) {
-          Alert.alert(
-            'Job completed 🎉',
-            `${formatRupees(updated.amounts.total_amount)} has been added to your earnings.`,
-          );
-        }
-      } catch (error) {
-        Alert.alert('Could not update the job', error.message);
-      } finally {
-        setAdvancing(false);
+    setAdvancing(true);
+    try {
+      const updated = await updateJobStatus(job.id, nextAction.status, code);
+      request.setData(updated);
+      setOtp('');
+      setOtpStep(null);
+      if (nextAction.status === JOB_STATUS.COMPLETED) {
+         Alert.alert(t('job.completedTitle'), t('job.completedBody', { amount: formatRupees(updated.amounts.total_amount) }));
       }
-    };
+    } catch (error) {
+      Alert.alert(t('job.updateFailed'), error.message);
+    } finally {
+      setAdvancing(false);
+    }
+  };
 
-    if (nextAction.status === JOB_STATUS.COMPLETED) {
-      // The last step settles the payment, so make it deliberate.
-      Alert.alert('Mark this job complete?', 'The customer will be asked to pay and rate you.', [
-        { text: 'Not yet', style: 'cancel' },
-        { text: 'Complete', onPress: run },
-      ]);
+  const advance = () => {
+    if (!nextAction || advancing) return;
+    if (nextAction.status === JOB_STATUS.ARRIVED || nextAction.status === JOB_STATUS.COMPLETED) {
+      setOtpStep(nextAction.status);
       return;
     }
-    run();
+    submitStatus();
   };
 
   const handleRequestCall = async () => {
     setCalling(true);
     try {
       await requestCall(job.id);
-      Alert.alert(
-        'Call requested',
-        'The customer has been asked to call you. Neither side sees the other’s number.',
-      );
+       Alert.alert(t('job.callRequested'), t('job.callRequestedBodyPrivate'));
     } catch (error) {
-      Alert.alert('Could not send the request', error.message);
+      Alert.alert(t('job.callRequestFailed'), error.message);
     } finally {
       setCalling(false);
     }
@@ -113,22 +111,22 @@ const CurrentJobScreen = () => {
         <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
           <MaterialCommunityIcons name="arrow-left" size={24} color={COLORS.textPrimary} />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>Current Job</Text>
+         <Text style={styles.headerTitle}>{t('job.currentJob')}</Text>
         <View style={{ width: 40 }} />
       </View>
       {children}
     </View>
   );
 
-  if (request.loading && !job) return chrome(<LoadingState message="Loading job…" />);
+  if (request.loading && !job) return chrome(<LoadingState message={t('job.loading')} />);
 
   if (request.error && !job) {
     return chrome(
       <EmptyState
         tone="error"
-        title="Couldn't load the job"
+        title={t('job.loadFailed')}
         message={request.error.message}
-        actionLabel="Try again"
+        actionLabel={t('common.tryAgain')}
         onAction={request.reload}
       />,
     );
@@ -138,8 +136,8 @@ const CurrentJobScreen = () => {
     return chrome(
       <EmptyState
         icon="clipboard-check-outline"
-        title="No job in progress"
-        message="Accept a request and it will appear here with everything you need to run the job."
+        title={t('job.none')}
+        message={t('job.noneBody')}
       />,
     );
   }
@@ -153,9 +151,9 @@ const CurrentJobScreen = () => {
         <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
           <MaterialCommunityIcons name="arrow-left" size={24} color={COLORS.textPrimary} />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>Current Job</Text>
+         <Text style={styles.headerTitle}>{t('job.currentJob')}</Text>
         <StatusBadge
-          label={(STATUS_LABEL[job.status] ?? '').toUpperCase()}
+           label={t(STATUS_LABEL[job.status] ?? 'common.unknown').toUpperCase()}
           color={isCompleted ? 'success' : 'warning'}
           size="sm"
         />
@@ -225,7 +223,7 @@ const CurrentJobScreen = () => {
         <Card style={styles.card}>
           <View style={styles.sectionLabel}>
             <MaterialCommunityIcons name="map-marker" size={18} color={COLORS.textSecondary} />
-            <Text style={styles.sectionLabelText}>Service Location</Text>
+             <Text style={styles.sectionLabelText}>{t('job.serviceLocation')}</Text>
           </View>
           <Text style={styles.locationAddress}>{job.location.address}</Text>
           {!!job.location.landmark && (
@@ -240,7 +238,7 @@ const CurrentJobScreen = () => {
                 color={COLORS.primary}
               />
               <Text style={styles.locationMetaText}>
-                {formatDistance(job.location.distance_km) ?? 'Distance unknown'}
+                 {formatDistance(job.location.distance_km) ?? t('job.distanceUnknown')}
               </Text>
             </View>
             <View style={styles.locationMetaItem}>
@@ -257,7 +255,7 @@ const CurrentJobScreen = () => {
             activeOpacity={0.8}
           >
             <MaterialCommunityIcons name="navigation-variant" size={22} color={COLORS.white} />
-            <Text style={styles.navigateBtnText}>Map & Navigate</Text>
+             <Text style={styles.navigateBtnText}>{t('job.mapAndNavigate')}</Text>
           </TouchableOpacity>
         </Card>
 
@@ -265,7 +263,7 @@ const CurrentJobScreen = () => {
         <Card style={styles.card}>
           <View style={styles.sectionLabel}>
             <MaterialCommunityIcons name="wrench" size={18} color={COLORS.textSecondary} />
-            <Text style={styles.sectionLabelText}>Services & Amount</Text>
+           <Text style={styles.sectionLabelText}>{t('job.servicesAndAmount')}</Text>
           </View>
           {job.services.map((service) => (
             <View key={service.id} style={styles.serviceRow}>
@@ -276,12 +274,12 @@ const CurrentJobScreen = () => {
           ))}
           <View style={styles.amountBreakdown}>
             <View style={styles.amountRow}>
-              <Text style={styles.amountLabel}>Base Amount</Text>
+               <Text style={styles.amountLabel}>{t('job.baseAmount')}</Text>
               <Text style={styles.amountValue}>{formatRupees(job.amounts.base_amount)}</Text>
             </View>
             {job.amounts.extra_amount > 0 && (
               <View style={styles.amountRow}>
-                <Text style={styles.amountLabel}>Extra Amount</Text>
+                 <Text style={styles.amountLabel}>{t('job.extraAmount')}</Text>
                 <Text style={[styles.amountValue, { color: COLORS.warning }]}>
                   +{formatRupees(job.amounts.extra_amount)}
                 </Text>
@@ -289,7 +287,7 @@ const CurrentJobScreen = () => {
             )}
             {job.amounts.pending_extra_amount > 0 && (
               <View style={styles.amountRow}>
-                <Text style={styles.amountLabel}>Awaiting approval</Text>
+                 <Text style={styles.amountLabel}>{t('job.awaitingApproval')}</Text>
                 <Text style={[styles.amountValue, { color: COLORS.textTertiary }]}>
                   {formatRupees(job.amounts.pending_extra_amount)}
                 </Text>
@@ -297,7 +295,7 @@ const CurrentJobScreen = () => {
             )}
             <View style={styles.totalDivider} />
             <View style={styles.amountRow}>
-              <Text style={styles.totalLabel}>Total Amount</Text>
+               <Text style={styles.totalLabel}>{t('job.totalAmount')}</Text>
               <Text style={styles.totalValue}>{formatRupees(job.amounts.total_amount)}</Text>
             </View>
           </View>
@@ -307,7 +305,7 @@ const CurrentJobScreen = () => {
         <Card style={styles.card}>
           <View style={styles.sectionLabel}>
             <MaterialCommunityIcons name="progress-check" size={18} color={COLORS.textSecondary} />
-            <Text style={styles.sectionLabelText}>Job Progress</Text>
+                 <Text style={styles.sectionLabelText}>{t('job.progress')}</Text>
           </View>
           <StepperProgress steps={JOB_STEPS} currentStep={currentStep} />
         </Card>
@@ -332,7 +330,7 @@ const CurrentJobScreen = () => {
                 color={COLORS.white}
               />
               <Text style={styles.updateStatusText}>
-                {nextAction?.label ?? 'Job Completed'}
+                 {t(nextAction?.label ?? 'job.completedLabel')}
               </Text>
             </>
           )}
@@ -347,7 +345,7 @@ const CurrentJobScreen = () => {
             <View style={[styles.quickActionIcon, { backgroundColor: COLORS.primaryLight }]}>
               <MaterialCommunityIcons name="chat-outline" size={24} color={COLORS.primary} />
             </View>
-            <Text style={styles.quickActionLabel}>Chat</Text>
+           <Text style={styles.quickActionLabel}>{t('job.chat')}</Text>
           </TouchableOpacity>
 
           <TouchableOpacity
@@ -373,8 +371,50 @@ const CurrentJobScreen = () => {
           </TouchableOpacity>
         </View>
 
+        <TouchableOpacity
+          style={styles.reportButton}
+          onPress={() => navigation.navigate('ReportCustomer', { jobId: job.id })}
+        >
+           <Text style={styles.reportButtonText}>{t('worker.reportProblem')}</Text>
+        </TouchableOpacity>
+
         <View style={{ height: 100 }} />
       </ScrollView>
+
+      <Modal visible={!!otpStep} transparent animationType="fade" onRequestClose={() => setOtpStep(null)}>
+        <View style={styles.modalBackdrop}>
+          <View style={styles.otpCard}>
+            <Text style={styles.otpTitle}>
+               {otpStep === JOB_STATUS.ARRIVED ? t('worker.confirmArrival') : t('worker.confirmCompleted')}
+            </Text>
+            <Text style={styles.otpDescription}>
+              {t('worker.otpDescription', { type: t(otpStep === JOB_STATUS.ARRIVED ? 'worker.arrival' : 'worker.completion') })}
+            </Text>
+            <TextInput
+              value={otp}
+              onChangeText={(value) => setOtp(value.replace(/[^0-9]/g, ''))}
+              keyboardType="number-pad"
+              maxLength={6}
+               placeholder={t('worker.otpPlaceholder')}
+              placeholderTextColor={COLORS.textTertiary}
+              style={styles.otpInput}
+              autoFocus
+            />
+            <View style={styles.otpActions}>
+              <TouchableOpacity style={styles.otpCancel} onPress={() => { setOtp(''); setOtpStep(null); }}>
+                 <Text style={styles.otpCancelText}>{t('common.cancel')}</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.otpSubmit, (!otp || advancing) && styles.otpSubmitDisabled]}
+                onPress={() => submitStatus(otp)}
+                disabled={!otp || advancing}
+              >
+                 {advancing ? <ActivityIndicator color={COLORS.white} /> : <Text style={styles.otpSubmitText}>{t('worker.verifyOtp')}</Text>}
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 };
@@ -592,6 +632,86 @@ const styles = StyleSheet.create({
   },
   updateStatusBtnCompleted: {
     backgroundColor: COLORS.success,
+  },
+  modalBackdrop: {
+    flex: 1,
+    backgroundColor: COLORS.overlay,
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: SPACING.xl,
+  },
+  otpCard: {
+    width: '100%',
+    maxWidth: 420,
+    backgroundColor: COLORS.white,
+    borderRadius: RADIUS.xl,
+    padding: SPACING.xl,
+    ...SHADOWS.lg,
+  },
+  otpTitle: {
+    fontSize: FONT_SIZE.xl,
+    fontWeight: FONT_WEIGHT.bold,
+    color: COLORS.textPrimary,
+  },
+  otpDescription: {
+    marginTop: SPACING.sm,
+    fontSize: FONT_SIZE.sm,
+    color: COLORS.textSecondary,
+    lineHeight: 20,
+  },
+  otpInput: {
+    marginTop: SPACING.lg,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    borderRadius: RADIUS.md,
+    paddingHorizontal: SPACING.lg,
+    paddingVertical: SPACING.md,
+    fontSize: FONT_SIZE.xl,
+    letterSpacing: 5,
+    color: COLORS.textPrimary,
+    textAlign: 'center',
+  },
+  otpActions: {
+    flexDirection: 'row',
+    gap: SPACING.md,
+    marginTop: SPACING.lg,
+  },
+  otpCancel: {
+    flex: 1,
+    minHeight: 48,
+    borderRadius: RADIUS.md,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: COLORS.background,
+  },
+  otpCancelText: {
+    color: COLORS.textSecondary,
+    fontWeight: FONT_WEIGHT.bold,
+  },
+  otpSubmit: {
+    flex: 1.4,
+    minHeight: 48,
+    borderRadius: RADIUS.md,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: COLORS.primary,
+  },
+  otpSubmitDisabled: {
+    opacity: 0.5,
+  },
+  otpSubmitText: {
+    color: COLORS.white,
+    fontWeight: FONT_WEIGHT.bold,
+  },
+  reportButton: {
+    alignItems: 'center',
+    paddingVertical: SPACING.lg,
+    marginTop: SPACING.md,
+  },
+  reportButtonText: {
+    color: COLORS.danger,
+    fontSize: FONT_SIZE.sm,
+    fontWeight: FONT_WEIGHT.semibold,
   },
   updateStatusText: {
     fontSize: FONT_SIZE.lg,

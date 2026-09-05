@@ -18,12 +18,16 @@ import RatingStars from '../../components/RatingStars';
 import LoadingState from '../../components/LoadingState';
 import { useAuth } from '../../context/AuthContext';
 import { initialsOf } from '../../utils/format';
+import { useLanguageState, useT } from '../../i18n/LanguageContext';
+import { LANGUAGES } from '../../i18n';
 
 /** Spec-wide: the worker's own record, plus the way out to Ratings (#11) and Notifications (#12). */
 const ProfileScreen = () => {
   const navigation = useNavigation();
   const { worker, signOut, refreshWorker } = useAuth();
   const [refreshing, setRefreshing] = useState(false);
+  const t = useT();
+  const { language, changeLanguage } = useLanguageState();
 
   const reload = async () => {
     setRefreshing(true);
@@ -37,9 +41,9 @@ const ProfileScreen = () => {
   };
 
   const confirmLogout = () =>
-    Alert.alert('Log out?', 'You will need your worker code and password to sign in again.', [
-      { text: 'Cancel', style: 'cancel' },
-      { text: 'Log out', style: 'destructive', onPress: () => signOut() },
+    Alert.alert(t('worker.logoutTitle'), t('worker.logoutBody'), [
+      { text: t('common.cancel'), style: 'cancel' },
+      { text: t('worker.logout'), style: 'destructive', onPress: () => signOut() },
     ]);
 
   if (!worker) {
@@ -47,14 +51,14 @@ const ProfileScreen = () => {
       <View style={styles.container}>
         <StatusBar barStyle="light-content" backgroundColor={COLORS.primary} />
         <View style={styles.header}>
-          <Text style={styles.headerTitle}>Profile</Text>
+          <Text style={styles.headerTitle}>{t('worker.profile')}</Text>
         </View>
-        <LoadingState message="Loading your profile…" />
+        <LoadingState message={t('worker.loadingProfile')} />
       </View>
     );
   }
 
-  const memberYear = worker.member_since ? new Date(worker.member_since).getFullYear() : '—';
+  const memberYear = worker.member_since ? new Date(worker.member_since).getFullYear() : t('worker.notSet');
 
   return (
     <View style={styles.container}>
@@ -62,9 +66,9 @@ const ProfileScreen = () => {
 
       {/* Header */}
       <View style={styles.header}>
-        <Text style={styles.headerTitle}>Profile</Text>
+        <Text style={styles.headerTitle}>{t('worker.profile')}</Text>
         <StatusBadge
-          label={worker.is_available ? 'Available' : 'Offline'}
+          label={worker.is_available ? t('worker.availableShort') : t('worker.offline')}
           color={worker.is_available ? 'success' : 'neutral'}
           size="sm"
         />
@@ -93,8 +97,8 @@ const ProfileScreen = () => {
             showValue
             valueStyle={{ color: COLORS.white }}
           />
-          <Text style={styles.ratingCount}>
-            ({worker.rating_count} {worker.rating_count === 1 ? 'review' : 'reviews'})
+             <Text style={styles.ratingCount}>
+             ({t(worker.rating_count === 1 ? 'worker.review_one' : 'worker.review_other', { count: worker.rating_count })})
           </Text>
         </View>
       </View>
@@ -111,28 +115,28 @@ const ProfileScreen = () => {
         <View style={styles.statsRow}>
           <Card style={styles.statCard}>
             <Text style={styles.statValue}>{worker.completed_jobs}</Text>
-            <Text style={styles.statLabel}>Jobs Done</Text>
+            <Text style={styles.statLabel}>{t('worker.jobsDone')}</Text>
           </Card>
           <Card style={styles.statCard}>
             <Text style={styles.statValue}>{worker.rating_avg.toFixed(1)}</Text>
-            <Text style={styles.statLabel}>Rating</Text>
+            <Text style={styles.statLabel}>{t('worker.rating')}</Text>
           </Card>
           <Card style={styles.statCard}>
             <Text style={styles.statValue}>{memberYear}</Text>
-            <Text style={styles.statLabel}>Since</Text>
+            <Text style={styles.statLabel}>{t('worker.since')}</Text>
           </Card>
         </View>
 
         {/* Personal Information */}
         <Card style={styles.infoCard}>
-          <Text style={styles.infoTitle}>Personal Information</Text>
+          <Text style={styles.infoTitle}>{t('worker.personalInfo')}</Text>
 
           <View style={styles.infoRow}>
             <View style={[styles.infoIcon, { backgroundColor: COLORS.primaryLight }]}>
               <MaterialCommunityIcons name="phone" size={20} color={COLORS.primary} />
             </View>
             <View style={styles.infoContent}>
-              <Text style={styles.infoLabel}>Phone Number</Text>
+              <Text style={styles.infoLabel}>{t('worker.phone')}</Text>
               <Text style={styles.infoValue}>{worker.phone}</Text>
             </View>
           </View>
@@ -142,8 +146,8 @@ const ProfileScreen = () => {
               <MaterialCommunityIcons name="map-marker" size={20} color={COLORS.success} />
             </View>
             <View style={styles.infoContent}>
-              <Text style={styles.infoLabel}>City</Text>
-              <Text style={styles.infoValue}>{worker.city ?? 'Not set'}</Text>
+              <Text style={styles.infoLabel}>{t('worker.city')}</Text>
+              <Text style={styles.infoValue}>{worker.city ?? t('worker.notSet')}</Text>
             </View>
           </View>
 
@@ -152,8 +156,8 @@ const ProfileScreen = () => {
               <MaterialCommunityIcons name="card-account-details" size={20} color="#B45309" />
             </View>
             <View style={styles.infoContent}>
-              <Text style={styles.infoLabel}>Aadhaar Number</Text>
-              <Text style={styles.infoValue}>{worker.aadhaar_masked ?? 'Not on file'}</Text>
+              <Text style={styles.infoLabel}>{t('worker.aadhaar')}</Text>
+              <Text style={styles.infoValue}>{worker.aadhaar_masked ?? t('worker.notOnFile')}</Text>
             </View>
           </View>
 
@@ -162,15 +166,39 @@ const ProfileScreen = () => {
               <MaterialCommunityIcons name="account-group" size={20} color={COLORS.info} />
             </View>
             <View style={styles.infoContent}>
-              <Text style={styles.infoLabel}>Society</Text>
-              <Text style={styles.infoValue}>{worker.society_name ?? '—'}</Text>
+              <Text style={styles.infoLabel}>{t('worker.society')}</Text>
+              <Text style={styles.infoValue}>{worker.society_name ?? t('worker.notSet')}</Text>
             </View>
           </View>
         </Card>
 
         <Text style={styles.infoNote}>
-          Your code, phone number and society are set by the society. Ask them to change these.
+          {t('worker.profileNote')}
         </Text>
+
+        {/* Language Selection */}
+        <Card style={styles.languageCard}>
+          <View style={styles.languageTitleRow}>
+            <MaterialCommunityIcons name="translate" size={20} color={COLORS.primary} />
+            <Text style={styles.languageTitle}>{t('language.settingTitle')}</Text>
+          </View>
+          <View style={styles.languagePillsRow}>
+            {LANGUAGES.map((lang) => {
+              const isSelected = language === lang.code;
+              return (
+                <TouchableOpacity
+                  key={lang.code}
+                  style={[styles.langPill, isSelected && styles.langPillActive]}
+                  onPress={() => changeLanguage(lang.code)}
+                >
+                  <Text style={[styles.langText, isSelected && styles.langTextActive]}>
+                    {lang.native}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+        </Card>
 
         {/* Action Buttons */}
         <TouchableOpacity
@@ -181,7 +209,7 @@ const ProfileScreen = () => {
           <View style={[styles.menuIcon, { backgroundColor: COLORS.warningLight }]}>
             <MaterialCommunityIcons name="star" size={20} color="#B45309" />
           </View>
-          <Text style={styles.menuLabel}>Ratings & Feedback</Text>
+          <Text style={styles.menuLabel}>{t('worker.ratings')}</Text>
           <MaterialCommunityIcons name="chevron-right" size={22} color={COLORS.textTertiary} />
         </TouchableOpacity>
 
@@ -194,7 +222,7 @@ const ProfileScreen = () => {
           <View style={[styles.menuIcon, { backgroundColor: COLORS.infoLight }]}>
             <MaterialCommunityIcons name="bell-outline" size={20} color={COLORS.info} />
           </View>
-          <Text style={styles.menuLabel}>Notifications</Text>
+          <Text style={styles.menuLabel}>{t('worker.notifications')}</Text>
           <MaterialCommunityIcons name="chevron-right" size={22} color={COLORS.textTertiary} />
         </TouchableOpacity>
 
@@ -206,7 +234,7 @@ const ProfileScreen = () => {
           <View style={[styles.menuIcon, { backgroundColor: COLORS.primaryLight }]}>
             <MaterialCommunityIcons name="lock-reset" size={20} color={COLORS.primary} />
           </View>
-          <Text style={styles.menuLabel}>Change Password</Text>
+          <Text style={styles.menuLabel}>{t('worker.changePassword')}</Text>
           <MaterialCommunityIcons name="chevron-right" size={22} color={COLORS.textTertiary} />
         </TouchableOpacity>
 
@@ -218,11 +246,11 @@ const ProfileScreen = () => {
           <View style={[styles.menuIcon, { backgroundColor: COLORS.dangerLight }]}>
             <MaterialCommunityIcons name="logout" size={20} color={COLORS.danger} />
           </View>
-          <Text style={[styles.menuLabel, { color: COLORS.danger }]}>Logout</Text>
+          <Text style={[styles.menuLabel, { color: COLORS.danger }]}>{t('worker.logout')}</Text>
           <MaterialCommunityIcons name="chevron-right" size={22} color={COLORS.textTertiary} />
         </TouchableOpacity>
 
-        <Text style={styles.versionText}>WORKMAT Worker App v1.0.0</Text>
+        <Text style={styles.versionText}>{t('worker.appVersion')}</Text>
 
         <View style={{ height: 100 }} />
       </ScrollView>
@@ -388,6 +416,46 @@ const styles = StyleSheet.create({
     lineHeight: 17,
     marginBottom: SPACING.lg,
     paddingHorizontal: SPACING.xs,
+  },
+  languageCard: {
+    marginBottom: SPACING.lg,
+  },
+  languageTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.sm,
+    marginBottom: SPACING.sm,
+  },
+  languageTitle: {
+    fontSize: FONT_SIZE.lg,
+    fontWeight: FONT_WEIGHT.bold,
+    color: COLORS.textPrimary,
+  },
+  languagePillsRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: SPACING.sm,
+  },
+  langPill: {
+    backgroundColor: COLORS.background,
+    paddingHorizontal: SPACING.md,
+    paddingVertical: 8,
+    borderRadius: RADIUS.full,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  langPillActive: {
+    backgroundColor: COLORS.primaryLight,
+    borderColor: COLORS.primary,
+  },
+  langText: {
+    fontSize: FONT_SIZE.xs,
+    color: COLORS.textSecondary,
+    fontWeight: FONT_WEIGHT.medium,
+  },
+  langTextActive: {
+    color: COLORS.primary,
+    fontWeight: FONT_WEIGHT.bold,
   },
   menuItem: {
     flexDirection: 'row',

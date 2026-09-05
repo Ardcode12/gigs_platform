@@ -25,6 +25,7 @@ from app.routers import (
     jobs,
     notifications,
     ratings,
+    reports,
     workers,
     ws,
 )
@@ -75,6 +76,7 @@ def create_app() -> FastAPI:
     app.include_router(extra_amount.router)
     app.include_router(earnings.router)
     app.include_router(ratings.router)
+    app.include_router(reports.router)
     app.include_router(notifications.router)
     app.include_router(admin.router)
     app.include_router(ws.router)

@@ -30,6 +30,7 @@ from app.models import (
     ExtraAmountRequest,
     ExtraAmountStatus,
     Job,
+    JobReport,
     JobRejection,
     JobService,
     JobStatus,
@@ -40,6 +41,7 @@ from app.models import (
     PasswordReset,
     Payment,
     PaymentStatus,
+    PaymentMethod,
     Rating,
     Society,
     Worker,
@@ -57,6 +59,7 @@ WORKER_HOME = (28.6270, 77.3720)
 
 # Tables in reverse dependency order, for --reset.
 _WIPE_ORDER = (
+    JobReport,
     PasswordReset,
     Notification,
     Payment,
@@ -68,6 +71,7 @@ _WIPE_ORDER = (
     JobStatusEvent,
     JobService,
     Job,
+    JobReport,
     Worker,
     Customer,
     Society,
@@ -206,10 +210,10 @@ def seed(db) -> None:
     # rejecting a broadcast one only hides it from that worker.
     request_directed = Job(
         customer_id=rahul.id,
-        worker_id=suresh.id,
-        service_type="Electrical",
-        service_icon="lightning-bolt",
-        work_details="Two ceiling fans to be installed in the bedrooms.",
+        worker_id=ramesh.id,
+        service_type="Plumbing",
+        service_icon="water-pump",
+        work_details="Kitchen tap is leaking and needs a washer replacement.",
         address="C-9, Lotus Enclave, Sector 45",
         landmark="Beside the water tank",
         lat=28.5600,
@@ -610,7 +614,7 @@ def seed(db) -> None:
             Notification(
                 worker_id=suresh.id,
                 type=NotificationType.NEW_JOB,
-                title="New Electrical request",
+                title="New Plumbing request",
                 body=f"{rahul.name} · Sector 45",
                 data={"job_id": request_directed.id},
                 is_read=False,
@@ -623,7 +627,7 @@ def seed(db) -> None:
 
     print(f"· 1 society, {len(workers)} workers, {len(customers)} customers")
     print(f"· {completed_count} completed jobs with payments and ratings")
-    print("· 3 open requests (2 broadcast, 1 directed at WM1043), 1 job in progress")
+    print("· 3 open requests (2 broadcast, 1 directed at WM1042), 1 job in progress")
     print("\nLogin with the worker code OR the phone number:\n")
     for worker in workers:
         forced = " (will be asked to change it)" if worker.must_change_password else ""

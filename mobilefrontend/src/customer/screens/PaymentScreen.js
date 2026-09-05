@@ -11,18 +11,20 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { COLORS, SPACING, RADIUS, FONT_SIZE, FONT_WEIGHT, SHADOWS } from '../../theme';
+import { useT } from '../../i18n/LanguageContext';
 import { ONGOING_BOOKING } from '../data/customerMockData';
 
 const DIGITAL_PAYMENT_OPTIONS = [
-  { id: 'upi_gpay', name: 'Google Pay UPI', desc: 'Fastest via @okhdfcbank', icon: 'google', popular: true },
-  { id: 'upi_phonepe', name: 'PhonePe UPI', desc: 'Instant UPI transfer', icon: 'cellphone-wireless', popular: false },
-  { id: 'upi_paytm', name: 'Paytm UPI', desc: 'Wallet or Bank UPI', icon: 'wallet-outline', popular: false },
-  { id: 'card_hdfc', name: 'Credit / Debit Card', desc: 'Visa, Mastercard, RuPay', icon: 'credit-card-outline', popular: false },
-  { id: 'cash_cod', name: 'Cash to Cooperative Worker', desc: 'Direct currency hand-over', icon: 'cash-multiple', popular: false },
+  { id: 'upi_gpay', nameKey: 'customer.paymentGoogle', descKey: 'customer.paymentGoogleDesc', icon: 'google', popular: true },
+  { id: 'upi_phonepe', nameKey: 'customer.paymentPhonePe', descKey: 'customer.paymentPhonePeDesc', icon: 'cellphone-wireless', popular: false },
+  { id: 'upi_paytm', nameKey: 'customer.paymentPaytm', descKey: 'customer.paymentPaytmDesc', icon: 'wallet-outline', popular: false },
+  { id: 'card_hdfc', nameKey: 'customer.paymentCard', descKey: 'customer.paymentCardDesc', icon: 'credit-card-outline', popular: false },
+  { id: 'cash_cod', nameKey: 'customer.paymentCash', descKey: 'customer.paymentCashDesc', icon: 'cash-multiple', popular: false },
 ];
 
 const PaymentScreen = () => {
   const navigation = useNavigation();
+  const t = useT();
   const finalAmount = useRoute().params?.amount || 650;
   const [selectedMethod, setSelectedMethod] = useState('upi_gpay');
   const [isProcessing, setIsProcessing] = useState(false);
@@ -44,18 +46,18 @@ const PaymentScreen = () => {
         <TouchableOpacity style={styles.backButton} onPress={() => navigation.goBack()}>
           <MaterialCommunityIcons name="arrow-left" size={24} color={COLORS.textPrimary} />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>Digital Payment</Text>
+         <Text style={styles.headerTitle}>{t('customer.digitalPayment')}</Text>
         <View style={{ width: 40 }} />
       </View>
 
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
         {/* Amount to Pay Banner */}
         <View style={styles.amountBanner}>
-          <Text style={styles.amountBannerLabel}>Final Amount Due</Text>
+           <Text style={styles.amountBannerLabel}>{t('customer.finalDue')}</Text>
           <Text style={styles.amountBannerValue}>₹{finalAmount}</Text>
           <View style={styles.coopDirectTag}>
             <MaterialCommunityIcons name="handshake" size={14} color={COLORS.success} />
-            <Text style={styles.coopDirectText}>100% Goes Directly to Worker Account</Text>
+             <Text style={styles.coopDirectText}>{t('customer.directWorker')}</Text>
           </View>
         </View>
 
@@ -63,8 +65,8 @@ const PaymentScreen = () => {
           <>
             {/* Payment Methods */}
             <View style={styles.sectionHeader}>
-              <Text style={styles.sectionTitle}>Select Payment Method</Text>
-              <Text style={styles.sectionSub}>Secured 256-bit encrypted checkout</Text>
+               <Text style={styles.sectionTitle}>{t('customer.selectPayment')}</Text>
+               <Text style={styles.sectionSub}>{t('customer.secureCheckout')}</Text>
             </View>
 
             <View style={styles.methodsList}>
@@ -98,15 +100,15 @@ const PaymentScreen = () => {
                             isSelected && { color: COLORS.primaryDark },
                           ]}
                         >
-                          {item.name}
+                          {t(item.nameKey)}
                         </Text>
                         {item.popular && (
                           <View style={styles.popularBadge}>
-                            <Text style={styles.popularBadgeText}>POPULAR</Text>
+                             <Text style={styles.popularBadgeText}>{t('customer.popular')}</Text>
                           </View>
                         )}
                       </View>
-                      <Text style={styles.methodDesc}>{item.desc}</Text>
+                       <Text style={styles.methodDesc}>{t(item.descKey)}</Text>
                     </View>
 
                     <View
@@ -135,7 +137,7 @@ const PaymentScreen = () => {
                 color={COLORS.white}
               />
               <Text style={styles.payNowText}>
-                {isProcessing ? 'Processing Payment...' : `Pay ₹${finalAmount} Securely`}
+                 {isProcessing ? t('customer.processingPayment') : t('customer.paySecurely', { amount: `₹${finalAmount}` })}
               </Text>
             </TouchableOpacity>
           </>
@@ -146,12 +148,12 @@ const PaymentScreen = () => {
               <MaterialCommunityIcons name="check-bold" size={36} color={COLORS.white} />
             </View>
 
-            <Text style={styles.successTitle}>Payment Successful! 🎉</Text>
+             <Text style={styles.successTitle}>{t('customer.paymentSuccessful')}</Text>
             <Text style={styles.successAmount}>₹{finalAmount}</Text>
             <Text style={styles.successSub}>
-              Transaction ID: WM-TXN-2026-981249
+               {t('customer.transactionId', { id: 'WM-TXN-2026-981249' })}
             </Text>
-            <Text style={styles.successTime}>04 Sep 2026, 04:12 PM via UPI</Text>
+             <Text style={styles.successTime}>{t('customer.paymentVia', { date: '04 Sep 2026, 04:12 PM' })}</Text>
 
             <View style={styles.successDivider} />
 
@@ -163,7 +165,7 @@ const PaymentScreen = () => {
                 activeOpacity={0.8}
               >
                 <MaterialCommunityIcons name="receipt" size={18} color={COLORS.primary} />
-                <Text style={styles.invoiceButtonText}>View Invoice / Receipt</Text>
+               <Text style={styles.invoiceButtonText}>{t('customer.viewReceipt')}</Text>
               </TouchableOpacity>
 
               <TouchableOpacity
@@ -172,7 +174,7 @@ const PaymentScreen = () => {
                 activeOpacity={0.85}
               >
                 <MaterialCommunityIcons name="star" size={18} color={COLORS.white} />
-                <Text style={styles.rateServiceButtonText}>Rate & Review Service</Text>
+                 <Text style={styles.rateServiceButtonText}>{t('customer.rateService')}</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -186,7 +188,7 @@ const PaymentScreen = () => {
             <View style={styles.receiptHeader}>
               <View style={styles.receiptBrandRow}>
                 <MaterialCommunityIcons name="account-group" size={24} color={COLORS.primary} />
-                <Text style={styles.receiptBrandTitle}>WORKMAT COOPERATIVE</Text>
+                <Text style={styles.receiptBrandTitle}>{t('customer.cooperative')}</Text>
               </View>
               <TouchableOpacity onPress={() => setShowReceiptModal(false)}>
                 <MaterialCommunityIcons name="close" size={24} color={COLORS.textSecondary} />
@@ -194,22 +196,22 @@ const PaymentScreen = () => {
             </View>
 
             <View style={styles.receiptBody}>
-              <Text style={styles.receiptTitle}>OFFICIAL SERVICE INVOICE</Text>
-              <Text style={styles.receiptInvoiceNo}>Invoice #: INV-WM-2026-9812</Text>
-              <Text style={styles.receiptDate}>Date: 04 September 2026</Text>
+               <Text style={styles.receiptTitle}>{t('customer.officialInvoice')}</Text>
+               <Text style={styles.receiptInvoiceNo}>{t('invoice.number', { number: 'INV-WM-2026-9812' })}</Text>
+               <Text style={styles.receiptDate}>{t('customer.invoiceDate', { date: '04 September 2026' })}</Text>
 
               <View style={styles.receiptDivider} />
 
-              <Text style={styles.receiptSectionHeader}>Worker Details</Text>
+               <Text style={styles.receiptSectionHeader}>{t('customer.workerDetails')}</Text>
               <Text style={styles.receiptWorker}>{ONGOING_BOOKING.worker.name}</Text>
-              <Text style={styles.receiptWorkerTrade}>{ONGOING_BOOKING.worker.trade}</Text>
+              <Text style={styles.receiptWorkerTrade}>{t(ONGOING_BOOKING.worker.tradeKey)}</Text>
 
               <View style={styles.receiptDivider} />
 
-              <Text style={styles.receiptSectionHeader}>Items & Charges</Text>
+               <Text style={styles.receiptSectionHeader}>{t('customer.itemsCharges')}</Text>
               {ONGOING_BOOKING.items.map((it, idx) => (
                 <View key={idx} style={styles.receiptItemRow}>
-                  <Text style={styles.receiptItemName}>{it.name}</Text>
+                   <Text style={styles.receiptItemName}>{t(it.nameKey)}</Text>
                   <Text style={styles.receiptItemPrice}>₹{it.price}</Text>
                 </View>
               ))}
@@ -217,17 +219,17 @@ const PaymentScreen = () => {
               <View style={styles.receiptDivider} />
 
               <View style={styles.receiptTotalRow}>
-                <Text style={styles.receiptTotalLabel}>Total Paid</Text>
+                 <Text style={styles.receiptTotalLabel}>{t('customer.totalPaid')}</Text>
                 <Text style={styles.receiptTotalVal}>₹{finalAmount}</Text>
               </View>
-              <Text style={styles.receiptPaidStatus}>STATUS: PAID (VERIFIED)</Text>
+               <Text style={styles.receiptPaidStatus}>{t('customer.paidVerified')}</Text>
             </View>
 
             <TouchableOpacity
               style={styles.closeReceiptButton}
               onPress={() => setShowReceiptModal(false)}
             >
-              <Text style={styles.closeReceiptText}>Done</Text>
+               <Text style={styles.closeReceiptText}>{t('common.done')}</Text>
             </TouchableOpacity>
           </View>
         </View>

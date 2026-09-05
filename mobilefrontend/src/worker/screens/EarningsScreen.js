@@ -18,12 +18,7 @@ import useApi from '../../hooks/useApi';
 import { useSocketEvent, WS_EVENTS } from '../../context/SocketContext';
 import { getOverview, getPayments } from '../../api/earnings';
 import { formatRupees, formatDate } from '../../utils/format';
-
-const TABS = [
-  { key: 'today', label: 'Today', heroLabel: "Today's Earnings" },
-  { key: 'week', label: 'Weekly', heroLabel: "This Week's Earnings" },
-  { key: 'month', label: 'Monthly', heroLabel: "This Month's Earnings" },
-];
+import { useT } from '../../i18n/LanguageContext';
 
 /** A single bar of ₹0 for "today" says nothing — show the week's shape instead. */
 const chartFor = (overview, tab) => (tab === 'today' ? overview.week : overview[tab]);
@@ -37,6 +32,12 @@ const todayIso = () => {
 /** Spec #10 — what came in today, this week, this month, and per completed job. */
 const EarningsScreen = () => {
   const [activeTab, setActiveTab] = useState('today');
+  const t = useT();
+  const tabs = [
+    { key: 'today', label: t('worker.earningsTabToday'), heroLabel: t('worker.todayEarningsHero') },
+    { key: 'week', label: t('worker.earningsTabWeekly'), heroLabel: t('worker.weekEarningsHero') },
+    { key: 'month', label: t('worker.earningsTabMonthly'), heroLabel: t('worker.monthEarningsHero') },
+  ];
 
   const earnings = useApi(
     useCallback(
@@ -55,7 +56,7 @@ const EarningsScreen = () => {
 
   const header = (
     <View style={styles.header}>
-      <Text style={styles.headerTitle}>Earnings</Text>
+       <Text style={styles.headerTitle}>{t('tabs.earnings')}</Text>
     </View>
   );
 
@@ -64,7 +65,7 @@ const EarningsScreen = () => {
       <View style={styles.container}>
         <StatusBar barStyle="light-content" backgroundColor={COLORS.primary} />
         {header}
-        <LoadingState message="Loading your earnings…" />
+        <LoadingState message={t('worker.loadingEarnings')} />
       </View>
     );
   }
@@ -76,9 +77,9 @@ const EarningsScreen = () => {
         {header}
         <EmptyState
           tone="error"
-          title="Couldn't load earnings"
+          title={t('worker.loadEarnings')}
           message={earnings.error?.message}
-          actionLabel="Try again"
+          actionLabel={t('common.tryAgain')}
           onAction={earnings.reload}
         />
       </View>
@@ -87,7 +88,7 @@ const EarningsScreen = () => {
 
   const { overview, payments } = earnings.data;
   const active = overview[activeTab];
-  const tabMeta = TABS.find((t) => t.key === activeTab);
+   const tabMeta = tabs.find((tab) => tab.key === activeTab);
   const chart = chartFor(overview, activeTab);
   const maxAmount = Math.max(1, ...chart.breakdown.map((b) => b.amount));
   const today = todayIso();
@@ -103,7 +104,7 @@ const EarningsScreen = () => {
       <View style={styles.heroSection}>
         {/* Tab Selector */}
         <View style={styles.tabRow}>
-          {TABS.map((tab) => (
+           {tabs.map((tab) => (
             <TouchableOpacity
               key={tab.key}
               style={[styles.tab, activeTab === tab.key && styles.tabActive]}
@@ -121,8 +122,8 @@ const EarningsScreen = () => {
           <Text style={styles.heroLabel}>{tabMeta.heroLabel}</Text>
           <Text style={styles.heroValue}>{formatRupees(active.total)}</Text>
           <Text style={styles.heroJobs}>
-            {active.jobs} {active.jobs === 1 ? 'Job' : 'Jobs'} Completed
-            {active.pending > 0 ? ` · ${formatRupees(active.pending)} awaiting payment` : ''}
+             {t(active.jobs === 1 ? 'worker.job_one' : 'worker.job_other', { count: active.jobs })} {t('worker.completed')}
+             {active.pending > 0 ? ` · ${formatRupees(active.pending)} ${t('worker.awaitingPayment')}` : ''}
           </Text>
         </View>
       </View>
@@ -146,14 +147,14 @@ const EarningsScreen = () => {
               <MaterialCommunityIcons name="briefcase-check" size={22} color={COLORS.success} />
             </View>
             <Text style={styles.statValue}>{active.jobs}</Text>
-            <Text style={styles.statLabel}>Completed Jobs</Text>
+            <Text style={styles.statLabel}>{t('worker.completedJobs')}</Text>
           </Card>
           <Card style={styles.statCard}>
             <View style={[styles.statIcon, { backgroundColor: COLORS.warningLight }]}>
               <MaterialCommunityIcons name="cash-plus" size={22} color="#B45309" />
             </View>
             <Text style={styles.statValue}>{formatRupees(active.extra_earned)}</Text>
-            <Text style={styles.statLabel}>Extra Earned</Text>
+            <Text style={styles.statLabel}>{t('worker.extraEarned')}</Text>
           </Card>
         </View>
 
@@ -161,10 +162,10 @@ const EarningsScreen = () => {
         <Card style={styles.chartCard}>
           <View style={styles.chartHeader}>
             <Text style={styles.chartTitle}>
-              {activeTab === 'month' ? 'This Month' : 'This Week'}
+              {activeTab === 'month' ? t('worker.thisMonth') : t('worker.thisWeek')}
             </Text>
             <Text style={styles.chartSubtitle}>
-              {activeTab === 'month' ? 'Weekly Breakdown' : 'Daily Breakdown'}
+              {activeTab === 'month' ? t('worker.weeklyBreakdown') : t('worker.dailyBreakdown')}
             </Text>
           </View>
           <View style={styles.chartBars}>
@@ -202,12 +203,12 @@ const EarningsScreen = () => {
 
         {/* Earnings Breakdown */}
         <Card style={styles.breakdownCard}>
-          <Text style={styles.breakdownTitle}>Earnings Summary</Text>
+           <Text style={styles.breakdownTitle}>{t('worker.earningsSummary')}</Text>
 
           <View style={styles.breakdownRow}>
             <View style={styles.breakdownLeft}>
               <View style={[styles.breakdownDot, { backgroundColor: COLORS.primary }]} />
-              <Text style={styles.breakdownLabel}>Today</Text>
+               <Text style={styles.breakdownLabel}>{t('time.today')}</Text>
             </View>
             <Text style={styles.breakdownValue}>{formatRupees(overview.today.total)}</Text>
           </View>
@@ -215,7 +216,7 @@ const EarningsScreen = () => {
           <View style={styles.breakdownRow}>
             <View style={styles.breakdownLeft}>
               <View style={[styles.breakdownDot, { backgroundColor: COLORS.info }]} />
-              <Text style={styles.breakdownLabel}>This Week</Text>
+               <Text style={styles.breakdownLabel}>{t('worker.thisWeek')}</Text>
             </View>
             <Text style={styles.breakdownValue}>{formatRupees(overview.week.total)}</Text>
           </View>
@@ -223,7 +224,7 @@ const EarningsScreen = () => {
           <View style={styles.breakdownRow}>
             <View style={styles.breakdownLeft}>
               <View style={[styles.breakdownDot, { backgroundColor: COLORS.success }]} />
-              <Text style={styles.breakdownLabel}>This Month</Text>
+               <Text style={styles.breakdownLabel}>{t('worker.thisMonth')}</Text>
             </View>
             <Text style={styles.breakdownValue}>{formatRupees(overview.month.total)}</Text>
           </View>
@@ -231,7 +232,7 @@ const EarningsScreen = () => {
           <View style={[styles.breakdownRow, { borderBottomWidth: 0 }]}>
             <View style={styles.breakdownLeft}>
               <View style={[styles.breakdownDot, { backgroundColor: COLORS.warning }]} />
-              <Text style={styles.breakdownLabel}>Extra Amount Earned</Text>
+               <Text style={styles.breakdownLabel}>{t('worker.extraAmountEarned')}</Text>
             </View>
             <Text style={[styles.breakdownValue, { color: COLORS.warning }]}>
               +{formatRupees(overview.month.extra_earned)}
@@ -241,11 +242,11 @@ const EarningsScreen = () => {
 
         {/* Per-job payments */}
         <Card style={styles.breakdownCard}>
-          <Text style={styles.breakdownTitle}>Recent Payments</Text>
+           <Text style={styles.breakdownTitle}>{t('worker.recentPayments')}</Text>
 
           {payments.length === 0 ? (
             <Text style={styles.emptyText}>
-              Payments appear here once you complete a job — base amount plus any approved extra.
+               {t('worker.paymentsEmpty')}
             </Text>
           ) : (
             payments.map((payment, index) => (
@@ -258,19 +259,19 @@ const EarningsScreen = () => {
               >
                 <View style={{ flex: 1 }}>
                   <Text style={styles.paymentService}>
-                    {payment.service_type ?? 'Job'} · {payment.customer_name ?? 'Customer'}
+                     {payment.service_type ?? t('worker.job')} · {payment.customer_name ?? t('worker.customer')}
                   </Text>
                   <Text style={styles.paymentMeta}>
                     {formatDate(payment.paid_at ?? payment.created_at)}
                     {payment.extra_amount > 0
-                      ? ` · incl. ${formatRupees(payment.extra_amount)} extra`
+                       ? ` · ${t('worker.includedExtra', { amount: formatRupees(payment.extra_amount) })}`
                       : ''}
                   </Text>
                 </View>
                 <View style={styles.paymentRight}>
                   <Text style={styles.paymentAmount}>{formatRupees(payment.total_amount)}</Text>
                   <StatusBadge
-                    label={payment.status === 'paid' ? 'Paid' : 'Pending'}
+                     label={payment.status === 'paid' ? t('worker.paid') : t('worker.pending')}
                     color={payment.status === 'paid' ? 'success' : 'warning'}
                     size="sm"
                   />

@@ -17,6 +17,7 @@ import useApi from '../../hooks/useApi';
 import { useSocketEvent, WS_EVENTS } from '../../context/SocketContext';
 import { getNotifications, markRead, markAllRead } from '../../api/notifications';
 import { timeAgo, dayLabel } from '../../utils/format';
+import { useT } from '../../i18n/LanguageContext';
 
 /** How each notification type looks, and where tapping it goes. */
 const TYPE_META = {
@@ -48,6 +49,7 @@ const toSections = (items) => {
 const NotificationsScreen = () => {
   const navigation = useNavigation();
   const [marking, setMarking] = useState(false);
+  const t = useT();
 
   const feed = useApi(useCallback(() => getNotifications({ limit: 100 }), []), []);
 
@@ -128,7 +130,7 @@ const NotificationsScreen = () => {
   if (feed.loading && !feed.data) {
     return (
       <View style={styles.container}>
-        <ScreenHeader title="Notifications" onBack={() => navigation.goBack()} />
+         <ScreenHeader title={t('notif.title')} onBack={() => navigation.goBack()} />
         <LoadingState />
       </View>
     );
@@ -137,12 +139,12 @@ const NotificationsScreen = () => {
   if (feed.error && !feed.data) {
     return (
       <View style={styles.container}>
-        <ScreenHeader title="Notifications" onBack={() => navigation.goBack()} />
+         <ScreenHeader title={t('notif.title')} onBack={() => navigation.goBack()} />
         <EmptyState
           tone="error"
-          title="Couldn't load notifications"
+           title={t('notif.loadFailed')}
           message={feed.error.message}
-          actionLabel="Try again"
+           actionLabel={t('common.tryAgain')}
           onAction={feed.reload}
         />
       </View>
@@ -152,8 +154,8 @@ const NotificationsScreen = () => {
   return (
     <View style={styles.container}>
       <ScreenHeader
-        title="Notifications"
-        subtitle={unread > 0 ? `${unread} unread` : 'All caught up'}
+         title={t('notif.title')}
+         subtitle={unread > 0 ? t(unread === 1 ? 'notif.unread_one' : 'notif.unread_other', { count: unread }) : t('notif.allCaughtUp')}
         onBack={() => navigation.goBack()}
         right={
           unread > 0 ? (
@@ -163,7 +165,7 @@ const NotificationsScreen = () => {
               style={styles.markAll}
               activeOpacity={0.7}
             >
-              <Text style={styles.markAllText}>{marking ? '…' : 'Mark all'}</Text>
+               <Text style={styles.markAllText}>{marking ? '…' : t('notif.markAll')}</Text>
             </TouchableOpacity>
           ) : undefined
         }
@@ -172,8 +174,8 @@ const NotificationsScreen = () => {
       {items.length === 0 ? (
         <EmptyState
           icon="bell-outline"
-          title="No notifications"
-          message="Job requests, messages and payment updates will show up here."
+           title={t('notif.empty')}
+           message={t('notif.emptyBody')}
         />
       ) : (
         <SectionList
