@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+import React, { useCallback, useState } from 'react';
+import { useNavigation } from '@react-navigation/native';
 import {
   View,
   Text,
@@ -7,84 +8,180 @@ import {
   TouchableOpacity,
   Switch,
   StatusBar,
+  RefreshControl,
+  Alert,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import { COLORS, SPACING, RADIUS, FONT_SIZE, FONT_WEIGHT, SHADOWS } from '../../theme';
+import { COLORS, SPACING, RADIUS, FONT_SIZE, FONT_WEIGHT } from '../../theme';
 import Card from '../components/Card';
 import StatusBadge from '../components/StatusBadge';
-import { WORKER, TODAYS_JOBS, EARNINGS } from '../data/workerMockData';
+import Avatar from '../../components/Avatar';
+import LoadingState from '../../components/LoadingState';
+import EmptyState from '../../components/EmptyState';
+import useApi from '../../hooks/useApi';
+import useLocation from '../../hooks/useLocation';
+import { useAuth } from '../../context/AuthContext';
+import { useSocketEvent, WS_EVENTS } from '../../context/SocketContext';
+import { setAvailability } from '../../api/worker';
+import { getRequests, getCurrentJob, getHistory } from '../../api/jobs';
+import { getSummary } from '../../api/earnings';
+import { getUnreadCount } from '../../api/notifications';
+import { formatRupees, formatTime } from '../../utils/format';
+import { JOB_STEPS, STATUS_LABEL, STATUS_TONE, JOB_STATUS } from '../../constants/jobSteps';
 
-const HomeScreen = ({ navigation }) => {
-  const [isAvailable, setIsAvailable] = useState(WORKER.isAvailable);
-  const pendingRequests = 2;
+const greeting = () => {
+  const hour = new Date().getHours();
+  if (hour < 12) return 'Good Morning 👋';
+  if (hour < 17) return 'Good Afternoon 👋';
+  return 'Good Evening 👋';
+};
+
+const HomeScreen = () => {
+  const navigation = useNavigation();
+  const { worker, patchWorker } = useAuth();
+  const [toggling, setToggling] = useState(false);
+  const isAvailable = worker?.is_available ?? false;
+
+  // A position is what lets the API compute distance and ETA for every job.
+  const { request: requestLocation } = useLocation();
+
+  const dashboard = useApi(
+    useCallback(
+      () =>
+        Promise.all([
+          getRequests(),
+          getCurrentJob(),
+          getSummary('today'),
+          getHistory({ limit: 10 }),
+          getUnreadCount(),
+        ]).then(([requests, current, earnings, history, unread]) => ({
+          requests,
+          current,
+          earnings,
+          history,
+          unread: unread.unread,
+        })),
+      [],
+    ),
+    [],
+  );
+
+  // Anything that changes the dashboard arrives as one of these.
+  useSocketEvent(
+    [
+      WS_EVENTS.NEW_JOB_REQUEST,
+      WS_EVENTS.JOB_UPDATE,
+      WS_EVENTS.PAYMENT_UPDATE,
+      WS_EVENTS.EXTRA_AMOUNT_DECISION,
+      WS_EVENTS.CHAT_MESSAGE,
+    ],
+    () => dashboard.refetch(),
+  );
+
+  const handleToggleAvailability = async (next) => {
+    // Optimistic: the switch should not lag behind the thumb.
+    patchWorker({ is_available: next });
+    setToggling(true);
+    try {
+      const result = await setAvailability(next);
+      patchWorker({ is_available: result.is_available });
+      if (next) requestLocation();
+      dashboard.refetch();
+    } catch (error) {
+      patchWorker({ is_available: !next });
+      Alert.alert('Could not update availability', error.message);
+    } finally {
+      setToggling(false);
+    }
+  };
+
+  if (dashboard.loading && !dashboard.data) {
+    return (
+      <View style={styles.container}>
+        <StatusBar barStyle="light-content" backgroundColor={COLORS.primary} />
+        <LoadingState message="Loading your day…" />
+      </View>
+    );
+  }
+
+  if (dashboard.error && !dashboard.data) {
+    return (
+      <View style={styles.container}>
+        <EmptyState
+          tone="error"
+          title="Can't reach the server"
+          message={dashboard.error.message}
+          actionLabel="Try again"
+          onAction={dashboard.reload}
+        />
+      </View>
+    );
+  }
+
+  const { requests = [], current, earnings, history = [], unread = 0 } = dashboard.data ?? {};
+  const pendingRequests = requests.length;
+  const currentStepLabel =
+    current?.current_step != null ? JOB_STEPS[current.current_step] : STATUS_LABEL[current?.status];
 
   return (
-    <SafeAreaView style={styles.safeArea}>
+    <View style={styles.container}>
       <StatusBar barStyle="light-content" backgroundColor={COLORS.primary} />
 
-      {/* Top Header */}
+      {/* Header */}
       <View style={styles.header}>
         <View style={styles.headerContent}>
           <View style={styles.headerLeft}>
-            <View style={styles.avatar}>
-              <Text style={styles.avatarText}>
-                {WORKER.name.split(' ').map((n) => n[0]).join('')}
-              </Text>
-              <View
-                style={[
-                  styles.onlineDot,
-                  { backgroundColor: isAvailable ? COLORS.success : COLORS.offline },
-                ]}
-              />
-            </View>
+            <Avatar
+              name={worker?.name}
+              uri={worker?.photo_url}
+              size={48}
+              backgroundColor="rgba(255,255,255,0.25)"
+              color={COLORS.white}
+              online={isAvailable}
+            />
             <View style={styles.headerInfo}>
-              <Text style={styles.greeting}>Good Afternoon 👋</Text>
-              <Text style={styles.workerName}>{WORKER.name}</Text>
+              <Text style={styles.greeting}>{greeting()}</Text>
+              <Text style={styles.workerName}>{worker?.name}</Text>
             </View>
           </View>
-
           <TouchableOpacity
             style={styles.notificationBtn}
-            onPress={() => navigation.navigate('JobsTab')}
-            activeOpacity={0.8}
+            onPress={() => navigation.navigate('Notifications')}
+            activeOpacity={0.7}
           >
             <MaterialCommunityIcons name="bell-outline" size={24} color={COLORS.white} />
-            {pendingRequests > 0 && (
+            {unread > 0 && (
               <View style={styles.notifBadge}>
-                <Text style={styles.notifBadgeText}>{pendingRequests}</Text>
+                <Text style={styles.notifBadgeText}>{unread > 9 ? '9+' : unread}</Text>
               </View>
             )}
           </TouchableOpacity>
         </View>
 
-        {/* Large Availability Card */}
-        <View
-          style={[
-            styles.availabilityCard,
-            isAvailable ? styles.availabilityActive : styles.availabilityInactive,
-          ]}
-        >
+        {/* Availability Toggle */}
+        <View style={styles.availabilityCard}>
           <View style={styles.availLeft}>
             <MaterialCommunityIcons
               name={isAvailable ? 'check-circle' : 'close-circle'}
-              size={28}
+              size={24}
               color={isAvailable ? COLORS.success : COLORS.offline}
             />
-            <View style={styles.availTextWrap}>
+            <View style={{ marginLeft: SPACING.md }}>
               <Text style={styles.availLabel}>
-                {isAvailable ? 'YOU ARE AVAILABLE' : 'YOU ARE OFFLINE'}
+                {isAvailable ? 'You are Available' : 'You are Unavailable'}
               </Text>
               <Text style={styles.availSubtext}>
-                {isAvailable ? 'Receiving new customer requests' : 'Tap switch to start accepting jobs'}
+                {isAvailable ? 'Ready to receive jobs' : 'Not receiving jobs'}
               </Text>
             </View>
           </View>
           <Switch
             value={isAvailable}
-            onValueChange={setIsAvailable}
-            trackColor={{ false: COLORS.border, true: COLORS.successLight }}
+            onValueChange={handleToggleAvailability}
+            disabled={toggling}
+            trackColor={{ false: COLORS.border, true: '#86EFAC' }}
             thumbColor={isAvailable ? COLORS.success : COLORS.offline}
+            style={{ transform: [{ scaleX: 1.2 }, { scaleY: 1.2 }] }}
           />
         </View>
       </View>
@@ -93,216 +190,260 @@ const HomeScreen = ({ navigation }) => {
         style={styles.body}
         contentContainerStyle={styles.bodyContent}
         showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl
+            refreshing={dashboard.refreshing}
+            onRefresh={dashboard.refetch}
+            tintColor={COLORS.primary}
+          />
+        }
       >
-        {/* New Job Requests Alert Banner */}
+        {/* New Job Requests */}
         {pendingRequests > 0 && (
           <TouchableOpacity
             activeOpacity={0.85}
-            onPress={() => navigation.navigate('NewJobRequest')}
-            style={styles.requestBannerTouchable}
+            onPress={() => navigation.navigate('JobRequests')}
           >
-            <View style={styles.requestBanner}>
-              <View style={styles.requestIconWrap}>
-                <MaterialCommunityIcons name="briefcase-clock" size={28} color={COLORS.white} />
+            <Card style={styles.requestCard}>
+              <View style={styles.requestCardInner}>
+                <View style={styles.requestIconWrap}>
+                  <MaterialCommunityIcons name="briefcase-clock" size={28} color={COLORS.white} />
+                </View>
+                <View style={styles.requestInfo}>
+                  <Text style={styles.requestTitle}>New Job Requests</Text>
+                  <Text style={styles.requestSubtext}>
+                    {pendingRequests} {pendingRequests === 1 ? 'request' : 'requests'} waiting
+                  </Text>
+                </View>
+                <View style={styles.requestBadge}>
+                  <Text style={styles.requestBadgeText}>{pendingRequests}</Text>
+                </View>
+                <MaterialCommunityIcons name="chevron-right" size={24} color={COLORS.primary} />
               </View>
-              <View style={styles.requestInfo}>
-                <Text style={styles.requestTitle}>New Job Requests</Text>
-                <Text style={styles.requestSubtext}>2 customer requests waiting nearby</Text>
-              </View>
-              <View style={styles.requestActionPill}>
-                <Text style={styles.requestActionText}>View</Text>
-                <MaterialCommunityIcons name="arrow-right" size={16} color={COLORS.white} />
-              </View>
-            </View>
+            </Card>
           </TouchableOpacity>
         )}
 
-        {/* Standardized Today Stats Row */}
-        <View style={styles.statsRow}>
-          <Card style={styles.statCard}>
-            <View style={styles.statIconWrapSuccess}>
-              <MaterialCommunityIcons name="currency-inr" size={22} color={COLORS.success} />
-            </View>
-            <Text style={styles.statValue}>₹{EARNINGS.today.toLocaleString('en-IN')}</Text>
-            <Text style={styles.statLabel}>Today's Earnings</Text>
-          </Card>
-
-          <Card style={styles.statCard}>
-            <View style={styles.statIconWrapPrimary}>
-              <MaterialCommunityIcons name="briefcase-check" size={22} color={COLORS.primary} />
-            </View>
-            <Text style={styles.statValue}>{EARNINGS.todayJobs}</Text>
-            <Text style={styles.statLabel}>Jobs Done Today</Text>
-          </Card>
-        </View>
-
-        {/* Current Active Job Card */}
-        <View style={styles.sectionHeaderRow}>
-          <Text style={styles.sectionTitle}>Current Job</Text>
-          <StatusBadge label="ACTIVE" color="warning" size="sm" />
-        </View>
-
-        <TouchableOpacity
-          activeOpacity={0.85}
-          onPress={() => navigation.navigate('CurrentJob')}
-        >
-          <Card style={styles.currentJobCard}>
-            <View style={styles.currentJobHeader}>
-              <View style={styles.serviceIconCircle}>
-                <MaterialCommunityIcons name="water-pump" size={24} color={COLORS.primary} />
-              </View>
-              <View style={styles.currentJobMeta}>
-                <Text style={styles.currentJobService}>Plumbing Repair</Text>
-                <Text style={styles.currentJobCustomer}>Customer: Amit Patel</Text>
-              </View>
-              <Text style={styles.currentJobAmount}>₹850</Text>
-            </View>
-
-            <View style={styles.cardDivider} />
-
-            <View style={styles.locationRow}>
-              <MaterialCommunityIcons name="map-marker" size={16} color={COLORS.textSecondary} />
-              <Text style={styles.locationAddressText} numberOfLines={1}>
-                Flat 302, Banjara Hills, Hyderabad (2.1 km)
+        {!isAvailable && (
+          <Card variant="warning" style={styles.offlineCard}>
+            <View style={styles.offlineRow}>
+              <MaterialCommunityIcons name="sleep" size={22} color={COLORS.warning} />
+              <Text style={styles.offlineText}>
+                You&apos;re marked unavailable, so new job requests won&apos;t reach you. Flip the
+                switch above when you&apos;re ready.
               </Text>
             </View>
-
-            <View style={styles.currentJobFooter}>
-              <View style={styles.stepIndicatorPill}>
-                <MaterialCommunityIcons name="navigation-variant" size={14} color={COLORS.primary} />
-                <Text style={styles.stepIndicatorText}>Status: Arrived</Text>
-              </View>
-
-              <View style={styles.viewDetailsBtn}>
-                <Text style={styles.viewDetailsBtnText}>Open Job Details</Text>
-                <MaterialCommunityIcons name="arrow-right" size={16} color={COLORS.primary} />
-              </View>
-            </View>
           </Card>
-        </TouchableOpacity>
+        )}
 
-        {/* Today's Jobs List */}
-        <View style={styles.sectionHeaderRow}>
-          <Text style={styles.sectionTitle}>Completed Today</Text>
+        {/* Stats Row */}
+        <View style={styles.statsRow}>
+          <Card style={styles.statCard}>
+            <View style={[styles.statIconWrap, { backgroundColor: COLORS.successLight }]}>
+              <MaterialCommunityIcons name="currency-inr" size={22} color={COLORS.success} />
+            </View>
+            <Text style={styles.statValue}>{formatRupees(earnings?.total)}</Text>
+            <Text style={styles.statLabel}>Today&apos;s Earnings</Text>
+          </Card>
+          <Card style={styles.statCard}>
+            <View style={[styles.statIconWrap, { backgroundColor: COLORS.primaryLight }]}>
+              <MaterialCommunityIcons name="briefcase-check" size={22} color={COLORS.primary} />
+            </View>
+            <Text style={styles.statValue}>{earnings?.jobs ?? 0}</Text>
+            <Text style={styles.statLabel}>Today&apos;s Jobs</Text>
+          </Card>
+        </View>
+
+        {/* Current Job Quick View */}
+        {current ? (
           <TouchableOpacity
-            style={styles.seeAllBtn}
-            onPress={() => navigation.navigate('JobsTab')}
+            activeOpacity={0.85}
+            onPress={() => navigation.navigate('CurrentJob', { jobId: current.id })}
           >
-            <Text style={styles.seeAllText}>View All</Text>
+            <Card style={styles.currentJobCard}>
+              <View style={styles.currentJobHeader}>
+                <StatusBadge
+                  label={(STATUS_LABEL[current.status] ?? '').toUpperCase()}
+                  color={STATUS_TONE[current.status] ?? 'warning'}
+                  size="sm"
+                />
+                <Text style={styles.currentJobTime}>{formatTime(current.accepted_at)}</Text>
+              </View>
+              <View style={styles.currentJobBody}>
+                <View style={[styles.serviceIconCircle, { backgroundColor: COLORS.infoLight }]}>
+                  <MaterialCommunityIcons
+                    name={current.service_icon || 'wrench'}
+                    size={24}
+                    color={COLORS.info}
+                  />
+                </View>
+                <View style={{ flex: 1, marginLeft: SPACING.md }}>
+                  <Text style={styles.currentJobService}>{current.service_type}</Text>
+                  <Text style={styles.currentJobCustomer}>{current.customer.name}</Text>
+                  <View style={styles.currentJobLocation}>
+                    <MaterialCommunityIcons
+                      name="map-marker"
+                      size={14}
+                      color={COLORS.textSecondary}
+                    />
+                    <Text style={styles.currentJobAddress} numberOfLines={1}>
+                      {current.location.address}
+                    </Text>
+                  </View>
+                </View>
+                <View style={styles.currentJobAmount}>
+                  <Text style={styles.currentJobAmountText}>
+                    {formatRupees(current.amounts.total_amount)}
+                  </Text>
+                </View>
+              </View>
+              <View style={styles.currentJobFooter}>
+                <View style={styles.currentJobStep}>
+                  <View style={styles.stepDot} />
+                  <Text style={styles.stepText}>{currentStepLabel}</Text>
+                </View>
+                <View style={styles.viewBtn}>
+                  <Text style={styles.viewBtnText}>View Details</Text>
+                  <MaterialCommunityIcons name="arrow-right" size={16} color={COLORS.primary} />
+                </View>
+              </View>
+            </Card>
+          </TouchableOpacity>
+        ) : (
+          <Card style={styles.noJobCard}>
+            <MaterialCommunityIcons
+              name="clipboard-check-outline"
+              size={28}
+              color={COLORS.textTertiary}
+            />
+            <Text style={styles.noJobTitle}>No job in progress</Text>
+            <Text style={styles.noJobText}>
+              {pendingRequests > 0
+                ? 'Open the requests above to pick up your next job.'
+                : 'You&apos;ll see a job here as soon as you accept one.'}
+            </Text>
+          </Card>
+        )}
+
+        {/* Recent Jobs */}
+        <View style={styles.sectionHeader}>
+          <Text style={styles.sectionTitle}>Recent Jobs</Text>
+          <TouchableOpacity onPress={() => navigation.navigate('JobsTab')}>
+            <Text style={styles.seeAllText}>See All</Text>
           </TouchableOpacity>
         </View>
 
-        {TODAYS_JOBS.map((job) => (
-          <Card key={job.id} style={styles.jobItemCard}>
-            <View style={styles.jobItemRow}>
-              <View
-                style={[
-                  styles.jobStatusDot,
-                  { backgroundColor: job.status === 'completed' ? COLORS.success : COLORS.warning },
-                ]}
-              />
-              <View style={styles.jobItemDetails}>
-                <Text style={styles.jobItemService}>{job.service}</Text>
-                <Text style={styles.jobItemCustomer}>{job.customer} • {job.time}</Text>
-              </View>
-              <View style={styles.jobItemRight}>
-                <Text style={styles.jobItemAmount}>₹{job.amount}</Text>
-                <StatusBadge
-                  label={job.status === 'completed' ? 'Done' : 'Active'}
-                  color={job.status === 'completed' ? 'success' : 'warning'}
-                  size="sm"
-                />
-              </View>
-            </View>
+        {history.length === 0 ? (
+          <Card style={styles.jobItem}>
+            <Text style={styles.noJobText}>No jobs yet. Your history will build up here.</Text>
           </Card>
-        ))}
+        ) : (
+          history.map((job) => (
+            <Card key={job.id} style={styles.jobItem}>
+              <TouchableOpacity
+                style={styles.jobItemRow}
+                activeOpacity={0.7}
+                onPress={() =>
+                  navigation.navigate(
+                    job.status === JOB_STATUS.COMPLETED ? 'JobRequest' : 'CurrentJob',
+                    { jobId: job.id },
+                  )
+                }
+              >
+                <View
+                  style={[
+                    styles.jobStatusDot,
+                    {
+                      backgroundColor:
+                        job.status === JOB_STATUS.COMPLETED
+                          ? COLORS.success
+                          : job.status === JOB_STATUS.REJECTED ||
+                            job.status === JOB_STATUS.CANCELLED
+                          ? COLORS.danger
+                          : COLORS.warning,
+                    },
+                  ]}
+                />
+                <View style={{ flex: 1, marginLeft: SPACING.md }}>
+                  <Text style={styles.jobItemService}>{job.service_type}</Text>
+                  <Text style={styles.jobItemCustomer}>
+                    {job.customer_name} · {formatTime(job.completed_at || job.requested_at)}
+                  </Text>
+                </View>
+                <View style={styles.jobItemRight}>
+                  <Text style={styles.jobItemAmount}>{formatRupees(job.total_amount)}</Text>
+                  <StatusBadge
+                    label={STATUS_LABEL[job.status] ?? job.status}
+                    color={STATUS_TONE[job.status] ?? 'neutral'}
+                    size="sm"
+                  />
+                </View>
+              </TouchableOpacity>
+            </Card>
+          ))
+        )}
 
-        <View style={{ height: 90 }} />
+        <View style={{ height: 100 }} />
       </ScrollView>
-    </SafeAreaView>
+    </View>
   );
 };
 
 const styles = StyleSheet.create({
-  safeArea: {
+  container: {
     flex: 1,
     backgroundColor: COLORS.background,
   },
   header: {
     backgroundColor: COLORS.primary,
-    paddingHorizontal: SPACING.md,
-    paddingTop: SPACING.sm,
-    paddingBottom: SPACING.lg,
-    borderBottomLeftRadius: RADIUS.xl,
-    borderBottomRightRadius: RADIUS.xl,
+    paddingTop: 50,
+    paddingHorizontal: SPACING.xl,
+    paddingBottom: SPACING.xl,
+    borderBottomLeftRadius: RADIUS.xxl,
+    borderBottomRightRadius: RADIUS.xxl,
   },
   headerContent: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginBottom: SPACING.md,
   },
   headerLeft: {
     flexDirection: 'row',
     alignItems: 'center',
   },
-  avatar: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    backgroundColor: 'rgba(255,255,255,0.25)',
-    alignItems: 'center',
-    justifyContent: 'center',
-    position: 'relative',
-  },
-  avatarText: {
-    color: COLORS.white,
-    fontSize: FONT_SIZE.lg,
-    fontWeight: FONT_WEIGHT.bold,
-  },
-  onlineDot: {
-    position: 'absolute',
-    bottom: 0,
-    right: 0,
-    width: 14,
-    height: 14,
-    borderRadius: 7,
-    borderWidth: 2,
-    borderColor: COLORS.primary,
-  },
   headerInfo: {
     marginLeft: SPACING.md,
+    flexShrink: 1,
   },
   greeting: {
-    color: 'rgba(255,255,255,0.85)',
-    fontSize: FONT_SIZE.xs,
+    color: 'rgba(255,255,255,0.8)',
+    fontSize: FONT_SIZE.sm,
     fontWeight: FONT_WEIGHT.medium,
   },
   workerName: {
     color: COLORS.white,
-    fontSize: FONT_SIZE.lg,
+    fontSize: FONT_SIZE.xl,
     fontWeight: FONT_WEIGHT.bold,
   },
   notificationBtn: {
-    width: 48,
-    height: 48,
-    borderRadius: RADIUS.full,
-    backgroundColor: 'rgba(255,255,255,0.18)',
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: 'rgba(255,255,255,0.15)',
     alignItems: 'center',
     justifyContent: 'center',
   },
   notifBadge: {
     position: 'absolute',
-    top: 8,
-    right: 8,
-    backgroundColor: COLORS.danger,
-    width: 18,
+    top: 6,
+    right: 6,
+    minWidth: 18,
     height: 18,
+    paddingHorizontal: 3,
     borderRadius: 9,
+    backgroundColor: COLORS.danger,
     alignItems: 'center',
     justifyContent: 'center',
-    borderWidth: 1.5,
-    borderColor: COLORS.white,
   },
   notifBadgeText: {
     color: COLORS.white,
@@ -310,64 +451,51 @@ const styles = StyleSheet.create({
     fontWeight: FONT_WEIGHT.bold,
   },
   availabilityCard: {
-    backgroundColor: COLORS.white,
-    borderRadius: RADIUS.lg,
-    padding: SPACING.md,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    minHeight: 64,
-    ...SHADOWS.sm,
-  },
-  availabilityActive: {
-    borderLeftWidth: 4,
-    borderLeftColor: COLORS.success,
-  },
-  availabilityInactive: {
-    borderLeftWidth: 4,
-    borderLeftColor: COLORS.offline,
+    backgroundColor: 'rgba(255,255,255,0.15)',
+    borderRadius: RADIUS.lg,
+    padding: SPACING.lg,
+    marginTop: SPACING.lg,
   },
   availLeft: {
     flexDirection: 'row',
     alignItems: 'center',
     flex: 1,
-  },
-  availTextWrap: {
-    marginLeft: SPACING.sm,
-    flex: 1,
+    marginRight: SPACING.md,
   },
   availLabel: {
-    fontSize: FONT_SIZE.sm,
-    fontWeight: FONT_WEIGHT.bold,
-    color: COLORS.textPrimary,
+    color: COLORS.white,
+    fontSize: FONT_SIZE.md,
+    fontWeight: FONT_WEIGHT.semibold,
   },
   availSubtext: {
-    fontSize: 11,
-    color: COLORS.textSecondary,
+    color: 'rgba(255,255,255,0.7)',
+    fontSize: FONT_SIZE.sm,
     marginTop: 2,
   },
   body: {
     flex: 1,
   },
   bodyContent: {
-    padding: SPACING.md,
+    padding: SPACING.xl,
+    paddingTop: SPACING.xl,
   },
-  requestBannerTouchable: {
-    marginBottom: SPACING.md,
+  requestCard: {
+    marginBottom: SPACING.lg,
+    borderLeftWidth: 4,
+    borderLeftColor: COLORS.primary,
   },
-  requestBanner: {
-    backgroundColor: COLORS.primary,
-    borderRadius: RADIUS.lg,
-    padding: SPACING.md,
+  requestCardInner: {
     flexDirection: 'row',
     alignItems: 'center',
-    ...SHADOWS.md,
   },
   requestIconWrap: {
-    width: 44,
-    height: 44,
+    width: 48,
+    height: 48,
     borderRadius: RADIUS.md,
-    backgroundColor: 'rgba(255,255,255,0.2)',
+    backgroundColor: COLORS.primary,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -376,172 +504,201 @@ const styles = StyleSheet.create({
     marginLeft: SPACING.md,
   },
   requestTitle: {
-    color: COLORS.white,
+    fontSize: FONT_SIZE.lg,
+    fontWeight: FONT_WEIGHT.bold,
+    color: COLORS.textPrimary,
+  },
+  requestSubtext: {
+    fontSize: FONT_SIZE.sm,
+    color: COLORS.textSecondary,
+    marginTop: 2,
+  },
+  requestBadge: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: COLORS.dangerLight,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: SPACING.sm,
+  },
+  requestBadgeText: {
+    color: COLORS.danger,
     fontSize: FONT_SIZE.md,
     fontWeight: FONT_WEIGHT.bold,
   },
-  requestSubtext: {
-    color: 'rgba(255,255,255,0.85)',
-    fontSize: 11,
-    marginTop: 2,
+  offlineCard: {
+    marginBottom: SPACING.lg,
   },
-  requestActionPill: {
+  offlineRow: {
     flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: 'rgba(255,255,255,0.25)',
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: RADIUS.full,
-    gap: 4,
+    alignItems: 'flex-start',
   },
-  requestActionText: {
-    color: COLORS.white,
-    fontSize: FONT_SIZE.xs,
-    fontWeight: FONT_WEIGHT.bold,
+  offlineText: {
+    flex: 1,
+    marginLeft: SPACING.md,
+    fontSize: FONT_SIZE.sm,
+    color: '#92400E',
+    lineHeight: 19,
   },
   statsRow: {
     flexDirection: 'row',
     gap: SPACING.md,
-    marginBottom: SPACING.md,
+    marginBottom: SPACING.lg,
   },
   statCard: {
     flex: 1,
-    padding: SPACING.md,
-    alignItems: 'flex-start',
+    alignItems: 'center',
+    paddingVertical: SPACING.xl,
   },
-  statIconWrapSuccess: {
-    width: 38,
-    height: 38,
-    borderRadius: RADIUS.md,
-    backgroundColor: COLORS.successLight,
+  statIconWrap: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: SPACING.xs,
-  },
-  statIconWrapPrimary: {
-    width: 38,
-    height: 38,
-    borderRadius: RADIUS.md,
-    backgroundColor: COLORS.primaryLight,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: SPACING.xs,
+    marginBottom: SPACING.sm,
   },
   statValue: {
-    fontSize: FONT_SIZE.xl,
+    fontSize: FONT_SIZE.xxl,
     fontWeight: FONT_WEIGHT.extrabold,
     color: COLORS.textPrimary,
   },
   statLabel: {
-    fontSize: 11,
+    fontSize: FONT_SIZE.sm,
     color: COLORS.textSecondary,
     marginTop: 2,
-  },
-  sectionHeaderRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginTop: SPACING.xs,
-    marginBottom: SPACING.sm,
-  },
-  sectionTitle: {
-    fontSize: FONT_SIZE.md,
-    fontWeight: FONT_WEIGHT.bold,
-    color: COLORS.textPrimary,
-  },
-  seeAllBtn: {
-    paddingVertical: 6,
-    paddingHorizontal: 10,
-  },
-  seeAllText: {
-    fontSize: FONT_SIZE.xs,
-    fontWeight: FONT_WEIGHT.bold,
-    color: COLORS.primary,
+    fontWeight: FONT_WEIGHT.medium,
   },
   currentJobCard: {
-    marginBottom: SPACING.md,
-    borderWidth: 1.5,
-    borderColor: '#FED7AA',
+    marginBottom: SPACING.lg,
+    borderWidth: 1,
+    borderColor: COLORS.warningLight,
   },
   currentJobHeader: {
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: SPACING.md,
+  },
+  currentJobTime: {
+    fontSize: FONT_SIZE.sm,
+    color: COLORS.textSecondary,
+    fontWeight: FONT_WEIGHT.medium,
+  },
+  currentJobBody: {
+    flexDirection: 'row',
+    alignItems: 'center',
   },
   serviceIconCircle: {
-    width: 44,
-    height: 44,
-    borderRadius: RADIUS.md,
-    backgroundColor: COLORS.primaryLight,
+    width: 48,
+    height: 48,
+    borderRadius: 24,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  currentJobMeta: {
-    flex: 1,
-    marginLeft: SPACING.md,
-  },
   currentJobService: {
-    fontSize: FONT_SIZE.md,
+    fontSize: FONT_SIZE.lg,
     fontWeight: FONT_WEIGHT.bold,
     color: COLORS.textPrimary,
   },
   currentJobCustomer: {
-    fontSize: 12,
+    fontSize: FONT_SIZE.md,
     color: COLORS.textSecondary,
-    marginTop: 1,
+    marginTop: 2,
   },
-  currentJobAmount: {
-    fontSize: FONT_SIZE.lg,
-    fontWeight: FONT_WEIGHT.extrabold,
-    color: COLORS.primary,
-  },
-  cardDivider: {
-    height: 1,
-    backgroundColor: COLORS.borderLight,
-    marginVertical: SPACING.sm,
-  },
-  locationRow: {
+  currentJobLocation: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
+    marginTop: 4,
   },
-  locationAddressText: {
-    fontSize: 12,
+  currentJobAddress: {
+    fontSize: FONT_SIZE.sm,
     color: COLORS.textSecondary,
+    marginLeft: 4,
     flex: 1,
+  },
+  currentJobAmount: {
+    backgroundColor: COLORS.successLight,
+    paddingHorizontal: SPACING.md,
+    paddingVertical: SPACING.sm,
+    borderRadius: RADIUS.sm,
+  },
+  currentJobAmountText: {
+    fontSize: FONT_SIZE.lg,
+    fontWeight: FONT_WEIGHT.bold,
+    color: COLORS.textSuccess,
   },
   currentJobFooter: {
     flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginTop: SPACING.md,
+    paddingTop: SPACING.md,
+    borderTopWidth: 1,
+    borderTopColor: COLORS.borderLight,
+  },
+  currentJobStep: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  stepDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: COLORS.warning,
+    marginRight: SPACING.sm,
+  },
+  stepText: {
+    fontSize: FONT_SIZE.sm,
+    color: COLORS.textSecondary,
+    fontWeight: FONT_WEIGHT.semibold,
+  },
+  viewBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  viewBtnText: {
+    fontSize: FONT_SIZE.sm,
+    color: COLORS.primary,
+    fontWeight: FONT_WEIGHT.semibold,
+    marginRight: 4,
+  },
+  noJobCard: {
+    alignItems: 'center',
+    paddingVertical: SPACING.xxl,
+    marginBottom: SPACING.lg,
+  },
+  noJobTitle: {
+    fontSize: FONT_SIZE.md,
+    fontWeight: FONT_WEIGHT.bold,
+    color: COLORS.textPrimary,
+    marginTop: SPACING.sm,
+  },
+  noJobText: {
+    fontSize: FONT_SIZE.sm,
+    color: COLORS.textSecondary,
+    textAlign: 'center',
+    marginTop: 4,
+    lineHeight: 19,
+  },
+  sectionHeader: {
+    flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginTop: SPACING.sm,
-    paddingTop: SPACING.xs,
+    marginBottom: SPACING.md,
   },
-  stepIndicatorPill: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    backgroundColor: COLORS.primaryLight,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: RADIUS.sm,
-  },
-  stepIndicatorText: {
-    fontSize: 11,
+  sectionTitle: {
+    fontSize: FONT_SIZE.lg,
     fontWeight: FONT_WEIGHT.bold,
+    color: COLORS.textPrimary,
+  },
+  seeAllText: {
+    fontSize: FONT_SIZE.sm,
     color: COLORS.primary,
+    fontWeight: FONT_WEIGHT.semibold,
   },
-  viewDetailsBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    paddingVertical: 6,
-  },
-  viewDetailsBtnText: {
-    fontSize: 12,
-    fontWeight: FONT_WEIGHT.bold,
-    color: COLORS.primary,
-  },
-  jobItemCard: {
+  jobItem: {
     marginBottom: SPACING.sm,
   },
   jobItemRow: {
@@ -553,28 +710,24 @@ const styles = StyleSheet.create({
     height: 10,
     borderRadius: 5,
   },
-  jobItemDetails: {
-    flex: 1,
-    marginLeft: SPACING.sm,
-  },
   jobItemService: {
-    fontSize: FONT_SIZE.sm,
-    fontWeight: FONT_WEIGHT.bold,
+    fontSize: FONT_SIZE.md,
+    fontWeight: FONT_WEIGHT.semibold,
     color: COLORS.textPrimary,
   },
   jobItemCustomer: {
-    fontSize: 11,
+    fontSize: FONT_SIZE.sm,
     color: COLORS.textSecondary,
     marginTop: 2,
   },
   jobItemRight: {
     alignItems: 'flex-end',
-    gap: 4,
   },
   jobItemAmount: {
-    fontSize: FONT_SIZE.sm,
+    fontSize: FONT_SIZE.md,
     fontWeight: FONT_WEIGHT.bold,
     color: COLORS.textPrimary,
+    marginBottom: 4,
   },
 });
 

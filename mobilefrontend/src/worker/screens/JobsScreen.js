@@ -1,4 +1,5 @@
-import React from 'react';
+import React, { useCallback, useState } from 'react';
+import { useNavigation } from '@react-navigation/native';
 import {
   View,
   Text,
@@ -6,169 +7,310 @@ import {
   ScrollView,
   TouchableOpacity,
   StatusBar,
+  RefreshControl,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { COLORS, SPACING, RADIUS, FONT_SIZE, FONT_WEIGHT, SHADOWS } from '../../theme';
 import Card from '../components/Card';
 import StatusBadge from '../components/StatusBadge';
-import { TODAYS_JOBS, CURRENT_JOB } from '../data/workerMockData';
+import LoadingState from '../../components/LoadingState';
+import EmptyState from '../../components/EmptyState';
+import useApi from '../../hooks/useApi';
+import { useSocketEvent, WS_EVENTS } from '../../context/SocketContext';
+import { getHistory, getCurrentJob } from '../../api/jobs';
+import { formatRupees, formatDistance, formatTime, dayLabel } from '../../utils/format';
+import {
+  JOB_STATUS,
+  JOB_STEPS,
+  STATUS_LABEL,
+  STATUS_TONE,
+  ACTIVE_STATUSES,
+} from '../../constants/jobSteps';
 
-const JobsScreen = ({ navigation }) => {
-  const completedJobs = TODAYS_JOBS.filter((j) => j.status === 'completed');
+const FILTERS = [
+  { key: 'all', label: 'All' },
+  { key: 'active', label: 'Active' },
+  { key: 'completed', label: 'Completed' },
+];
+
+const JobsScreen = () => {
+  const navigation = useNavigation();
+  const [filter, setFilter] = useState('all');
+
+  const jobs = useApi(
+    useCallback(
+      () =>
+        Promise.all([getHistory({ limit: 100 }), getCurrentJob()]).then(([history, current]) => ({
+          history,
+          current,
+        })),
+      [],
+    ),
+    [],
+  );
+
+  useSocketEvent([WS_EVENTS.JOB_UPDATE, WS_EVENTS.PAYMENT_UPDATE], () => jobs.refetch());
+
+  const history = jobs.data?.history ?? [];
+  const current = jobs.data?.current ?? null;
+
+  const completed = history.filter((job) => job.status === JOB_STATUS.COMPLETED);
+  const activeCount = current ? 1 : 0;
+
+  // "Active" is a client-side view of the history list: the API filters by one
+  // status at a time, and active spans four of them.
+  const visible =
+    filter === 'completed'
+      ? completed
+      : filter === 'active'
+        ? history.filter((job) => ACTIVE_STATUSES.includes(job.status))
+        : history;
+
+  const openJob = (job) =>
+    navigation.navigate(job.status === JOB_STATUS.COMPLETED ? 'JobRequest' : 'CurrentJob', {
+      jobId: job.id,
+    });
+
+  const chrome = (children) => (
+    <View style={styles.container}>
+      <StatusBar barStyle="light-content" backgroundColor={COLORS.primary} />
+      <View style={styles.header}>
+        <Text style={styles.headerTitle}>My Jobs</Text>
+      </View>
+      {children}
+    </View>
+  );
+
+  if (jobs.loading && !jobs.data) return chrome(<LoadingState message="Loading your jobs…" />);
+
+  if (!jobs.data) {
+    return chrome(
+      <EmptyState
+        tone="error"
+        title="Couldn't load your jobs"
+        message={jobs.error?.message}
+        actionLabel="Try again"
+        onAction={jobs.reload}
+      />,
+    );
+  }
 
   return (
-    <SafeAreaView style={styles.safeArea}>
+    <View style={styles.container}>
       <StatusBar barStyle="light-content" backgroundColor={COLORS.primary} />
 
       {/* Header */}
       <View style={styles.header}>
-        <View style={styles.headerContent}>
-          <Text style={styles.headerTitle}>My Jobs</Text>
+        <Text style={styles.headerTitle}>My Jobs</Text>
+      </View>
+
+      {/* Quick Stats */}
+      <View style={styles.statsBar}>
+        <View style={styles.statItem}>
+          <Text style={styles.statNum}>{activeCount}</Text>
+          <Text style={styles.statText}>Active</Text>
+        </View>
+        <View style={styles.statDivider} />
+        <View style={styles.statItem}>
+          <Text style={styles.statNum}>{completed.length}</Text>
+          <Text style={styles.statText}>Completed</Text>
+        </View>
+        <View style={styles.statDivider} />
+        <View style={styles.statItem}>
+          <Text style={styles.statNum}>{history.length}</Text>
+          <Text style={styles.statText}>Total</Text>
+        </View>
+      </View>
+
+      {/* Filters */}
+      <View style={styles.filterRow}>
+        {FILTERS.map((item) => (
           <TouchableOpacity
-            style={styles.filterBtn}
+            key={item.key}
+            style={[styles.filterChip, filter === item.key && styles.filterChipActive]}
+            onPress={() => setFilter(item.key)}
             activeOpacity={0.8}
           >
-            <MaterialCommunityIcons name="filter-variant" size={22} color={COLORS.white} />
+            <Text style={[styles.filterText, filter === item.key && styles.filterTextActive]}>
+              {item.label}
+            </Text>
           </TouchableOpacity>
-        </View>
-
-        {/* Standardized Quick Stats Bar */}
-        <View style={styles.statsBar}>
-          <View style={styles.statItem}>
-            <Text style={styles.statNum}>1</Text>
-            <Text style={styles.statText}>Active</Text>
-          </View>
-          <View style={styles.statDivider} />
-          <View style={styles.statItem}>
-            <Text style={styles.statNum}>{completedJobs.length}</Text>
-            <Text style={styles.statText}>Completed</Text>
-          </View>
-          <View style={styles.statDivider} />
-          <View style={styles.statItem}>
-            <Text style={styles.statNum}>{1 + completedJobs.length}</Text>
-            <Text style={styles.statText}>Total Today</Text>
-          </View>
-        </View>
+        ))}
       </View>
 
       <ScrollView
         style={styles.body}
         contentContainerStyle={styles.bodyContent}
         showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl
+            refreshing={jobs.refreshing}
+            onRefresh={jobs.refetch}
+            tintColor={COLORS.primary}
+          />
+        }
       >
         {/* Active Job Section */}
-        <View style={styles.sectionHeaderRow}>
-          <Text style={styles.sectionTitle}>Active Job</Text>
-          <StatusBadge label="IN PROGRESS" color="warning" size="sm" />
-        </View>
+        {!!current && filter !== 'completed' && (
+          <>
+            <Text style={styles.sectionTitle}>Active Job</Text>
 
-        <TouchableOpacity
-          activeOpacity={0.85}
-          onPress={() => navigation.navigate('CurrentJob')}
-        >
-          <Card style={styles.activeJobCard}>
-            <View style={styles.activeJobTop}>
-              <View style={styles.jobIconCircle}>
-                <MaterialCommunityIcons name="water-pump" size={24} color={COLORS.primary} />
-              </View>
-              <View style={styles.jobMetaWrap}>
-                <Text style={styles.jobService}>{CURRENT_JOB.serviceType}</Text>
-                <Text style={styles.jobCustomer}>{CURRENT_JOB.customer.name}</Text>
-              </View>
-              <Text style={styles.jobAmount}>₹{CURRENT_JOB.totalAmount}</Text>
-            </View>
+            <TouchableOpacity
+              activeOpacity={0.85}
+              onPress={() => navigation.navigate('CurrentJob', { jobId: current.id })}
+            >
+              <Card style={styles.activeJobCard}>
+                <View style={styles.activeJobHeader}>
+                  <StatusBadge
+                    label={(STATUS_LABEL[current.status] ?? '').toUpperCase()}
+                    color={STATUS_TONE[current.status] ?? 'warning'}
+                    size="sm"
+                  />
+                  <Text style={styles.jobTime}>{formatTime(current.accepted_at)}</Text>
+                </View>
+                <View style={styles.activeJobBody}>
+                  <View style={[styles.jobIconCircle, { backgroundColor: COLORS.infoLight }]}>
+                    <MaterialCommunityIcons
+                      name={current.service_icon || 'wrench'}
+                      size={24}
+                      color={COLORS.info}
+                    />
+                  </View>
+                  <View style={{ flex: 1, marginLeft: SPACING.md }}>
+                    <Text style={styles.jobService}>{current.service_type}</Text>
+                    <Text style={styles.jobCustomer}>{current.customer_name}</Text>
+                    <View style={styles.jobLocRow}>
+                      <MaterialCommunityIcons
+                        name="map-marker"
+                        size={14}
+                        color={COLORS.textSecondary}
+                      />
+                      <Text style={styles.jobLoc} numberOfLines={1}>
+                        {current.address}
+                      </Text>
+                      {!!formatDistance(current.distance_km) && (
+                        <Text style={styles.jobDist}>· {formatDistance(current.distance_km)}</Text>
+                      )}
+                    </View>
+                  </View>
+                  <Text style={styles.jobAmount}>{formatRupees(current.total_amount)}</Text>
+                </View>
+                <View style={styles.activeJobFooter}>
+                  <View style={styles.stepIndicator}>
+                    <View style={[styles.stepCircle, { backgroundColor: COLORS.warning }]} />
+                    <Text style={styles.stepLabel}>
+                      {JOB_STEPS[current.current_step] ?? STATUS_LABEL[current.status]}
+                    </Text>
+                  </View>
+                  <View style={styles.tapView}>
+                    <Text style={styles.tapText}>Tap to view</Text>
+                    <MaterialCommunityIcons name="arrow-right" size={16} color={COLORS.primary} />
+                  </View>
+                </View>
+              </Card>
+            </TouchableOpacity>
+          </>
+        )}
 
-            <View style={styles.cardDivider} />
+        {/* History */}
+        <Text style={[styles.sectionTitle, !!current && { marginTop: SPACING.xl }]}>
+          {filter === 'completed' ? 'Completed Jobs' : filter === 'active' ? 'In Progress' : 'History'}
+        </Text>
 
-            <View style={styles.locationRow}>
-              <MaterialCommunityIcons name="map-marker" size={16} color={COLORS.textSecondary} />
-              <Text style={styles.locationText} numberOfLines={1}>
-                {CURRENT_JOB.location.address} ({CURRENT_JOB.location.distance})
-              </Text>
-            </View>
-
-            <View style={styles.activeCardFooter}>
-              <View style={styles.stagePill}>
-                <MaterialCommunityIcons name="clock-outline" size={14} color={COLORS.primary} />
-                <Text style={styles.stagePillText}>Stage: Arrived</Text>
-              </View>
-
-              <View style={styles.openDetailsLink}>
-                <Text style={styles.openDetailsText}>Manage Job</Text>
-                <MaterialCommunityIcons name="arrow-right" size={16} color={COLORS.primary} />
-              </View>
-            </View>
+        {visible.length === 0 ? (
+          <Card style={styles.emptyCard}>
+            <MaterialCommunityIcons
+              name="clipboard-text-outline"
+              size={30}
+              color={COLORS.textTertiary}
+            />
+            <Text style={styles.emptyTitle}>Nothing here yet</Text>
+            <Text style={styles.emptyText}>
+              {filter === 'completed'
+                ? 'Jobs you finish will be listed here with what you earned.'
+                : 'Accepted and finished jobs show up on this tab.'}
+            </Text>
           </Card>
-        </TouchableOpacity>
+        ) : (
+          visible.map((job) => {
+            const done = job.status === JOB_STATUS.COMPLETED;
+            return (
+              <TouchableOpacity key={job.id} activeOpacity={0.85} onPress={() => openJob(job)}>
+                <Card style={styles.completedCard}>
+                  <View style={styles.completedRow}>
+                    <View
+                      style={[
+                        styles.jobIconCircle,
+                        {
+                          backgroundColor: done ? COLORS.successLight : COLORS.primaryLight,
+                          width: 44,
+                          height: 44,
+                          borderRadius: 22,
+                        },
+                      ]}
+                    >
+                      <MaterialCommunityIcons
+                        name={job.service_icon || 'wrench'}
+                        size={20}
+                        color={done ? COLORS.success : COLORS.primary}
+                      />
+                    </View>
+                    <View style={{ flex: 1, marginLeft: SPACING.md }}>
+                      <Text style={styles.completedService}>{job.service_type}</Text>
+                      <Text style={styles.completedCustomer}>
+                        {job.customer_name} ·{' '}
+                        {dayLabel(job.completed_at ?? job.requested_at)}
+                        {done ? `, ${formatTime(job.completed_at)}` : ''}
+                      </Text>
+                    </View>
+                    <View style={styles.completedRight}>
+                      <Text style={styles.completedAmount}>{formatRupees(job.total_amount)}</Text>
+                      <StatusBadge
+                        label={done ? 'Done' : (STATUS_LABEL[job.status] ?? job.status)}
+                        color={STATUS_TONE[job.status] ?? 'neutral'}
+                        size="sm"
+                      />
+                    </View>
+                  </View>
+                </Card>
+              </TouchableOpacity>
+            );
+          })
+        )}
 
-        {/* Completed Jobs Section */}
-        <View style={styles.sectionHeaderRow}>
-          <Text style={styles.sectionTitle}>Completed Today</Text>
-          <Text style={styles.sectionSubCount}>{completedJobs.length} Jobs Done</Text>
-        </View>
-
-        {completedJobs.map((job) => (
-          <Card key={job.id} style={styles.completedCard}>
-            <View style={styles.completedRow}>
-              <View style={styles.completedDot} />
-              <View style={styles.completedDetails}>
-                <Text style={styles.completedService}>{job.service}</Text>
-                <Text style={styles.completedMeta}>{job.customer} • {job.time}</Text>
-              </View>
-              <View style={styles.completedRight}>
-                <Text style={styles.completedAmount}>₹{job.amount}</Text>
-                <StatusBadge label="Done" color="success" size="sm" />
-              </View>
-            </View>
-          </Card>
-        ))}
-
-        <View style={{ height: 90 }} />
+        <View style={{ height: 100 }} />
       </ScrollView>
-    </SafeAreaView>
+    </View>
   );
 };
 
 const styles = StyleSheet.create({
-  safeArea: {
+  container: {
     flex: 1,
     backgroundColor: COLORS.background,
   },
   header: {
-    backgroundColor: COLORS.primary,
-    paddingHorizontal: SPACING.md,
-    paddingTop: SPACING.xs,
-    paddingBottom: SPACING.lg,
-    borderBottomLeftRadius: RADIUS.xl,
-    borderBottomRightRadius: RADIUS.xl,
-  },
-  headerContent: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginBottom: SPACING.md,
+    backgroundColor: COLORS.primary,
+    paddingTop: 50,
+    paddingHorizontal: SPACING.xl,
+    paddingBottom: SPACING.lg,
   },
   headerTitle: {
-    fontSize: FONT_SIZE.xl,
-    fontWeight: FONT_WEIGHT.extrabold,
+    fontSize: FONT_SIZE.xxl,
+    fontWeight: FONT_WEIGHT.bold,
     color: COLORS.white,
   },
-  filterBtn: {
-    width: 48,
-    height: 48,
-    borderRadius: RADIUS.full,
-    backgroundColor: 'rgba(255,255,255,0.18)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
   statsBar: {
-    backgroundColor: COLORS.white,
-    borderRadius: RADIUS.lg,
     flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: SPACING.md,
-    ...SHADOWS.sm,
+    backgroundColor: COLORS.white,
+    marginHorizontal: SPACING.xl,
+    marginTop: -2,
+    borderRadius: RADIUS.lg,
+    paddingVertical: SPACING.lg,
+    ...SHADOWS.md,
   },
   statItem: {
     flex: 1,
@@ -180,120 +322,144 @@ const styles = StyleSheet.create({
     color: COLORS.textPrimary,
   },
   statText: {
-    fontSize: 11,
+    fontSize: FONT_SIZE.xs,
     color: COLORS.textSecondary,
-    fontWeight: FONT_WEIGHT.semibold,
+    fontWeight: FONT_WEIGHT.medium,
     marginTop: 2,
   },
   statDivider: {
     width: 1,
-    height: 24,
     backgroundColor: COLORS.border,
+  },
+  filterRow: {
+    flexDirection: 'row',
+    gap: SPACING.sm,
+    paddingHorizontal: SPACING.xl,
+    paddingTop: SPACING.lg,
+  },
+  filterChip: {
+    paddingHorizontal: SPACING.lg,
+    paddingVertical: SPACING.sm,
+    borderRadius: RADIUS.xl,
+    backgroundColor: COLORS.white,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  filterChipActive: {
+    backgroundColor: COLORS.primary,
+    borderColor: COLORS.primary,
+  },
+  filterText: {
+    fontSize: FONT_SIZE.sm,
+    fontWeight: FONT_WEIGHT.semibold,
+    color: COLORS.textSecondary,
+  },
+  filterTextActive: {
+    color: COLORS.white,
   },
   body: {
     flex: 1,
   },
   bodyContent: {
-    padding: SPACING.md,
+    padding: SPACING.xl,
+    paddingTop: SPACING.lg,
   },
-  sectionHeaderRow: {
+  sectionTitle: {
+    fontSize: FONT_SIZE.lg,
+    fontWeight: FONT_WEIGHT.bold,
+    color: COLORS.textPrimary,
+    marginBottom: SPACING.md,
+  },
+  activeJobCard: {
+    borderWidth: 1,
+    borderColor: COLORS.warningLight,
+  },
+  activeJobHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginTop: SPACING.xs,
-    marginBottom: SPACING.sm,
-  },
-  sectionTitle: {
-    fontSize: FONT_SIZE.md,
-    fontWeight: FONT_WEIGHT.bold,
-    color: COLORS.textPrimary,
-  },
-  sectionSubCount: {
-    fontSize: 11,
-    color: COLORS.textSecondary,
-    fontWeight: FONT_WEIGHT.semibold,
-  },
-  activeJobCard: {
     marginBottom: SPACING.md,
-    borderWidth: 1.5,
-    borderColor: '#FED7AA',
   },
-  activeJobTop: {
+  jobTime: {
+    fontSize: FONT_SIZE.sm,
+    color: COLORS.textSecondary,
+    fontWeight: FONT_WEIGHT.medium,
+  },
+  activeJobBody: {
     flexDirection: 'row',
     alignItems: 'center',
   },
   jobIconCircle: {
-    width: 44,
-    height: 44,
-    borderRadius: RADIUS.md,
-    backgroundColor: COLORS.primaryLight,
+    width: 48,
+    height: 48,
+    borderRadius: 24,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  jobMetaWrap: {
-    flex: 1,
-    marginLeft: SPACING.md,
-  },
   jobService: {
-    fontSize: FONT_SIZE.md,
+    fontSize: FONT_SIZE.lg,
     fontWeight: FONT_WEIGHT.bold,
     color: COLORS.textPrimary,
   },
   jobCustomer: {
-    fontSize: 12,
+    fontSize: FONT_SIZE.sm,
     color: COLORS.textSecondary,
-    marginTop: 1,
+    marginTop: 2,
+  },
+  jobLocRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 4,
+  },
+  jobLoc: {
+    flexShrink: 1,
+    fontSize: FONT_SIZE.sm,
+    color: COLORS.textSecondary,
+    marginLeft: 4,
+  },
+  jobDist: {
+    fontSize: FONT_SIZE.sm,
+    color: COLORS.textTertiary,
+    marginLeft: 4,
   },
   jobAmount: {
     fontSize: FONT_SIZE.lg,
     fontWeight: FONT_WEIGHT.extrabold,
-    color: COLORS.primary,
+    color: COLORS.textSuccess,
   },
-  cardDivider: {
-    height: 1,
-    backgroundColor: COLORS.borderLight,
-    marginVertical: SPACING.sm,
-  },
-  locationRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-  },
-  locationText: {
-    fontSize: 12,
-    color: COLORS.textSecondary,
-    flex: 1,
-  },
-  activeCardFooter: {
+  activeJobFooter: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginTop: SPACING.sm,
+    marginTop: SPACING.md,
+    paddingTop: SPACING.md,
+    borderTopWidth: 1,
+    borderTopColor: COLORS.borderLight,
   },
-  stagePill: {
+  stepIndicator: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 4,
-    backgroundColor: COLORS.primaryLight,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: RADIUS.sm,
   },
-  stagePillText: {
-    fontSize: 11,
-    fontWeight: FONT_WEIGHT.bold,
-    color: COLORS.primary,
+  stepCircle: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    marginRight: SPACING.sm,
   },
-  openDetailsLink: {
+  stepLabel: {
+    fontSize: FONT_SIZE.sm,
+    color: COLORS.textSecondary,
+    fontWeight: FONT_WEIGHT.semibold,
+  },
+  tapView: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 4,
-    paddingVertical: 6,
   },
-  openDetailsText: {
-    fontSize: 12,
-    fontWeight: FONT_WEIGHT.bold,
+  tapText: {
+    fontSize: FONT_SIZE.sm,
     color: COLORS.primary,
+    fontWeight: FONT_WEIGHT.semibold,
+    marginRight: 4,
   },
   completedCard: {
     marginBottom: SPACING.sm,
@@ -302,34 +468,41 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
   },
-  completedDot: {
-    width: 10,
-    height: 10,
-    borderRadius: 5,
-    backgroundColor: COLORS.success,
-  },
-  completedDetails: {
-    flex: 1,
-    marginLeft: SPACING.sm,
-  },
   completedService: {
-    fontSize: FONT_SIZE.sm,
-    fontWeight: FONT_WEIGHT.bold,
+    fontSize: FONT_SIZE.md,
+    fontWeight: FONT_WEIGHT.semibold,
     color: COLORS.textPrimary,
   },
-  completedMeta: {
-    fontSize: 11,
+  completedCustomer: {
+    fontSize: FONT_SIZE.sm,
     color: COLORS.textSecondary,
     marginTop: 2,
   },
   completedRight: {
     alignItems: 'flex-end',
-    gap: 4,
   },
   completedAmount: {
-    fontSize: FONT_SIZE.sm,
+    fontSize: FONT_SIZE.md,
     fontWeight: FONT_WEIGHT.bold,
     color: COLORS.textPrimary,
+    marginBottom: 4,
+  },
+  emptyCard: {
+    alignItems: 'center',
+    paddingVertical: SPACING.xxl,
+  },
+  emptyTitle: {
+    fontSize: FONT_SIZE.md,
+    fontWeight: FONT_WEIGHT.bold,
+    color: COLORS.textPrimary,
+    marginTop: SPACING.sm,
+  },
+  emptyText: {
+    fontSize: FONT_SIZE.sm,
+    color: COLORS.textSecondary,
+    textAlign: 'center',
+    marginTop: 4,
+    lineHeight: 19,
   },
 });
 

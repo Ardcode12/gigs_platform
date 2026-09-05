@@ -1,4 +1,5 @@
-import React from 'react';
+import React, { useState } from 'react';
+import { useNavigation } from '@react-navigation/native';
 import {
   View,
   Text,
@@ -7,88 +8,94 @@ import {
   TouchableOpacity,
   StatusBar,
   Alert,
+  RefreshControl,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { COLORS, SPACING, RADIUS, FONT_SIZE, FONT_WEIGHT, SHADOWS } from '../../theme';
 import Card from '../components/Card';
 import StatusBadge from '../components/StatusBadge';
-import { WORKER } from '../data/workerMockData';
+import RatingStars from '../../components/RatingStars';
+import LoadingState from '../../components/LoadingState';
+import { useAuth } from '../../context/AuthContext';
+import { initialsOf } from '../../utils/format';
 
-const ProfileScreen = ({ navigation }) => {
-  const renderStars = (rating) => {
-    const full = Math.floor(rating);
-    const half = rating % 1 >= 0.5;
-    const stars = [];
-    for (let i = 0; i < 5; i++) {
-      if (i < full) {
-        stars.push(<MaterialCommunityIcons key={i} name="star" size={18} color="#F59E0B" />);
-      } else if (i === full && half) {
-        stars.push(<MaterialCommunityIcons key={i} name="star-half-full" size={18} color="#F59E0B" />);
-      } else {
-        stars.push(<MaterialCommunityIcons key={i} name="star-outline" size={18} color="#D1D5DB" />);
-      }
+/** Spec-wide: the worker's own record, plus the way out to Ratings (#11) and Notifications (#12). */
+const ProfileScreen = () => {
+  const navigation = useNavigation();
+  const { worker, signOut, refreshWorker } = useAuth();
+  const [refreshing, setRefreshing] = useState(false);
+
+  const reload = async () => {
+    setRefreshing(true);
+    try {
+      await refreshWorker();
+    } catch {
+      // Nothing to say — the cached profile is still on screen.
+    } finally {
+      setRefreshing(false);
     }
-    return stars;
   };
 
-  const handleLogout = () => {
-    Alert.alert(
-      'Log Out',
-      'Are you sure you want to log out of WORKMAT?',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        { text: 'Log Out', style: 'destructive', onPress: () => {} },
-      ]
+  const confirmLogout = () =>
+    Alert.alert('Log out?', 'You will need your worker code and password to sign in again.', [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Log out', style: 'destructive', onPress: () => signOut() },
+    ]);
+
+  if (!worker) {
+    return (
+      <View style={styles.container}>
+        <StatusBar barStyle="light-content" backgroundColor={COLORS.primary} />
+        <View style={styles.header}>
+          <Text style={styles.headerTitle}>Profile</Text>
+        </View>
+        <LoadingState message="Loading your profile…" />
+      </View>
     );
-  };
+  }
+
+  const memberYear = worker.member_since ? new Date(worker.member_since).getFullYear() : '—';
 
   return (
-    <SafeAreaView style={styles.container} edges={['top']}>
+    <View style={styles.container}>
       <StatusBar barStyle="light-content" backgroundColor={COLORS.primary} />
 
       {/* Header */}
       <View style={styles.header}>
-        <Text style={styles.headerTitle}>Worker Profile</Text>
-        <TouchableOpacity
-          style={styles.headerActionBtn}
-          activeOpacity={0.8}
-          accessibilityLabel="Settings"
-        >
-          <MaterialCommunityIcons name="cog-outline" size={22} color={COLORS.white} />
-        </TouchableOpacity>
+        <Text style={styles.headerTitle}>Profile</Text>
+        <StatusBadge
+          label={worker.is_available ? 'Available' : 'Offline'}
+          color={worker.is_available ? 'success' : 'neutral'}
+          size="sm"
+        />
       </View>
 
-      {/* Profile Hero Card */}
+      {/* Profile Hero */}
       <View style={styles.heroSection}>
-        <View style={styles.avatarWrapper}>
-          <View style={styles.avatarLarge}>
-            <Text style={styles.avatarLargeText}>
-              {WORKER.name.split(' ').map((n) => n[0]).join('')}
-            </Text>
-          </View>
-          <View style={styles.verifiedBadge}>
-            <MaterialCommunityIcons name="check-decagram" size={22} color={COLORS.white} />
-          </View>
+        <View style={styles.avatarLarge}>
+          <Text style={styles.avatarLargeText}>{initialsOf(worker.name)}</Text>
         </View>
-
-        <Text style={styles.heroName}>{WORKER.name}</Text>
-        <Text style={styles.heroCoop}>{WORKER.cooperative}</Text>
-
-        <View style={styles.heroSkills}>
-          {WORKER.skills.map((skill, i) => (
-            <View key={i} style={styles.skillPill}>
-              <Text style={styles.skillPillText}>{skill}</Text>
-            </View>
-          ))}
-        </View>
-
+        <Text style={styles.heroName}>{worker.name}</Text>
+        <Text style={styles.heroCode}>{worker.worker_code}</Text>
+        {worker.skills.length > 0 && (
+          <View style={styles.heroSkills}>
+            {worker.skills.map((skill) => (
+              <View key={skill} style={styles.skillPill}>
+                <Text style={styles.skillPillText}>{skill}</Text>
+              </View>
+            ))}
+          </View>
+        )}
         <View style={styles.ratingRow}>
-          <View style={styles.starsContainer}>
-            {renderStars(WORKER.rating)}
-          </View>
-          <Text style={styles.ratingValue}>{WORKER.rating}</Text>
-          <Text style={styles.ratingCount}>(142 reviews)</Text>
+          <RatingStars
+            rating={worker.rating_avg}
+            size={20}
+            showValue
+            valueStyle={{ color: COLORS.white }}
+          />
+          <Text style={styles.ratingCount}>
+            ({worker.rating_count} {worker.rating_count === 1 ? 'review' : 'reviews'})
+          </Text>
         </View>
       </View>
 
@@ -96,45 +103,29 @@ const ProfileScreen = ({ navigation }) => {
         style={styles.body}
         contentContainerStyle={styles.bodyContent}
         showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={reload} tintColor={COLORS.primary} />
+        }
       >
-        {/* Verification Status Banner */}
-        <View style={styles.verificationBanner}>
-          <MaterialCommunityIcons name="shield-check" size={24} color={COLORS.success} />
-          <View style={styles.bannerTextWrap}>
-            <Text style={styles.bannerTitle}>KYC Verified Worker</Text>
-            <Text style={styles.bannerSubtitle}>Aadhar & Cooperative ID verified</Text>
-          </View>
-          <StatusBadge status="completed" label="Active" size="sm" />
-        </View>
-
-        {/* Stats Row - 3 Standardized Cards */}
+        {/* Stats Row */}
         <View style={styles.statsRow}>
           <Card style={styles.statCard}>
-            <MaterialCommunityIcons name="briefcase-check" size={22} color={COLORS.primary} />
-            <Text style={styles.statValue}>{WORKER.completedJobs}</Text>
+            <Text style={styles.statValue}>{worker.completed_jobs}</Text>
             <Text style={styles.statLabel}>Jobs Done</Text>
           </Card>
           <Card style={styles.statCard}>
-            <MaterialCommunityIcons name="star" size={22} color="#F59E0B" />
-            <Text style={styles.statValue}>{WORKER.rating}</Text>
-            <Text style={styles.statLabel}>Avg. Rating</Text>
+            <Text style={styles.statValue}>{worker.rating_avg.toFixed(1)}</Text>
+            <Text style={styles.statLabel}>Rating</Text>
           </Card>
           <Card style={styles.statCard}>
-            <MaterialCommunityIcons name="calendar-badge" size={22} color={COLORS.info} />
-            <Text style={styles.statValue}>{WORKER.memberSince.split(' ')[1]}</Text>
-            <Text style={styles.statLabel}>Member Since</Text>
+            <Text style={styles.statValue}>{memberYear}</Text>
+            <Text style={styles.statLabel}>Since</Text>
           </Card>
         </View>
 
         {/* Personal Information */}
         <Card style={styles.infoCard}>
-          <View style={styles.cardHeader}>
-            <Text style={styles.infoTitle}>Personal Details</Text>
-            <TouchableOpacity activeOpacity={0.7} style={styles.editLinkBtn}>
-              <MaterialCommunityIcons name="pencil-outline" size={16} color={COLORS.primary} />
-              <Text style={styles.editLinkText}>Edit</Text>
-            </TouchableOpacity>
-          </View>
+          <Text style={styles.infoTitle}>Personal Information</Text>
 
           <View style={styles.infoRow}>
             <View style={[styles.infoIcon, { backgroundColor: COLORS.primaryLight }]}>
@@ -142,7 +133,7 @@ const ProfileScreen = ({ navigation }) => {
             </View>
             <View style={styles.infoContent}>
               <Text style={styles.infoLabel}>Phone Number</Text>
-              <Text style={styles.infoValue}>{WORKER.phone}</Text>
+              <Text style={styles.infoValue}>{worker.phone}</Text>
             </View>
           </View>
 
@@ -151,8 +142,8 @@ const ProfileScreen = ({ navigation }) => {
               <MaterialCommunityIcons name="map-marker" size={20} color={COLORS.success} />
             </View>
             <View style={styles.infoContent}>
-              <Text style={styles.infoLabel}>Location / City</Text>
-              <Text style={styles.infoValue}>{WORKER.city}</Text>
+              <Text style={styles.infoLabel}>City</Text>
+              <Text style={styles.infoValue}>{worker.city ?? 'Not set'}</Text>
             </View>
           </View>
 
@@ -161,293 +152,222 @@ const ProfileScreen = ({ navigation }) => {
               <MaterialCommunityIcons name="card-account-details" size={20} color="#B45309" />
             </View>
             <View style={styles.infoContent}>
-              <Text style={styles.infoLabel}>Aadhar Number</Text>
-              <Text style={styles.infoValue}>{WORKER.aadhar}</Text>
+              <Text style={styles.infoLabel}>Aadhaar Number</Text>
+              <Text style={styles.infoValue}>{worker.aadhaar_masked ?? 'Not on file'}</Text>
             </View>
           </View>
 
-          <View style={[styles.infoRow, { borderBottomWidth: 0, paddingBottom: 0 }]}>
+          <View style={[styles.infoRow, { borderBottomWidth: 0 }]}>
             <View style={[styles.infoIcon, { backgroundColor: COLORS.infoLight }]}>
               <MaterialCommunityIcons name="account-group" size={20} color={COLORS.info} />
             </View>
             <View style={styles.infoContent}>
-              <Text style={styles.infoLabel}>Cooperative Society</Text>
-              <Text style={styles.infoValue}>{WORKER.cooperative}</Text>
+              <Text style={styles.infoLabel}>Society</Text>
+              <Text style={styles.infoValue}>{worker.society_name ?? '—'}</Text>
             </View>
           </View>
         </Card>
 
-        {/* Menu Items with Touch Targets >= 52px */}
-        <Text style={styles.sectionHeader}>Preferences & Support</Text>
+        <Text style={styles.infoNote}>
+          Your code, phone number and society are set by the society. Ask them to change these.
+        </Text>
 
-        <TouchableOpacity style={styles.menuItem} activeOpacity={0.7}>
-          <View style={[styles.menuIcon, { backgroundColor: COLORS.primaryLight }]}>
-            <MaterialCommunityIcons name="file-document-outline" size={22} color={COLORS.primary} />
-          </View>
-          <View style={styles.menuTextWrap}>
-            <Text style={styles.menuLabel}>Work Documents</Text>
-            <Text style={styles.menuSublabel}>Certificates & Trade license</Text>
-          </View>
-          <MaterialCommunityIcons name="chevron-right" size={22} color={COLORS.textTertiary} />
-        </TouchableOpacity>
-
-        <TouchableOpacity style={styles.menuItem} activeOpacity={0.7}>
-          <View style={[styles.menuIcon, { backgroundColor: COLORS.infoLight }]}>
-            <MaterialCommunityIcons name="translate" size={22} color={COLORS.info} />
-          </View>
-          <View style={styles.menuTextWrap}>
-            <Text style={styles.menuLabel}>App Language / भाषा</Text>
-            <Text style={styles.menuSublabel}>English (Change)</Text>
-          </View>
-          <MaterialCommunityIcons name="chevron-right" size={22} color={COLORS.textTertiary} />
-        </TouchableOpacity>
-
-        <TouchableOpacity style={styles.menuItem} activeOpacity={0.7}>
-          <View style={[styles.menuIcon, { backgroundColor: COLORS.warningLight }]}>
-            <MaterialCommunityIcons name="phone-in-talk" size={22} color="#B45309" />
-          </View>
-          <View style={styles.menuTextWrap}>
-            <Text style={styles.menuLabel}>Help & Support</Text>
-            <Text style={styles.menuSublabel}>Toll-free worker helpline</Text>
-          </View>
-          <MaterialCommunityIcons name="chevron-right" size={22} color={COLORS.textTertiary} />
-        </TouchableOpacity>
-
-        {/* Standardized Red Logout Action */}
+        {/* Action Buttons */}
         <TouchableOpacity
-          style={styles.logoutItem}
-          onPress={handleLogout}
-          activeOpacity={0.8}
+          style={styles.menuItem}
+          activeOpacity={0.7}
+          onPress={() => navigation.navigate('Ratings')}
         >
-          <MaterialCommunityIcons name="logout" size={22} color={COLORS.danger} />
-          <Text style={styles.logoutLabel}>Log Out</Text>
+          <View style={[styles.menuIcon, { backgroundColor: COLORS.warningLight }]}>
+            <MaterialCommunityIcons name="star" size={20} color="#B45309" />
+          </View>
+          <Text style={styles.menuLabel}>Ratings & Feedback</Text>
+          <MaterialCommunityIcons name="chevron-right" size={22} color={COLORS.textTertiary} />
         </TouchableOpacity>
 
-        <Text style={styles.versionText}>WORKMAT Worker App • v1.0.0 (Build 42)</Text>
+        {/* Notifications live on the Home stack — that's where its tap targets are. */}
+        <TouchableOpacity
+          style={styles.menuItem}
+          activeOpacity={0.7}
+          onPress={() => navigation.navigate('HomeTab', { screen: 'Notifications' })}
+        >
+          <View style={[styles.menuIcon, { backgroundColor: COLORS.infoLight }]}>
+            <MaterialCommunityIcons name="bell-outline" size={20} color={COLORS.info} />
+          </View>
+          <Text style={styles.menuLabel}>Notifications</Text>
+          <MaterialCommunityIcons name="chevron-right" size={22} color={COLORS.textTertiary} />
+        </TouchableOpacity>
 
-        <View style={{ height: 40 }} />
+        <TouchableOpacity
+          style={styles.menuItem}
+          activeOpacity={0.7}
+          onPress={() => navigation.navigate('ChangePassword')}
+        >
+          <View style={[styles.menuIcon, { backgroundColor: COLORS.primaryLight }]}>
+            <MaterialCommunityIcons name="lock-reset" size={20} color={COLORS.primary} />
+          </View>
+          <Text style={styles.menuLabel}>Change Password</Text>
+          <MaterialCommunityIcons name="chevron-right" size={22} color={COLORS.textTertiary} />
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={[styles.menuItem, styles.logoutItem]}
+          activeOpacity={0.7}
+          onPress={confirmLogout}
+        >
+          <View style={[styles.menuIcon, { backgroundColor: COLORS.dangerLight }]}>
+            <MaterialCommunityIcons name="logout" size={20} color={COLORS.danger} />
+          </View>
+          <Text style={[styles.menuLabel, { color: COLORS.danger }]}>Logout</Text>
+          <MaterialCommunityIcons name="chevron-right" size={22} color={COLORS.textTertiary} />
+        </TouchableOpacity>
+
+        <Text style={styles.versionText}>WORKMAT Worker App v1.0.0</Text>
+
+        <View style={{ height: 100 }} />
       </ScrollView>
-    </SafeAreaView>
+    </View>
   );
 };
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: COLORS.primary,
+    backgroundColor: COLORS.background,
   },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     backgroundColor: COLORS.primary,
-    paddingHorizontal: SPACING.md,
-    paddingVertical: SPACING.sm,
+    paddingTop: 50,
+    paddingHorizontal: SPACING.xl,
+    paddingBottom: SPACING.md,
   },
   headerTitle: {
     fontSize: FONT_SIZE.xxl,
     fontWeight: FONT_WEIGHT.bold,
     color: COLORS.white,
   },
-  headerActionBtn: {
-    width: 48,
-    height: 48,
-    borderRadius: RADIUS.full,
-    backgroundColor: 'rgba(255,255,255,0.15)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
   heroSection: {
     backgroundColor: COLORS.primary,
     alignItems: 'center',
-    paddingBottom: SPACING.lg,
-    paddingHorizontal: SPACING.md,
-  },
-  avatarWrapper: {
-    position: 'relative',
-    marginTop: SPACING.xs,
+    paddingBottom: SPACING.xxl,
+    borderBottomLeftRadius: RADIUS.xxl,
+    borderBottomRightRadius: RADIUS.xxl,
   },
   avatarLarge: {
     width: 88,
     height: 88,
     borderRadius: 44,
-    backgroundColor: 'rgba(255,255,255,0.22)',
+    backgroundColor: 'rgba(255,255,255,0.25)',
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 3,
-    borderColor: 'rgba(255,255,255,0.45)',
+    borderColor: 'rgba(255,255,255,0.4)',
   },
   avatarLargeText: {
     fontSize: FONT_SIZE.xxxl,
     fontWeight: FONT_WEIGHT.bold,
     color: COLORS.white,
   },
-  verifiedBadge: {
-    position: 'absolute',
-    bottom: -2,
-    right: -2,
-    backgroundColor: COLORS.success,
-    borderRadius: RADIUS.full,
-    padding: 3,
-    borderWidth: 2,
-    borderColor: COLORS.primary,
-  },
   heroName: {
     fontSize: FONT_SIZE.xxl,
     fontWeight: FONT_WEIGHT.bold,
     color: COLORS.white,
-    marginTop: SPACING.sm,
+    marginTop: SPACING.md,
   },
-  heroCoop: {
+  heroCode: {
     fontSize: FONT_SIZE.sm,
-    color: 'rgba(255,255,255,0.85)',
-    fontWeight: FONT_WEIGHT.medium,
+    color: 'rgba(255,255,255,0.75)',
+    fontWeight: FONT_WEIGHT.semibold,
+    letterSpacing: 1,
     marginTop: 2,
   },
   heroSkills: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     justifyContent: 'center',
-    gap: SPACING.xs,
-    marginTop: SPACING.sm,
+    gap: SPACING.sm,
+    marginTop: SPACING.md,
+    paddingHorizontal: SPACING.xxl,
   },
   skillPill: {
     backgroundColor: 'rgba(255,255,255,0.2)',
     borderRadius: RADIUS.full,
-    paddingHorizontal: SPACING.sm + 2,
+    paddingHorizontal: SPACING.md,
     paddingVertical: 4,
   },
   skillPillText: {
-    fontSize: FONT_SIZE.xs,
+    fontSize: FONT_SIZE.sm,
     color: COLORS.white,
-    fontWeight: FONT_WEIGHT.semibold,
+    fontWeight: FONT_WEIGHT.medium,
   },
   ratingRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginTop: SPACING.sm,
-    backgroundColor: 'rgba(255,255,255,0.12)',
-    paddingHorizontal: SPACING.sm + 4,
-    paddingVertical: 5,
-    borderRadius: RADIUS.full,
-  },
-  starsContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginRight: 6,
-  },
-  ratingValue: {
-    fontSize: FONT_SIZE.sm,
-    fontWeight: FONT_WEIGHT.bold,
-    color: COLORS.white,
-    marginRight: 4,
+    marginTop: SPACING.md,
   },
   ratingCount: {
-    fontSize: FONT_SIZE.xs,
+    fontSize: FONT_SIZE.sm,
     color: 'rgba(255,255,255,0.8)',
     fontWeight: FONT_WEIGHT.medium,
+    marginLeft: SPACING.sm,
   },
   body: {
     flex: 1,
-    backgroundColor: COLORS.background,
-    borderTopLeftRadius: RADIUS.xxl,
-    borderTopRightRadius: RADIUS.xxl,
   },
   bodyContent: {
-    padding: SPACING.md,
-    paddingTop: SPACING.md,
-  },
-  verificationBanner: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: COLORS.successLight,
-    borderWidth: 1,
-    borderColor: '#BBF7D0',
-    borderRadius: RADIUS.lg,
-    padding: SPACING.sm + 4,
-    marginBottom: SPACING.md,
-  },
-  bannerTextWrap: {
-    flex: 1,
-    marginLeft: SPACING.sm + 2,
-  },
-  bannerTitle: {
-    fontSize: FONT_SIZE.sm,
-    fontWeight: FONT_WEIGHT.bold,
-    color: '#15803D',
-  },
-  bannerSubtitle: {
-    fontSize: FONT_SIZE.xs,
-    color: '#166534',
-    marginTop: 1,
+    padding: SPACING.xl,
+    paddingTop: SPACING.xl,
   },
   statsRow: {
     flexDirection: 'row',
-    gap: SPACING.sm,
-    marginBottom: SPACING.md,
+    gap: SPACING.md,
+    marginBottom: SPACING.lg,
   },
   statCard: {
     flex: 1,
     alignItems: 'center',
-    paddingVertical: SPACING.md,
-    paddingHorizontal: SPACING.xs,
+    paddingVertical: SPACING.lg,
   },
   statValue: {
-    fontSize: FONT_SIZE.lg,
+    fontSize: FONT_SIZE.xl,
     fontWeight: FONT_WEIGHT.extrabold,
     color: COLORS.textPrimary,
-    marginTop: 4,
   },
   statLabel: {
     fontSize: FONT_SIZE.xs,
     color: COLORS.textSecondary,
     fontWeight: FONT_WEIGHT.medium,
     marginTop: 2,
-    textAlign: 'center',
   },
   infoCard: {
     marginBottom: SPACING.md,
   },
-  cardHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: SPACING.sm + 4,
-  },
   infoTitle: {
-    fontSize: FONT_SIZE.md,
+    fontSize: FONT_SIZE.lg,
     fontWeight: FONT_WEIGHT.bold,
     color: COLORS.textPrimary,
-  },
-  editLinkBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: SPACING.xs,
-    paddingVertical: 4,
-  },
-  editLinkText: {
-    fontSize: FONT_SIZE.sm,
-    fontWeight: FONT_WEIGHT.semibold,
-    color: COLORS.primary,
-    marginLeft: 3,
+    marginBottom: SPACING.lg,
   },
   infoRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: SPACING.sm + 2,
+    paddingVertical: SPACING.md,
     borderBottomWidth: 1,
     borderBottomColor: COLORS.borderLight,
   },
   infoIcon: {
     width: 40,
     height: 40,
-    borderRadius: RADIUS.md,
+    borderRadius: 20,
     alignItems: 'center',
     justifyContent: 'center',
   },
   infoContent: {
     flex: 1,
-    marginLeft: SPACING.sm + 4,
+    marginLeft: SPACING.md,
   },
   infoLabel: {
     fontSize: FONT_SIZE.xs,
@@ -457,75 +377,49 @@ const styles = StyleSheet.create({
     letterSpacing: 0.5,
   },
   infoValue: {
-    fontSize: FONT_SIZE.sm,
+    fontSize: FONT_SIZE.md,
     color: COLORS.textPrimary,
     fontWeight: FONT_WEIGHT.semibold,
     marginTop: 2,
   },
-  sectionHeader: {
-    fontSize: FONT_SIZE.sm,
-    fontWeight: FONT_WEIGHT.bold,
-    color: COLORS.textSecondary,
-    textTransform: 'uppercase',
-    letterSpacing: 0.6,
-    marginBottom: SPACING.sm,
-    marginTop: SPACING.xs,
+  infoNote: {
+    fontSize: FONT_SIZE.xs,
+    color: COLORS.textTertiary,
+    lineHeight: 17,
+    marginBottom: SPACING.lg,
+    paddingHorizontal: SPACING.xs,
   },
   menuItem: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: COLORS.white,
     borderRadius: RADIUS.lg,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    padding: SPACING.sm + 4,
-    minHeight: 56,
+    padding: SPACING.lg,
     marginBottom: SPACING.sm,
     ...SHADOWS.sm,
   },
   menuIcon: {
     width: 40,
     height: 40,
-    borderRadius: RADIUS.md,
+    borderRadius: 20,
     alignItems: 'center',
     justifyContent: 'center',
-  },
-  menuTextWrap: {
-    flex: 1,
-    marginLeft: SPACING.sm + 4,
   },
   menuLabel: {
-    fontSize: FONT_SIZE.sm,
+    flex: 1,
+    fontSize: FONT_SIZE.md,
     fontWeight: FONT_WEIGHT.semibold,
     color: COLORS.textPrimary,
-  },
-  menuSublabel: {
-    fontSize: FONT_SIZE.xs,
-    color: COLORS.textTertiary,
-    marginTop: 1,
+    marginLeft: SPACING.md,
   },
   logoutItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: '#FEF2F2',
-    borderRadius: RADIUS.lg,
-    borderWidth: 1,
-    borderColor: '#FECACA',
-    minHeight: 52,
-    marginTop: SPACING.sm,
-    gap: SPACING.xs + 2,
-  },
-  logoutLabel: {
-    fontSize: FONT_SIZE.sm,
-    fontWeight: FONT_WEIGHT.bold,
-    color: COLORS.danger,
+    marginTop: SPACING.md,
   },
   versionText: {
     textAlign: 'center',
     fontSize: FONT_SIZE.xs,
     color: COLORS.textTertiary,
-    marginTop: SPACING.lg,
+    marginTop: SPACING.xxl,
   },
 });
 

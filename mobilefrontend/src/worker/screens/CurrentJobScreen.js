@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+import React, { useCallback, useState } from 'react';
+import { useNavigation, useRoute } from '@react-navigation/native';
 import {
   View,
   Text,
@@ -7,56 +8,154 @@ import {
   TouchableOpacity,
   StatusBar,
   Alert,
-  Linking,
+  ActivityIndicator,
+  RefreshControl,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { COLORS, SPACING, RADIUS, FONT_SIZE, FONT_WEIGHT, SHADOWS } from '../../theme';
 import Card from '../components/Card';
 import StatusBadge from '../components/StatusBadge';
 import StepperProgress from '../components/StepperProgress';
-import { CURRENT_JOB, JOB_STEPS } from '../data/workerMockData';
+import Avatar from '../../components/Avatar';
+import RatingStars from '../../components/RatingStars';
+import LoadingState from '../../components/LoadingState';
+import EmptyState from '../../components/EmptyState';
+import useApi from '../../hooks/useApi';
+import { useSocketEvent, WS_EVENTS } from '../../context/SocketContext';
+import { getJob, getCurrentJob, updateJobStatus } from '../../api/jobs';
+import { requestCall } from '../../api/chat';
+import { formatRupees, formatDistance, formatEta } from '../../utils/format';
+import { JOB_STEPS, JOB_STATUS, NEXT_ACTION, STATUS_LABEL } from '../../constants/jobSteps';
 
-const CurrentJobScreen = ({ navigation }) => {
-  const job = CURRENT_JOB;
-  const [currentStep, setCurrentStep] = useState(job.currentStep);
-  const stepLabels = JOB_STEPS;
-  const isCompleted = currentStep >= stepLabels.length - 1;
+/**
+ * Spec #8 — the job in progress: on the way → arrived → start work → complete.
+ *
+ * The button always offers exactly one transition, taken from NEXT_ACTION, and the
+ * server is the one that decides whether it's legal. Nothing advances locally.
+ */
+const CurrentJobScreen = () => {
+  const navigation = useNavigation();
+  const jobId = useRoute().params?.jobId;
+  const [advancing, setAdvancing] = useState(false);
+  const [calling, setCalling] = useState(false);
 
-  const advanceStep = () => {
-    if (currentStep < stepLabels.length - 1) {
-      setCurrentStep(currentStep + 1);
-    } else {
-      Alert.alert('Job Completed! 🎉', 'Great work! This job has been marked as completed.');
+  // Reached from the tab bar there is no id yet — ask the server which job is live.
+  const request = useApi(
+    useCallback(() => (jobId ? getJob(jobId) : getCurrentJob()), [jobId]),
+    [jobId],
+  );
+
+  const job = request.data;
+
+  useSocketEvent(
+    [WS_EVENTS.JOB_UPDATE, WS_EVENTS.EXTRA_AMOUNT_DECISION, WS_EVENTS.PAYMENT_UPDATE],
+    (event) => {
+      if (!job || event.payload?.job_id === job.id) request.refetch();
+    },
+  );
+
+  const nextAction = job ? NEXT_ACTION[job.status] : undefined;
+  const isCompleted = job?.status === JOB_STATUS.COMPLETED;
+  const currentStep = job?.current_step ?? 0;
+  const pendingExtra = job?.extra_requests?.find((r) => r.status === 'pending');
+
+  const advance = async () => {
+    if (!nextAction) return;
+
+    const run = async () => {
+      setAdvancing(true);
+      try {
+        const updated = await updateJobStatus(job.id, nextAction.status);
+        request.setData(updated);
+        if (nextAction.status === JOB_STATUS.COMPLETED) {
+          Alert.alert(
+            'Job completed 🎉',
+            `${formatRupees(updated.amounts.total_amount)} has been added to your earnings.`,
+          );
+        }
+      } catch (error) {
+        Alert.alert('Could not update the job', error.message);
+      } finally {
+        setAdvancing(false);
+      }
+    };
+
+    if (nextAction.status === JOB_STATUS.COMPLETED) {
+      // The last step settles the payment, so make it deliberate.
+      Alert.alert('Mark this job complete?', 'The customer will be asked to pay and rate you.', [
+        { text: 'Not yet', style: 'cancel' },
+        { text: 'Complete', onPress: run },
+      ]);
+      return;
+    }
+    run();
+  };
+
+  const handleRequestCall = async () => {
+    setCalling(true);
+    try {
+      await requestCall(job.id);
+      Alert.alert(
+        'Call requested',
+        'The customer has been asked to call you. Neither side sees the other’s number.',
+      );
+    } catch (error) {
+      Alert.alert('Could not send the request', error.message);
+    } finally {
+      setCalling(false);
     }
   };
 
-  const getNextStepLabel = () => {
-    if (isCompleted) return 'Job Completed';
-    return `Update: ${stepLabels[currentStep + 1]}`;
-  };
-
-  const openNavigation = () => {
-    const address = encodeURIComponent(job.location.address);
-    Linking.openURL(`https://www.google.com/maps/search/?api=1&query=${address}`);
-  };
-
-  return (
-    <SafeAreaView style={styles.safeArea}>
+  const chrome = (children) => (
+    <View style={styles.container}>
       <StatusBar barStyle="dark-content" backgroundColor={COLORS.white} />
-
-      {/* Standardized Header */}
       <View style={styles.header}>
-        <TouchableOpacity
-          onPress={() => navigation.goBack()}
-          style={styles.backBtn}
-          activeOpacity={0.8}
-        >
+        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
           <MaterialCommunityIcons name="arrow-left" size={24} color={COLORS.textPrimary} />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>Current Active Job</Text>
+        <Text style={styles.headerTitle}>Current Job</Text>
+        <View style={{ width: 40 }} />
+      </View>
+      {children}
+    </View>
+  );
+
+  if (request.loading && !job) return chrome(<LoadingState message="Loading job…" />);
+
+  if (request.error && !job) {
+    return chrome(
+      <EmptyState
+        tone="error"
+        title="Couldn't load the job"
+        message={request.error.message}
+        actionLabel="Try again"
+        onAction={request.reload}
+      />,
+    );
+  }
+
+  if (!job) {
+    return chrome(
+      <EmptyState
+        icon="clipboard-check-outline"
+        title="No job in progress"
+        message="Accept a request and it will appear here with everything you need to run the job."
+      />,
+    );
+  }
+
+  return (
+    <View style={styles.container}>
+      <StatusBar barStyle="dark-content" backgroundColor={COLORS.white} />
+
+      {/* Header */}
+      <View style={styles.header}>
+        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
+          <MaterialCommunityIcons name="arrow-left" size={24} color={COLORS.textPrimary} />
+        </TouchableOpacity>
+        <Text style={styles.headerTitle}>Current Job</Text>
         <StatusBadge
-          label={isCompleted ? 'DONE' : 'ACTIVE'}
+          label={(STATUS_LABEL[job.status] ?? '').toUpperCase()}
           color={isCompleted ? 'success' : 'warning'}
           size="sm"
         />
@@ -66,158 +165,245 @@ const CurrentJobScreen = ({ navigation }) => {
         style={styles.body}
         contentContainerStyle={styles.bodyContent}
         showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl
+            refreshing={request.refreshing}
+            onRefresh={request.refetch}
+            tintColor={COLORS.primary}
+          />
+        }
       >
-        {/* Customer & Actions Card */}
+        {/* Customer Card */}
         <Card style={styles.card}>
-          <Text style={styles.cardSectionLabel}>Customer Information</Text>
           <View style={styles.customerRow}>
-            <View style={styles.customerAvatar}>
-              <Text style={styles.customerAvatarText}>
-                {job.customer.name.split(' ').map((n) => n[0]).join('')}
-              </Text>
-            </View>
-            <View style={styles.customerMeta}>
+            <Avatar name={job.customer.name} uri={job.customer.photo_url} size={52} />
+            <View style={{ flex: 1, marginLeft: SPACING.md }}>
               <Text style={styles.customerName}>{job.customer.name}</Text>
               <View style={styles.ratingRow}>
-                <MaterialCommunityIcons name="star" size={16} color="#F59E0B" />
-                <Text style={styles.ratingText}>{job.customer.rating} Rating</Text>
+                <RatingStars rating={job.customer.rating_avg} size={14} showValue />
               </View>
             </View>
-          </View>
-
-          {/* Direct Communication Buttons (48px targets) */}
-          <View style={styles.customerContactRow}>
-            <TouchableOpacity
-              style={styles.contactBtnOutline}
-              onPress={() => navigation.navigate('Chat')}
-              activeOpacity={0.8}
-            >
-              <MaterialCommunityIcons name="chat-outline" size={20} color={COLORS.primary} />
-              <Text style={styles.contactBtnOutlineText}>Chat</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={styles.contactBtnFilled}
-              onPress={() => Alert.alert('Call Customer', 'Connecting call via masked phone service.')}
-              activeOpacity={0.8}
-            >
-              <MaterialCommunityIcons name="phone-shield" size={20} color={COLORS.white} />
-              <Text style={styles.contactBtnFilledText}>Call Customer</Text>
-            </TouchableOpacity>
+            <View style={styles.headerActions}>
+              <TouchableOpacity
+                style={[styles.headerActionBtn, { backgroundColor: COLORS.primaryLight }]}
+                onPress={() => navigation.navigate('Chat', { jobId: job.id })}
+              >
+                <MaterialCommunityIcons name="chat-outline" size={20} color={COLORS.primary} />
+                {job.unread_messages > 0 && <View style={styles.dot} />}
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.headerActionBtn, { backgroundColor: COLORS.successLight }]}
+                onPress={handleRequestCall}
+                disabled={calling}
+              >
+                {calling ? (
+                  <ActivityIndicator size="small" color={COLORS.success} />
+                ) : (
+                  <MaterialCommunityIcons name="phone-outline" size={20} color={COLORS.success} />
+                )}
+              </TouchableOpacity>
+            </View>
           </View>
         </Card>
 
-        {/* Location & Navigation Card */}
-        <Card style={styles.card}>
-          <Text style={styles.cardSectionLabel}>Service Location</Text>
-          <Text style={styles.locationAddress}>{job.location.address}</Text>
-          <Text style={styles.locationLandmark}>{job.location.landmark}</Text>
-
-          <View style={styles.locationStatsRow}>
-            <View style={styles.locationStatItem}>
-              <MaterialCommunityIcons name="map-marker-distance" size={18} color={COLORS.primary} />
-              <Text style={styles.locationStatText}>{job.location.distance}</Text>
+        {/* Pending extra amount (spec #6) */}
+        {!!pendingExtra && (
+          <Card variant="warning" style={styles.card}>
+            <View style={styles.pendingRow}>
+              <MaterialCommunityIcons name="clock-alert-outline" size={22} color="#B45309" />
+              <View style={{ flex: 1, marginLeft: SPACING.md }}>
+                <Text style={styles.pendingTitle}>
+                  {formatRupees(pendingExtra.amount)} extra — waiting for approval
+                </Text>
+                <Text style={styles.pendingBody}>{pendingExtra.reason}</Text>
+              </View>
             </View>
-            <View style={styles.locationStatDivider} />
-            <View style={styles.locationStatItem}>
+          </Card>
+        )}
+
+        {/* Location Card */}
+        <Card style={styles.card}>
+          <View style={styles.sectionLabel}>
+            <MaterialCommunityIcons name="map-marker" size={18} color={COLORS.textSecondary} />
+            <Text style={styles.sectionLabelText}>Service Location</Text>
+          </View>
+          <Text style={styles.locationAddress}>{job.location.address}</Text>
+          {!!job.location.landmark && (
+            <Text style={styles.locationLandmark}>{job.location.landmark}</Text>
+          )}
+
+          <View style={styles.locationMeta}>
+            <View style={styles.locationMetaItem}>
+              <MaterialCommunityIcons
+                name="map-marker-distance"
+                size={18}
+                color={COLORS.primary}
+              />
+              <Text style={styles.locationMetaText}>
+                {formatDistance(job.location.distance_km) ?? 'Distance unknown'}
+              </Text>
+            </View>
+            <View style={styles.locationMetaItem}>
               <MaterialCommunityIcons name="clock-outline" size={18} color={COLORS.primary} />
-              <Text style={styles.locationStatText}>{job.location.estimatedTime}</Text>
+              <Text style={styles.locationMetaText}>
+                {formatEta(job.location.eta_min) ?? '—'}
+              </Text>
             </View>
           </View>
 
           <TouchableOpacity
             style={styles.navigateBtn}
-            onPress={openNavigation}
-            activeOpacity={0.85}
+            onPress={() => navigation.navigate('JobLocation', { jobId: job.id })}
+            activeOpacity={0.8}
           >
-            <MaterialCommunityIcons name="navigation-variant" size={20} color={COLORS.white} />
-            <Text style={styles.navigateBtnText}>Open in Google Maps</Text>
+            <MaterialCommunityIcons name="navigation-variant" size={22} color={COLORS.white} />
+            <Text style={styles.navigateBtnText}>Map & Navigate</Text>
           </TouchableOpacity>
         </Card>
 
-        {/* Job Progress Stepper Card */}
+        {/* Services & Amount */}
         <Card style={styles.card}>
-          <View style={styles.stepperHeaderRow}>
-            <Text style={styles.cardSectionLabel}>Job Stage Stepper</Text>
-            <Text style={styles.stepCounterText}>
-              Step {currentStep + 1} of {stepLabels.length}
-            </Text>
+          <View style={styles.sectionLabel}>
+            <MaterialCommunityIcons name="wrench" size={18} color={COLORS.textSecondary} />
+            <Text style={styles.sectionLabelText}>Services & Amount</Text>
           </View>
-
-          <StepperProgress steps={stepLabels} currentStep={currentStep} />
-        </Card>
-
-        {/* Services & Financial Breakdown */}
-        <Card style={styles.card}>
-          <Text style={styles.cardSectionLabel}>Service Items & Payment</Text>
-          {job.services.map((service, index) => (
-            <View key={index} style={styles.serviceItemRow}>
+          {job.services.map((service) => (
+            <View key={service.id} style={styles.serviceRow}>
               <View style={styles.serviceDot} />
               <Text style={styles.serviceName}>{service.name}</Text>
-              <Text style={styles.servicePrice}>₹{service.price}</Text>
+              <Text style={styles.servicePrice}>{formatRupees(service.price)}</Text>
             </View>
           ))}
-
-          <View style={styles.cardDivider} />
-
-          <View style={styles.totalRow}>
-            <View>
-              <Text style={styles.totalLabel}>Total Payable</Text>
-              <Text style={styles.totalSub}>Collect digitally or in cash</Text>
+          <View style={styles.amountBreakdown}>
+            <View style={styles.amountRow}>
+              <Text style={styles.amountLabel}>Base Amount</Text>
+              <Text style={styles.amountValue}>{formatRupees(job.amounts.base_amount)}</Text>
             </View>
-            <Text style={styles.totalValue}>₹{job.totalAmount}</Text>
+            {job.amounts.extra_amount > 0 && (
+              <View style={styles.amountRow}>
+                <Text style={styles.amountLabel}>Extra Amount</Text>
+                <Text style={[styles.amountValue, { color: COLORS.warning }]}>
+                  +{formatRupees(job.amounts.extra_amount)}
+                </Text>
+              </View>
+            )}
+            {job.amounts.pending_extra_amount > 0 && (
+              <View style={styles.amountRow}>
+                <Text style={styles.amountLabel}>Awaiting approval</Text>
+                <Text style={[styles.amountValue, { color: COLORS.textTertiary }]}>
+                  {formatRupees(job.amounts.pending_extra_amount)}
+                </Text>
+              </View>
+            )}
+            <View style={styles.totalDivider} />
+            <View style={styles.amountRow}>
+              <Text style={styles.totalLabel}>Total Amount</Text>
+              <Text style={styles.totalValue}>{formatRupees(job.amounts.total_amount)}</Text>
+            </View>
           </View>
         </Card>
+
+        {/* Job Progress */}
+        <Card style={styles.card}>
+          <View style={styles.sectionLabel}>
+            <MaterialCommunityIcons name="progress-check" size={18} color={COLORS.textSecondary} />
+            <Text style={styles.sectionLabelText}>Job Progress</Text>
+          </View>
+          <StepperProgress steps={JOB_STEPS} currentStep={currentStep} />
+        </Card>
+
+        {/* The one legal next transition */}
+        <TouchableOpacity
+          style={[
+            styles.updateStatusBtn,
+            (isCompleted || !nextAction) && styles.updateStatusBtnCompleted,
+          ]}
+          onPress={advance}
+          disabled={!nextAction || advancing}
+          activeOpacity={0.8}
+        >
+          {advancing ? (
+            <ActivityIndicator size="small" color={COLORS.white} />
+          ) : (
+            <>
+              <MaterialCommunityIcons
+                name={nextAction?.icon ?? 'check-circle'}
+                size={24}
+                color={COLORS.white}
+              />
+              <Text style={styles.updateStatusText}>
+                {nextAction?.label ?? 'Job Completed'}
+              </Text>
+            </>
+          )}
+        </TouchableOpacity>
+
+        {/* Quick Actions */}
+        <View style={styles.quickActions}>
+          <TouchableOpacity
+            style={styles.quickActionBtn}
+            onPress={() => navigation.navigate('Chat', { jobId: job.id })}
+          >
+            <View style={[styles.quickActionIcon, { backgroundColor: COLORS.primaryLight }]}>
+              <MaterialCommunityIcons name="chat-outline" size={24} color={COLORS.primary} />
+            </View>
+            <Text style={styles.quickActionLabel}>Chat</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={styles.quickActionBtn}
+            onPress={handleRequestCall}
+            disabled={calling}
+          >
+            <View style={[styles.quickActionIcon, { backgroundColor: COLORS.successLight }]}>
+              <MaterialCommunityIcons name="phone-in-talk" size={24} color={COLORS.success} />
+            </View>
+            <Text style={styles.quickActionLabel}>Request{'\n'}Call</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[styles.quickActionBtn, isCompleted && styles.quickActionDisabled]}
+            disabled={isCompleted}
+            onPress={() => navigation.navigate('RequestExtraAmount', { jobId: job.id })}
+          >
+            <View style={[styles.quickActionIcon, { backgroundColor: COLORS.warningLight }]}>
+              <MaterialCommunityIcons name="cash-plus" size={24} color="#B45309" />
+            </View>
+            <Text style={styles.quickActionLabel}>Extra{'\n'}Amount</Text>
+          </TouchableOpacity>
+        </View>
 
         <View style={{ height: 100 }} />
       </ScrollView>
-
-      {/* Primary Action Button Sticky Bar: Advances Job Progress */}
-      <View style={styles.bottomBar}>
-        <TouchableOpacity
-          style={[
-            styles.advanceStepBtn,
-            isCompleted && styles.completedStepBtn,
-          ]}
-          onPress={advanceStep}
-          activeOpacity={0.85}
-        >
-          <MaterialCommunityIcons
-            name={isCompleted ? 'check-decagram' : 'arrow-right-circle'}
-            size={22}
-            color={COLORS.white}
-          />
-          <Text style={styles.advanceStepText}>{getNextStepLabel()}</Text>
-        </TouchableOpacity>
-      </View>
-    </SafeAreaView>
+    </View>
   );
 };
 
 const styles = StyleSheet.create({
-  safeArea: {
+  container: {
     flex: 1,
     backgroundColor: COLORS.background,
   },
   header: {
-    height: 56,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: SPACING.md,
     backgroundColor: COLORS.white,
-    borderBottomWidth: 1,
-    borderBottomColor: COLORS.border,
+    paddingTop: 50,
+    paddingBottom: SPACING.lg,
+    paddingHorizontal: SPACING.xl,
+    ...SHADOWS.sm,
   },
   backBtn: {
-    width: 48,
-    height: 48,
-    borderRadius: RADIUS.full,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: COLORS.background,
     alignItems: 'center',
     justifyContent: 'center',
   },
   headerTitle: {
-    fontSize: FONT_SIZE.md,
+    fontSize: FONT_SIZE.lg,
     fontWeight: FONT_WEIGHT.bold,
     color: COLORS.textPrimary,
   },
@@ -225,228 +411,219 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   bodyContent: {
-    padding: SPACING.md,
+    padding: SPACING.xl,
   },
   card: {
-    marginBottom: SPACING.md,
-  },
-  cardSectionLabel: {
-    fontSize: 11,
-    fontWeight: FONT_WEIGHT.bold,
-    color: COLORS.textTertiary,
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-    marginBottom: SPACING.sm,
+    marginBottom: SPACING.lg,
   },
   customerRow: {
     flexDirection: 'row',
     alignItems: 'center',
   },
-  customerAvatar: {
-    width: 46,
-    height: 46,
-    borderRadius: 23,
-    backgroundColor: COLORS.primaryLight,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  customerAvatarText: {
-    fontSize: FONT_SIZE.md,
-    fontWeight: FONT_WEIGHT.bold,
-    color: COLORS.primary,
-  },
-  customerMeta: {
-    flex: 1,
-    marginLeft: SPACING.md,
-  },
   customerName: {
-    fontSize: FONT_SIZE.md,
+    fontSize: FONT_SIZE.lg,
     fontWeight: FONT_WEIGHT.bold,
     color: COLORS.textPrimary,
   },
   ratingRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 4,
-    marginTop: 2,
+    marginTop: 4,
   },
-  ratingText: {
-    fontSize: 12,
-    color: COLORS.textSecondary,
-  },
-  customerContactRow: {
+  headerActions: {
     flexDirection: 'row',
     gap: SPACING.sm,
-    marginTop: SPACING.md,
   },
-  contactBtnOutline: {
-    flex: 1,
-    minHeight: 48,
-    borderRadius: RADIUS.md,
+  headerActionBtn: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  dot: {
+    position: 'absolute',
+    top: 8,
+    right: 9,
+    width: 9,
+    height: 9,
+    borderRadius: 5,
+    backgroundColor: COLORS.danger,
     borderWidth: 1.5,
-    borderColor: COLORS.primary,
+    borderColor: COLORS.white,
+  },
+  pendingRow: {
     flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 6,
-    backgroundColor: COLORS.white,
+    alignItems: 'flex-start',
   },
-  contactBtnOutlineText: {
-    fontSize: FONT_SIZE.xs,
+  pendingTitle: {
+    fontSize: FONT_SIZE.md,
     fontWeight: FONT_WEIGHT.bold,
-    color: COLORS.primary,
+    color: '#92400E',
   },
-  contactBtnFilled: {
-    flex: 1.4,
-    minHeight: 48,
-    borderRadius: RADIUS.md,
-    backgroundColor: COLORS.success,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 6,
-    ...SHADOWS.sm,
-  },
-  contactBtnFilledText: {
-    fontSize: FONT_SIZE.xs,
-    fontWeight: FONT_WEIGHT.bold,
-    color: COLORS.white,
-  },
-  locationAddress: {
+  pendingBody: {
     fontSize: FONT_SIZE.sm,
-    fontWeight: FONT_WEIGHT.bold,
-    color: COLORS.textPrimary,
-  },
-  locationLandmark: {
-    fontSize: 12,
-    color: COLORS.textSecondary,
+    color: '#92400E',
     marginTop: 2,
-    marginBottom: SPACING.sm,
+    lineHeight: 19,
   },
-  locationStatsRow: {
+  sectionLabel: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-around',
-    backgroundColor: COLORS.background,
-    borderRadius: RADIUS.md,
-    paddingVertical: SPACING.sm,
     marginBottom: SPACING.md,
   },
-  locationStatItem: {
+  sectionLabelText: {
+    fontSize: FONT_SIZE.sm,
+    color: COLORS.textSecondary,
+    fontWeight: FONT_WEIGHT.semibold,
+    marginLeft: SPACING.sm,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  locationAddress: {
+    fontSize: FONT_SIZE.md,
+    fontWeight: FONT_WEIGHT.semibold,
+    color: COLORS.textPrimary,
+    lineHeight: 22,
+  },
+  locationLandmark: {
+    fontSize: FONT_SIZE.sm,
+    color: COLORS.textSecondary,
+    marginTop: 4,
+  },
+  locationMeta: {
+    flexDirection: 'row',
+    gap: SPACING.xl,
+    marginTop: SPACING.md,
+  },
+  locationMetaItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 4,
   },
-  locationStatText: {
-    fontSize: 12,
-    fontWeight: FONT_WEIGHT.bold,
-    color: COLORS.textPrimary,
-  },
-  locationStatDivider: {
-    width: 1,
-    height: 20,
-    backgroundColor: COLORS.border,
+  locationMetaText: {
+    fontSize: FONT_SIZE.sm,
+    color: COLORS.textSecondary,
+    fontWeight: FONT_WEIGHT.semibold,
+    marginLeft: SPACING.sm,
   },
   navigateBtn: {
-    backgroundColor: COLORS.primary,
-    borderRadius: RADIUS.md,
-    minHeight: 48,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 8,
-    ...SHADOWS.sm,
+    backgroundColor: COLORS.primary,
+    borderRadius: RADIUS.md,
+    paddingVertical: SPACING.md,
+    marginTop: SPACING.lg,
   },
   navigateBtnText: {
-    fontSize: FONT_SIZE.sm,
+    fontSize: FONT_SIZE.md,
     fontWeight: FONT_WEIGHT.bold,
     color: COLORS.white,
+    marginLeft: SPACING.sm,
   },
-  stepperHeaderRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: SPACING.xs,
-  },
-  stepCounterText: {
-    fontSize: 11,
-    fontWeight: FONT_WEIGHT.bold,
-    color: COLORS.primary,
-  },
-  serviceItemRow: {
+  serviceRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 6,
+    paddingVertical: SPACING.sm,
   },
   serviceDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
+    width: 8,
+    height: 8,
+    borderRadius: 4,
     backgroundColor: COLORS.primary,
-    marginRight: SPACING.sm,
+    marginRight: SPACING.md,
   },
   serviceName: {
     flex: 1,
-    fontSize: FONT_SIZE.sm,
+    fontSize: FONT_SIZE.md,
     color: COLORS.textPrimary,
+    fontWeight: FONT_WEIGHT.medium,
   },
   servicePrice: {
-    fontSize: FONT_SIZE.sm,
-    fontWeight: FONT_WEIGHT.bold,
+    fontSize: FONT_SIZE.md,
+    fontWeight: FONT_WEIGHT.semibold,
     color: COLORS.textPrimary,
   },
-  cardDivider: {
-    height: 1,
-    backgroundColor: COLORS.borderLight,
-    marginVertical: SPACING.sm,
+  amountBreakdown: {
+    marginTop: SPACING.md,
+    paddingTop: SPACING.md,
+    borderTopWidth: 1,
+    borderTopColor: COLORS.borderLight,
   },
-  totalRow: {
+  amountRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'center',
+    marginBottom: SPACING.sm,
   },
-  totalLabel: {
-    fontSize: FONT_SIZE.sm,
-    fontWeight: FONT_WEIGHT.bold,
+  amountLabel: {
+    fontSize: FONT_SIZE.md,
+    color: COLORS.textSecondary,
+  },
+  amountValue: {
+    fontSize: FONT_SIZE.md,
+    fontWeight: FONT_WEIGHT.semibold,
     color: COLORS.textPrimary,
   },
-  totalSub: {
-    fontSize: 10,
-    color: COLORS.textTertiary,
+  totalDivider: {
+    height: 1,
+    backgroundColor: COLORS.border,
+    marginVertical: SPACING.sm,
+  },
+  totalLabel: {
+    fontSize: FONT_SIZE.lg,
+    fontWeight: FONT_WEIGHT.bold,
+    color: COLORS.textPrimary,
   },
   totalValue: {
     fontSize: FONT_SIZE.xl,
     fontWeight: FONT_WEIGHT.extrabold,
-    color: COLORS.primary,
+    color: COLORS.success,
   },
-  bottomBar: {
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
-    backgroundColor: COLORS.white,
-    padding: SPACING.md,
-    borderTopWidth: 1,
-    borderTopColor: COLORS.border,
-    ...SHADOWS.lg,
-  },
-  advanceStepBtn: {
-    backgroundColor: COLORS.primary,
-    minHeight: 54,
-    borderRadius: RADIUS.md,
+  updateStatusBtn: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 8,
+    backgroundColor: COLORS.primary,
+    borderRadius: RADIUS.lg,
+    paddingVertical: SPACING.xl,
+    marginBottom: SPACING.xl,
+    minHeight: 60,
     ...SHADOWS.md,
   },
-  completedStepBtn: {
+  updateStatusBtnCompleted: {
     backgroundColor: COLORS.success,
   },
-  advanceStepText: {
-    fontSize: FONT_SIZE.md,
+  updateStatusText: {
+    fontSize: FONT_SIZE.lg,
     fontWeight: FONT_WEIGHT.bold,
     color: COLORS.white,
+    marginLeft: SPACING.md,
+  },
+  quickActions: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    marginBottom: SPACING.xl,
+  },
+  quickActionBtn: {
+    alignItems: 'center',
+  },
+  quickActionDisabled: {
+    opacity: 0.4,
+  },
+  quickActionIcon: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: SPACING.sm,
+  },
+  quickActionLabel: {
+    fontSize: FONT_SIZE.sm,
+    color: COLORS.textSecondary,
+    fontWeight: FONT_WEIGHT.medium,
+    textAlign: 'center',
+    lineHeight: 18,
   },
 });
 

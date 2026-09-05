@@ -1,13 +1,19 @@
+/**
+ * The customer app's tab tree.
+ *
+ * This exports the navigator *config*, not a rendered navigation container:
+ * RootNavigator mounts it inside the one container the app has. Login is not in
+ * here — it is shared with the worker role and lives above this tree.
+ */
+
 import React from 'react';
 import { View, StyleSheet, Platform } from 'react-native';
-import { createStaticNavigation } from '@react-navigation/native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { createStackNavigator } from '@react-navigation/stack';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { COLORS, FONT_SIZE, FONT_WEIGHT, SHADOWS } from '../../theme';
 
 // Customer Screens
-import AuthScreen from '../screens/AuthScreen';
 import CustomerHomeScreen from '../screens/CustomerHomeScreen';
 import SearchServiceScreen from '../screens/SearchServiceScreen';
 import AIRequirementScreen from '../screens/AIRequirementScreen';
@@ -41,7 +47,6 @@ const HomeStack = createStackNavigator({
     RatingFeedback: RatingFeedbackScreen,
     CustomerChat: CustomerChatScreen,
     Notifications: NotificationsScreen,
-    Auth: AuthScreen,
   },
 });
 
@@ -75,7 +80,6 @@ const ProfileStack = createStackNavigator({
     CustomerProfileMain: CustomerProfileScreen,
     Notifications: NotificationsScreen,
     BookingHistory: BookingHistoryScreen,
-    Auth: AuthScreen,
   },
 });
 
@@ -125,12 +129,6 @@ const RootCustomerTabs = createBottomTabNavigator({
   },
 });
 
-const Navigation = createStaticNavigation(RootCustomerTabs);
-
-const CustomerAppNavigator = () => {
-  return <Navigation />;
-};
-
 const styles = StyleSheet.create({
   tabBar: {
     position: 'absolute',
@@ -164,4 +162,4 @@ const styles = StyleSheet.create({
   },
 });
 
-export default CustomerAppNavigator;
+export default RootCustomerTabs;

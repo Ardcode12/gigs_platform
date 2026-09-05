@@ -1,94 +1,129 @@
-import React, { useState } from 'react';
+import React, { useCallback, useState } from 'react';
 import {
   View,
   Text,
   StyleSheet,
   ScrollView,
-  TouchableOpacity,
   StatusBar,
+  TouchableOpacity,
+  RefreshControl,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import { COLORS, SPACING, RADIUS, FONT_SIZE, FONT_WEIGHT, SHADOWS } from '../../theme';
+import { COLORS, SPACING, RADIUS, FONT_SIZE, FONT_WEIGHT } from '../../theme';
 import Card from '../components/Card';
-import { EARNINGS } from '../data/workerMockData';
+import StatusBadge from '../components/StatusBadge';
+import LoadingState from '../../components/LoadingState';
+import EmptyState from '../../components/EmptyState';
+import useApi from '../../hooks/useApi';
+import { useSocketEvent, WS_EVENTS } from '../../context/SocketContext';
+import { getOverview, getPayments } from '../../api/earnings';
+import { formatRupees, formatDate } from '../../utils/format';
 
+const TABS = [
+  { key: 'today', label: 'Today', heroLabel: "Today's Earnings" },
+  { key: 'week', label: 'Weekly', heroLabel: "This Week's Earnings" },
+  { key: 'month', label: 'Monthly', heroLabel: "This Month's Earnings" },
+];
+
+/** A single bar of ₹0 for "today" says nothing — show the week's shape instead. */
+const chartFor = (overview, tab) => (tab === 'today' ? overview.week : overview[tab]);
+
+const todayIso = () => {
+  const now = new Date();
+  const pad = (n) => String(n).padStart(2, '0');
+  return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
+};
+
+/** Spec #10 — what came in today, this week, this month, and per completed job. */
 const EarningsScreen = () => {
   const [activeTab, setActiveTab] = useState('today');
 
-  const tabs = [
-    { key: 'today', label: 'Today' },
-    { key: 'weekly', label: 'This Week' },
-    { key: 'monthly', label: 'This Month' },
-  ];
+  const earnings = useApi(
+    useCallback(
+      () =>
+        Promise.all([getOverview(), getPayments({ limit: 15 })]).then(([overview, payments]) => ({
+          overview,
+          payments,
+        })),
+      [],
+    ),
+    [],
+  );
 
-  const getActiveData = () => {
-    switch (activeTab) {
-      case 'weekly':
-        return { amount: EARNINGS.weekly, jobs: EARNINGS.weeklyJobs, label: 'Weekly Earnings' };
-      case 'monthly':
-        return { amount: EARNINGS.monthly, jobs: EARNINGS.monthlyJobs, label: 'Monthly Earnings' };
-      default:
-        return { amount: EARNINGS.today, jobs: EARNINGS.todayJobs, label: "Today's Earnings" };
-    }
-  };
+  // A completed job writes a payment row, so both events matter here.
+  useSocketEvent([WS_EVENTS.PAYMENT_UPDATE, WS_EVENTS.JOB_UPDATE], () => earnings.refetch());
 
-  const activeData = getActiveData();
+  const header = (
+    <View style={styles.header}>
+      <Text style={styles.headerTitle}>Earnings</Text>
+    </View>
+  );
 
-  const weeklyBreakdown = [
-    { day: 'Mon', amount: 2100, jobs: 3 },
-    { day: 'Tue', amount: 1850, jobs: 2 },
-    { day: 'Wed', amount: 2400, jobs: 4 },
-    { day: 'Thu', amount: 1600, jobs: 2 },
-    { day: 'Fri', amount: 2300, jobs: 3 },
-    { day: 'Sat', amount: 1200, jobs: 2 },
-    { day: 'Sun', amount: 1000, jobs: 2 },
-  ];
+  if (earnings.loading && !earnings.data) {
+    return (
+      <View style={styles.container}>
+        <StatusBar barStyle="light-content" backgroundColor={COLORS.primary} />
+        {header}
+        <LoadingState message="Loading your earnings…" />
+      </View>
+    );
+  }
 
-  const maxAmount = Math.max(...weeklyBreakdown.map((d) => d.amount));
+  if (!earnings.data) {
+    return (
+      <View style={styles.container}>
+        <StatusBar barStyle="light-content" backgroundColor={COLORS.primary} />
+        {header}
+        <EmptyState
+          tone="error"
+          title="Couldn't load earnings"
+          message={earnings.error?.message}
+          actionLabel="Try again"
+          onAction={earnings.reload}
+        />
+      </View>
+    );
+  }
+
+  const { overview, payments } = earnings.data;
+  const active = overview[activeTab];
+  const tabMeta = TABS.find((t) => t.key === activeTab);
+  const chart = chartFor(overview, activeTab);
+  const maxAmount = Math.max(1, ...chart.breakdown.map((b) => b.amount));
+  const today = todayIso();
 
   return (
-    <SafeAreaView style={styles.safeArea}>
+    <View style={styles.container}>
       <StatusBar barStyle="light-content" backgroundColor={COLORS.primary} />
 
       {/* Header */}
-      <View style={styles.header}>
-        <View style={styles.headerTop}>
-          <Text style={styles.headerTitle}>Earnings Dashboard</Text>
-          <TouchableOpacity style={styles.historyBtn} activeOpacity={0.8}>
-            <MaterialCommunityIcons name="history" size={22} color={COLORS.white} />
-          </TouchableOpacity>
+      {header}
+
+      {/* Earnings Hero */}
+      <View style={styles.heroSection}>
+        {/* Tab Selector */}
+        <View style={styles.tabRow}>
+          {TABS.map((tab) => (
+            <TouchableOpacity
+              key={tab.key}
+              style={[styles.tab, activeTab === tab.key && styles.tabActive]}
+              onPress={() => setActiveTab(tab.key)}
+            >
+              <Text style={[styles.tabText, activeTab === tab.key && styles.tabTextActive]}>
+                {tab.label}
+              </Text>
+            </TouchableOpacity>
+          ))}
         </View>
 
-        {/* Standardized Tab Selector (48px Touch Targets) */}
-        <View style={styles.tabBar}>
-          {tabs.map((tab) => {
-            const isActive = activeTab === tab.key;
-            return (
-              <TouchableOpacity
-                key={tab.key}
-                style={[styles.tabBtn, isActive && styles.tabBtnActive]}
-                onPress={() => setActiveTab(tab.key)}
-                activeOpacity={0.85}
-              >
-                <Text style={[styles.tabText, isActive && styles.tabTextActive]}>
-                  {tab.label}
-                </Text>
-              </TouchableOpacity>
-            );
-          })}
-        </View>
-
-        {/* Hero Big Earnings Display */}
-        <View style={styles.heroAmountBox}>
-          <Text style={styles.heroSubtitle}>{activeData.label}</Text>
-          <Text style={styles.heroAmountValue}>
-            ₹{activeData.amount.toLocaleString('en-IN')}
+        {/* Big Earnings Amount */}
+        <View style={styles.heroAmount}>
+          <Text style={styles.heroLabel}>{tabMeta.heroLabel}</Text>
+          <Text style={styles.heroValue}>{formatRupees(active.total)}</Text>
+          <Text style={styles.heroJobs}>
+            {active.jobs} {active.jobs === 1 ? 'Job' : 'Jobs'} Completed
+            {active.pending > 0 ? ` · ${formatRupees(active.pending)} awaiting payment` : ''}
           </Text>
-          <View style={styles.jobsPill}>
-            <MaterialCommunityIcons name="check-circle" size={14} color={COLORS.success} />
-            <Text style={styles.jobsPillText}>{activeData.jobs} Jobs Completed</Text>
-          </View>
         </View>
       </View>
 
@@ -96,52 +131,68 @@ const EarningsScreen = () => {
         style={styles.body}
         contentContainerStyle={styles.bodyContent}
         showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl
+            refreshing={earnings.refreshing}
+            onRefresh={earnings.refetch}
+            tintColor={COLORS.primary}
+          />
+        }
       >
-        {/* Quick Stats Grid */}
+        {/* Stats Cards */}
         <View style={styles.statsGrid}>
           <Card style={styles.statCard}>
-            <View style={styles.statIconWrapSuccess}>
-              <MaterialCommunityIcons name="wallet-outline" size={22} color={COLORS.success} />
+            <View style={[styles.statIcon, { backgroundColor: COLORS.successLight }]}>
+              <MaterialCommunityIcons name="briefcase-check" size={22} color={COLORS.success} />
             </View>
-            <Text style={styles.statVal}>₹{activeData.amount}</Text>
-            <Text style={styles.statLbl}>Net Payout</Text>
+            <Text style={styles.statValue}>{active.jobs}</Text>
+            <Text style={styles.statLabel}>Completed Jobs</Text>
           </Card>
-
           <Card style={styles.statCard}>
-            <View style={styles.statIconWrapPrimary}>
-              <MaterialCommunityIcons name="briefcase-check" size={22} color={COLORS.primary} />
+            <View style={[styles.statIcon, { backgroundColor: COLORS.warningLight }]}>
+              <MaterialCommunityIcons name="cash-plus" size={22} color="#B45309" />
             </View>
-            <Text style={styles.statVal}>{activeData.jobs}</Text>
-            <Text style={styles.statLbl}>Jobs Completed</Text>
+            <Text style={styles.statValue}>{formatRupees(active.extra_earned)}</Text>
+            <Text style={styles.statLabel}>Extra Earned</Text>
           </Card>
         </View>
 
-        {/* Weekly Trend Bar Chart */}
+        {/* Breakdown Chart */}
         <Card style={styles.chartCard}>
           <View style={styles.chartHeader}>
-            <Text style={styles.chartTitle}>Daily Earnings (This Week)</Text>
-            <Text style={styles.chartSub}>Total: ₹12,450</Text>
+            <Text style={styles.chartTitle}>
+              {activeTab === 'month' ? 'This Month' : 'This Week'}
+            </Text>
+            <Text style={styles.chartSubtitle}>
+              {activeTab === 'month' ? 'Weekly Breakdown' : 'Daily Breakdown'}
+            </Text>
           </View>
-
-          <View style={styles.chartContainer}>
-            {weeklyBreakdown.map((item, index) => {
-              const barHeight = Math.round((item.amount / maxAmount) * 110);
-              const isToday = item.day === 'Wed';
-
+          <View style={styles.chartBars}>
+            {chart.breakdown.map((bucket) => {
+              const barHeight = (bucket.amount / maxAmount) * 120;
+              const isToday = bucket.day === today;
               return (
-                <View key={index} style={styles.barCol}>
-                  <Text style={styles.barAmtText}>₹{Math.round(item.amount / 1000)}k</Text>
+                <View key={`${bucket.label}-${bucket.day}`} style={styles.barWrap}>
+                  <Text style={styles.barAmount}>
+                    {bucket.amount >= 1000
+                      ? `₹${(bucket.amount / 1000).toFixed(1)}k`
+                      : bucket.amount > 0
+                        ? `₹${Math.round(bucket.amount)}`
+                        : '–'}
+                  </Text>
                   <View style={styles.barTrack}>
                     <View
                       style={[
-                        styles.barFill,
-                        { height: barHeight },
-                        isToday && styles.barFillToday,
+                        styles.bar,
+                        {
+                          height: barHeight,
+                          backgroundColor: isToday ? COLORS.primary : COLORS.primaryLight,
+                        },
                       ]}
                     />
                   </View>
-                  <Text style={[styles.barDayText, isToday && styles.barDayToday]}>
-                    {item.day}
+                  <Text style={[styles.barDay, isToday && styles.barDayActive]}>
+                    {bucket.label}
                   </Text>
                 </View>
               );
@@ -149,238 +200,323 @@ const EarningsScreen = () => {
           </View>
         </Card>
 
-        {/* Direct Bank Transfer Assurance */}
-        <Card style={styles.payoutNoticeCard}>
-          <View style={styles.payoutNoticeRow}>
-            <MaterialCommunityIcons name="bank-check" size={24} color={COLORS.primary} />
-            <View style={styles.payoutNoticeMeta}>
-              <Text style={styles.payoutNoticeTitle}>Direct Cooperative Bank Transfer</Text>
-              <Text style={styles.payoutNoticeSub}>
-                100% of earnings are deposited daily with 0% platform fee.
-              </Text>
+        {/* Earnings Breakdown */}
+        <Card style={styles.breakdownCard}>
+          <Text style={styles.breakdownTitle}>Earnings Summary</Text>
+
+          <View style={styles.breakdownRow}>
+            <View style={styles.breakdownLeft}>
+              <View style={[styles.breakdownDot, { backgroundColor: COLORS.primary }]} />
+              <Text style={styles.breakdownLabel}>Today</Text>
             </View>
+            <Text style={styles.breakdownValue}>{formatRupees(overview.today.total)}</Text>
+          </View>
+
+          <View style={styles.breakdownRow}>
+            <View style={styles.breakdownLeft}>
+              <View style={[styles.breakdownDot, { backgroundColor: COLORS.info }]} />
+              <Text style={styles.breakdownLabel}>This Week</Text>
+            </View>
+            <Text style={styles.breakdownValue}>{formatRupees(overview.week.total)}</Text>
+          </View>
+
+          <View style={styles.breakdownRow}>
+            <View style={styles.breakdownLeft}>
+              <View style={[styles.breakdownDot, { backgroundColor: COLORS.success }]} />
+              <Text style={styles.breakdownLabel}>This Month</Text>
+            </View>
+            <Text style={styles.breakdownValue}>{formatRupees(overview.month.total)}</Text>
+          </View>
+
+          <View style={[styles.breakdownRow, { borderBottomWidth: 0 }]}>
+            <View style={styles.breakdownLeft}>
+              <View style={[styles.breakdownDot, { backgroundColor: COLORS.warning }]} />
+              <Text style={styles.breakdownLabel}>Extra Amount Earned</Text>
+            </View>
+            <Text style={[styles.breakdownValue, { color: COLORS.warning }]}>
+              +{formatRupees(overview.month.extra_earned)}
+            </Text>
           </View>
         </Card>
 
-        <View style={{ height: 90 }} />
+        {/* Per-job payments */}
+        <Card style={styles.breakdownCard}>
+          <Text style={styles.breakdownTitle}>Recent Payments</Text>
+
+          {payments.length === 0 ? (
+            <Text style={styles.emptyText}>
+              Payments appear here once you complete a job — base amount plus any approved extra.
+            </Text>
+          ) : (
+            payments.map((payment, index) => (
+              <View
+                key={payment.id}
+                style={[
+                  styles.paymentRow,
+                  index === payments.length - 1 && { borderBottomWidth: 0 },
+                ]}
+              >
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.paymentService}>
+                    {payment.service_type ?? 'Job'} · {payment.customer_name ?? 'Customer'}
+                  </Text>
+                  <Text style={styles.paymentMeta}>
+                    {formatDate(payment.paid_at ?? payment.created_at)}
+                    {payment.extra_amount > 0
+                      ? ` · incl. ${formatRupees(payment.extra_amount)} extra`
+                      : ''}
+                  </Text>
+                </View>
+                <View style={styles.paymentRight}>
+                  <Text style={styles.paymentAmount}>{formatRupees(payment.total_amount)}</Text>
+                  <StatusBadge
+                    label={payment.status === 'paid' ? 'Paid' : 'Pending'}
+                    color={payment.status === 'paid' ? 'success' : 'warning'}
+                    size="sm"
+                  />
+                </View>
+              </View>
+            ))
+          )}
+        </Card>
+
+        <View style={{ height: 100 }} />
       </ScrollView>
-    </SafeAreaView>
+    </View>
   );
 };
 
 const styles = StyleSheet.create({
-  safeArea: {
+  container: {
     flex: 1,
     backgroundColor: COLORS.background,
   },
   header: {
-    backgroundColor: COLORS.primary,
-    paddingHorizontal: SPACING.md,
-    paddingTop: SPACING.xs,
-    paddingBottom: SPACING.lg,
-    borderBottomLeftRadius: RADIUS.xl,
-    borderBottomRightRadius: RADIUS.xl,
-  },
-  headerTop: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginBottom: SPACING.md,
+    backgroundColor: COLORS.primary,
+    paddingTop: 50,
+    paddingHorizontal: SPACING.xl,
+    paddingBottom: SPACING.md,
   },
   headerTitle: {
-    fontSize: FONT_SIZE.xl,
-    fontWeight: FONT_WEIGHT.extrabold,
+    fontSize: FONT_SIZE.xxl,
+    fontWeight: FONT_WEIGHT.bold,
     color: COLORS.white,
   },
-  historyBtn: {
-    width: 48,
-    height: 48,
-    borderRadius: RADIUS.full,
-    backgroundColor: 'rgba(255,255,255,0.18)',
-    alignItems: 'center',
-    justifyContent: 'center',
+  heroSection: {
+    backgroundColor: COLORS.primary,
+    paddingHorizontal: SPACING.xl,
+    paddingBottom: SPACING.xxl,
+    borderBottomLeftRadius: RADIUS.xxl,
+    borderBottomRightRadius: RADIUS.xxl,
   },
-  tabBar: {
+  tabRow: {
     flexDirection: 'row',
     backgroundColor: 'rgba(255,255,255,0.15)',
-    borderRadius: RADIUS.lg,
-    padding: 3,
-    marginBottom: SPACING.md,
+    borderRadius: RADIUS.full,
+    padding: 4,
   },
-  tabBtn: {
+  tab: {
     flex: 1,
-    height: 42,
-    borderRadius: RADIUS.md,
+    paddingVertical: SPACING.sm,
+    borderRadius: RADIUS.full,
     alignItems: 'center',
-    justifyContent: 'center',
   },
-  tabBtnActive: {
+  tabActive: {
     backgroundColor: COLORS.white,
-    ...SHADOWS.sm,
   },
   tabText: {
-    fontSize: FONT_SIZE.xs,
+    fontSize: FONT_SIZE.sm,
     fontWeight: FONT_WEIGHT.semibold,
-    color: 'rgba(255,255,255,0.85)',
+    color: 'rgba(255,255,255,0.7)',
   },
   tabTextActive: {
     color: COLORS.primary,
-    fontWeight: FONT_WEIGHT.bold,
   },
-  heroAmountBox: {
+  heroAmount: {
     alignItems: 'center',
-    marginTop: SPACING.xs,
+    marginTop: SPACING.xxl,
   },
-  heroSubtitle: {
-    fontSize: 12,
-    color: 'rgba(255,255,255,0.85)',
+  heroLabel: {
+    fontSize: FONT_SIZE.sm,
+    color: 'rgba(255,255,255,0.8)',
     fontWeight: FONT_WEIGHT.medium,
   },
-  heroAmountValue: {
-    fontSize: 38,
+  heroValue: {
+    fontSize: 42,
     fontWeight: FONT_WEIGHT.extrabold,
     color: COLORS.white,
-    marginVertical: 4,
+    marginTop: SPACING.sm,
   },
-  jobsPill: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    backgroundColor: 'rgba(255,255,255,0.2)',
-    paddingHorizontal: 12,
-    paddingVertical: 4,
-    borderRadius: RADIUS.full,
-  },
-  jobsPillText: {
-    fontSize: 11,
-    fontWeight: FONT_WEIGHT.bold,
-    color: COLORS.white,
+  heroJobs: {
+    fontSize: FONT_SIZE.md,
+    color: 'rgba(255,255,255,0.8)',
+    fontWeight: FONT_WEIGHT.medium,
+    marginTop: SPACING.sm,
+    textAlign: 'center',
   },
   body: {
     flex: 1,
   },
   bodyContent: {
-    padding: SPACING.md,
+    padding: SPACING.xl,
+    paddingTop: SPACING.xl,
   },
   statsGrid: {
     flexDirection: 'row',
     gap: SPACING.md,
-    marginBottom: SPACING.md,
+    marginBottom: SPACING.lg,
   },
   statCard: {
     flex: 1,
-    padding: SPACING.md,
+    alignItems: 'center',
+    paddingVertical: SPACING.lg,
   },
-  statIconWrapSuccess: {
-    width: 38,
-    height: 38,
-    borderRadius: RADIUS.md,
-    backgroundColor: COLORS.successLight,
+  statIcon: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: SPACING.xs,
+    marginBottom: SPACING.sm,
   },
-  statIconWrapPrimary: {
-    width: 38,
-    height: 38,
-    borderRadius: RADIUS.md,
-    backgroundColor: COLORS.primaryLight,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: SPACING.xs,
-  },
-  statVal: {
-    fontSize: FONT_SIZE.lg,
+  statValue: {
+    fontSize: FONT_SIZE.xl,
     fontWeight: FONT_WEIGHT.extrabold,
     color: COLORS.textPrimary,
   },
-  statLbl: {
-    fontSize: 11,
+  statLabel: {
+    fontSize: FONT_SIZE.sm,
     color: COLORS.textSecondary,
     marginTop: 2,
+    fontWeight: FONT_WEIGHT.medium,
   },
   chartCard: {
-    marginBottom: SPACING.md,
+    marginBottom: SPACING.lg,
   },
   chartHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: SPACING.md,
+    marginBottom: SPACING.lg,
   },
   chartTitle: {
-    fontSize: FONT_SIZE.sm,
+    fontSize: FONT_SIZE.lg,
     fontWeight: FONT_WEIGHT.bold,
     color: COLORS.textPrimary,
   },
-  chartSub: {
-    fontSize: 11,
-    color: COLORS.primary,
-    fontWeight: FONT_WEIGHT.bold,
+  chartSubtitle: {
+    fontSize: FONT_SIZE.sm,
+    color: COLORS.textSecondary,
   },
-  chartContainer: {
+  chartBars: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'flex-end',
-    height: 140,
-    paddingTop: SPACING.sm,
+    height: 170,
   },
-  barCol: {
-    alignItems: 'center',
+  barWrap: {
     flex: 1,
+    alignItems: 'center',
   },
-  barAmtText: {
+  barAmount: {
     fontSize: 9,
     color: COLORS.textTertiary,
+    fontWeight: FONT_WEIGHT.medium,
     marginBottom: 4,
   },
   barTrack: {
-    width: 18,
-    height: 110,
+    width: 28,
+    height: 120,
+    backgroundColor: COLORS.borderLight,
+    borderRadius: RADIUS.sm,
     justifyContent: 'flex-end',
-    borderRadius: RADIUS.full,
-    backgroundColor: COLORS.background,
     overflow: 'hidden',
   },
-  barFill: {
-    backgroundColor: COLORS.primaryLight,
-    borderRadius: RADIUS.full,
+  bar: {
+    width: '100%',
+    borderRadius: RADIUS.sm,
   },
-  barFillToday: {
-    backgroundColor: COLORS.primary,
+  barDay: {
+    fontSize: FONT_SIZE.xs,
+    color: COLORS.textTertiary,
+    fontWeight: FONT_WEIGHT.medium,
+    marginTop: SPACING.sm,
   },
-  barDayText: {
-    fontSize: 11,
-    color: COLORS.textSecondary,
-    marginTop: 6,
-  },
-  barDayToday: {
+  barDayActive: {
     color: COLORS.primary,
     fontWeight: FONT_WEIGHT.bold,
   },
-  payoutNoticeCard: {
-    backgroundColor: '#EFF6FF',
-    borderColor: '#BFDBFE',
-    marginBottom: SPACING.md,
+  breakdownCard: {
+    marginBottom: SPACING.lg,
   },
-  payoutNoticeRow: {
+  breakdownTitle: {
+    fontSize: FONT_SIZE.lg,
+    fontWeight: FONT_WEIGHT.bold,
+    color: COLORS.textPrimary,
+    marginBottom: SPACING.lg,
+  },
+  breakdownRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: SPACING.md,
+    justifyContent: 'space-between',
+    paddingVertical: SPACING.md,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.borderLight,
   },
-  payoutNoticeMeta: {
-    flex: 1,
+  breakdownLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
   },
-  payoutNoticeTitle: {
-    fontSize: FONT_SIZE.xs,
+  breakdownDot: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    marginRight: SPACING.md,
+  },
+  breakdownLabel: {
+    fontSize: FONT_SIZE.md,
+    color: COLORS.textPrimary,
+    fontWeight: FONT_WEIGHT.medium,
+  },
+  breakdownValue: {
+    fontSize: FONT_SIZE.md,
     fontWeight: FONT_WEIGHT.bold,
-    color: COLORS.primaryDark,
+    color: COLORS.textPrimary,
   },
-  payoutNoticeSub: {
-    fontSize: 11,
+  paymentRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: SPACING.md,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.borderLight,
+  },
+  paymentService: {
+    fontSize: FONT_SIZE.md,
+    fontWeight: FONT_WEIGHT.semibold,
+    color: COLORS.textPrimary,
+  },
+  paymentMeta: {
+    fontSize: FONT_SIZE.xs,
     color: COLORS.textSecondary,
     marginTop: 2,
-    lineHeight: 16,
+  },
+  paymentRight: {
+    alignItems: 'flex-end',
+    marginLeft: SPACING.md,
+  },
+  paymentAmount: {
+    fontSize: FONT_SIZE.md,
+    fontWeight: FONT_WEIGHT.bold,
+    color: COLORS.textSuccess,
+    marginBottom: 4,
+  },
+  emptyText: {
+    fontSize: FONT_SIZE.sm,
+    color: COLORS.textSecondary,
+    lineHeight: 20,
   },
 });
 

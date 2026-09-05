@@ -1,4 +1,5 @@
-import React from 'react';
+import React, { useCallback, useState } from 'react';
+import { useNavigation, useRoute } from '@react-navigation/native';
 import {
   View,
   Text,
@@ -6,235 +7,419 @@ import {
   ScrollView,
   TouchableOpacity,
   StatusBar,
+  ActivityIndicator,
   Alert,
+  RefreshControl,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { COLORS, SPACING, RADIUS, FONT_SIZE, FONT_WEIGHT, SHADOWS } from '../../theme';
 import Card from '../components/Card';
-import { NEW_JOB_REQUEST } from '../data/workerMockData';
+import StatusBadge from '../components/StatusBadge';
+import Avatar from '../../components/Avatar';
+import RatingStars from '../../components/RatingStars';
+import LoadingState from '../../components/LoadingState';
+import EmptyState from '../../components/EmptyState';
+import useApi from '../../hooks/useApi';
+import { useSocketEvent, WS_EVENTS } from '../../context/SocketContext';
+import { getJob, acceptJob, rejectJob } from '../../api/jobs';
+import { requestCall } from '../../api/chat';
+import { formatRupees, formatDistance, formatEta, timeAgo } from '../../utils/format';
+import { JOB_STATUS, STATUS_LABEL, STATUS_TONE } from '../../constants/jobSteps';
 
-const NewJobRequestScreen = ({ navigation }) => {
-  const job = NEW_JOB_REQUEST;
+/**
+ * Spec #3, #7 and #9 in one screen.
+ *
+ * For a `requested` job this is the offer — accept or reject at the bottom. For
+ * any other status the same layout is the read-only job detail view, so there is
+ * one place that renders a job and it always looks the same.
+ */
+const NewJobRequestScreen = () => {
+  const navigation = useNavigation();
+  const { jobId } = useRoute().params ?? {};
+  const [acting, setActing] = useState(null); // 'accept' | 'reject' | 'call'
 
-  const handleAccept = () => {
+  const request = useApi(useCallback(() => getJob(jobId), [jobId]), [jobId]);
+
+  useSocketEvent([WS_EVENTS.JOB_UPDATE, WS_EVENTS.EXTRA_AMOUNT_DECISION], (event) => {
+    if (event.payload?.job_id === jobId) request.refetch();
+  });
+
+  const job = request.data;
+  const isOffer = job?.status === JOB_STATUS.REQUESTED;
+
+  const handleAccept = async () => {
+    setActing('accept');
+    try {
+      await acceptJob(jobId);
+      navigation.replace('CurrentJob', { jobId });
+    } catch (error) {
+      // 409 here means another worker claimed it first — worth saying plainly.
+      Alert.alert('Could not accept', error.message, [
+        { text: 'OK', onPress: () => navigation.goBack() },
+      ]);
+    } finally {
+      setActing(null);
+    }
+  };
+
+  const confirmReject = () => {
     Alert.alert(
-      'Job Accepted! 🎉',
-      `You have accepted the ${job.serviceType} job for ${job.customer.name}. Please head to the location.`,
+      'Reject this job?',
+      'It will be removed from your requests.',
       [
-        {
-          text: 'Go to Current Job',
-          onPress: () => navigation.navigate('CurrentJob'),
-        },
-      ]
+        { text: 'Keep it', style: 'cancel' },
+        { text: 'Reject', style: 'destructive', onPress: doReject },
+      ],
+      { cancelable: true },
     );
   };
 
-  const handleReject = () => {
-    Alert.alert(
-      'Reject Job?',
-      'Are you sure you want to pass on this request? It will be offered to another cooperative worker.',
-      [
-        { text: 'Keep Job', style: 'cancel' },
-        { text: 'Yes, Reject', style: 'destructive', onPress: () => navigation.goBack() },
-      ]
-    );
+  const doReject = async () => {
+    setActing('reject');
+    try {
+      await rejectJob(jobId);
+      navigation.goBack();
+    } catch (error) {
+      Alert.alert('Could not reject', error.message);
+    } finally {
+      setActing(null);
+    }
   };
+
+  const handleRequestCall = async () => {
+    setActing('call');
+    try {
+      await requestCall(jobId);
+      Alert.alert(
+        'Call requested',
+        'The customer has been asked to call you. Your number stays private — the app never shares either side’s number.',
+      );
+    } catch (error) {
+      Alert.alert('Could not send the request', error.message);
+    } finally {
+      setActing(null);
+    }
+  };
+
+  if (request.loading && !job) {
+    return (
+      <View style={styles.container}>
+        <StatusBar barStyle="dark-content" backgroundColor={COLORS.white} />
+        <View style={styles.header}>
+          <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
+            <MaterialCommunityIcons name="arrow-left" size={24} color={COLORS.textPrimary} />
+          </TouchableOpacity>
+          <Text style={styles.headerTitle}>Job Details</Text>
+          <View style={{ width: 40 }} />
+        </View>
+        <LoadingState message="Loading job…" />
+      </View>
+    );
+  }
+
+  if (!job) {
+    return (
+      <View style={styles.container}>
+        <View style={styles.header}>
+          <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
+            <MaterialCommunityIcons name="arrow-left" size={24} color={COLORS.textPrimary} />
+          </TouchableOpacity>
+          <Text style={styles.headerTitle}>Job Details</Text>
+          <View style={{ width: 40 }} />
+        </View>
+        <EmptyState
+          tone="error"
+          title="Couldn't load this job"
+          message={request.error?.message}
+          actionLabel="Try again"
+          onAction={request.reload}
+        />
+      </View>
+    );
+  }
+
+  const distance = formatDistance(job.location.distance_km);
+  const eta = formatEta(job.location.eta_min);
 
   return (
-    <SafeAreaView style={styles.safeArea}>
+    <View style={styles.container}>
       <StatusBar barStyle="dark-content" backgroundColor={COLORS.white} />
 
-      {/* Standardized Header */}
+      {/* Header */}
       <View style={styles.header}>
-        <TouchableOpacity
-          onPress={() => navigation.goBack()}
-          style={styles.backBtn}
-          activeOpacity={0.8}
-        >
+        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
           <MaterialCommunityIcons name="arrow-left" size={24} color={COLORS.textPrimary} />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>New Job Request</Text>
-        <View style={{ width: 48 }} />
+        <Text style={styles.headerTitle}>{isOffer ? 'New Job Request' : 'Job Details'}</Text>
+        <View style={{ width: 40 }} />
       </View>
 
       <ScrollView
         style={styles.body}
         contentContainerStyle={styles.bodyContent}
         showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl
+            refreshing={request.refreshing}
+            onRefresh={request.refetch}
+            tintColor={COLORS.primary}
+          />
+        }
       >
-        {/* Service Header Badge */}
-        <View style={styles.serviceHeaderBanner}>
+        {/* Service Type */}
+        <View style={styles.serviceTypeRow}>
           <View style={styles.serviceIconWrap}>
-            <MaterialCommunityIcons name={job.serviceIcon} size={28} color={COLORS.primary} />
+            <MaterialCommunityIcons
+              name={job.service_icon || 'wrench'}
+              size={28}
+              color={COLORS.primary}
+            />
           </View>
-          <View style={styles.serviceHeaderInfo}>
-            <Text style={styles.serviceType}>{job.serviceType}</Text>
-            <Text style={styles.requestTime}>Requested {job.requestedAt}</Text>
+          <View style={{ marginLeft: SPACING.md, flex: 1 }}>
+            <Text style={styles.serviceType}>{job.service_type}</Text>
+            <Text style={styles.requestTime}>Requested {timeAgo(job.requested_at)}</Text>
           </View>
-          <View style={styles.newBadge}>
-            <Text style={styles.newBadgeText}>NEW</Text>
-          </View>
+          {!isOffer && (
+            <StatusBadge
+              label={STATUS_LABEL[job.status] ?? job.status}
+              color={STATUS_TONE[job.status] ?? 'neutral'}
+            />
+          )}
         </View>
 
-        {/* Customer Information Card */}
+        {/* Customer Info */}
         <Card style={styles.card}>
-          <Text style={styles.cardSectionLabel}>Customer Details</Text>
+          <View style={styles.sectionLabel}>
+            <MaterialCommunityIcons name="account" size={18} color={COLORS.textSecondary} />
+            <Text style={styles.sectionLabelText}>Customer</Text>
+          </View>
           <View style={styles.customerRow}>
-            <View style={styles.customerAvatar}>
-              <Text style={styles.customerAvatarText}>
-                {job.customer.name.split(' ').map((n) => n[0]).join('')}
-              </Text>
-            </View>
-            <View style={styles.customerMeta}>
+            <Avatar name={job.customer.name} uri={job.customer.photo_url} size={48} />
+            <View style={{ flex: 1, marginLeft: SPACING.md }}>
               <Text style={styles.customerName}>{job.customer.name}</Text>
               <View style={styles.ratingRow}>
-                <MaterialCommunityIcons name="star" size={16} color="#F59E0B" />
-                <Text style={styles.ratingText}>{job.customer.rating} (Verified Customer)</Text>
+                <RatingStars
+                  rating={job.customer.rating_avg}
+                  size={16}
+                  showValue
+                  showCount
+                  count={job.customer.rating_count}
+                />
               </View>
             </View>
           </View>
         </Card>
 
-        {/* Location & Map Card */}
+        {/* Work details (spec #3) */}
+        {!!job.work_details && (
+          <Card style={styles.card}>
+            <View style={styles.sectionLabel}>
+              <MaterialCommunityIcons
+                name="clipboard-text-outline"
+                size={18}
+                color={COLORS.textSecondary}
+              />
+              <Text style={styles.sectionLabelText}>Work Details</Text>
+            </View>
+            <Text style={styles.workDetails}>{job.work_details}</Text>
+          </Card>
+        )}
+
+        {/* Location */}
         <Card style={styles.card}>
-          <Text style={styles.cardSectionLabel}>Service Location</Text>
+          <View style={styles.sectionLabel}>
+            <MaterialCommunityIcons name="map-marker" size={18} color={COLORS.textSecondary} />
+            <Text style={styles.sectionLabelText}>Service Location</Text>
+          </View>
           <Text style={styles.locationAddress}>{job.location.address}</Text>
-          <Text style={styles.locationLandmark}>{job.location.landmark}</Text>
+          {!!job.location.landmark && (
+            <Text style={styles.locationLandmark}>{job.location.landmark}</Text>
+          )}
 
-          {/* Clean Map Preview Section */}
-          <View style={styles.mapPreview}>
-            <MaterialCommunityIcons name="map-marker-radius" size={32} color={COLORS.primary} />
-            <Text style={styles.mapPreviewText}>Destination Map View</Text>
-          </View>
-
-          <View style={styles.distanceMetricsRow}>
-            <View style={styles.distanceMetricItem}>
-              <MaterialCommunityIcons name="map-marker-distance" size={20} color={COLORS.primary} />
-              <View style={{ marginLeft: 6 }}>
-                <Text style={styles.metricVal}>{job.location.distance}</Text>
-                <Text style={styles.metricLbl}>Distance</Text>
-              </View>
+          {/* Tapping opens the real map (spec #4) */}
+          <TouchableOpacity
+            style={styles.mapPreview}
+            activeOpacity={0.85}
+            onPress={() => navigation.navigate('JobLocation', { jobId })}
+          >
+            <View style={styles.mapPlaceholder}>
+              <MaterialCommunityIcons name="map" size={40} color={COLORS.primary} />
+              <Text style={styles.mapText}>Open map & navigate</Text>
             </View>
+          </TouchableOpacity>
 
-            <View style={styles.metricDivider} />
-
-            <View style={styles.distanceMetricItem}>
+          <View style={styles.distanceRow}>
+            <View style={styles.distanceItem}>
+              <MaterialCommunityIcons
+                name="map-marker-distance"
+                size={20}
+                color={COLORS.primary}
+              />
+              <Text style={styles.distanceValue}>{distance ?? '—'}</Text>
+              <Text style={styles.distanceLabel}>Distance</Text>
+            </View>
+            <View style={styles.distanceDivider} />
+            <View style={styles.distanceItem}>
               <MaterialCommunityIcons name="clock-outline" size={20} color={COLORS.primary} />
-              <View style={{ marginLeft: 6 }}>
-                <Text style={styles.metricVal}>{job.location.estimatedTime}</Text>
-                <Text style={styles.metricLbl}>Est. Travel</Text>
-              </View>
+              <Text style={styles.distanceValue}>{eta ?? '—'}</Text>
+              <Text style={styles.distanceLabel}>Est. Time</Text>
             </View>
           </View>
         </Card>
 
-        {/* Required Services Breakdown Card */}
+        {/* Required Services */}
         <Card style={styles.card}>
-          <Text style={styles.cardSectionLabel}>Required Services</Text>
-          {job.services.map((service, index) => (
-            <View key={index} style={styles.serviceItemRow}>
-              <View style={styles.bulletDot} />
+          <View style={styles.sectionLabel}>
+            <MaterialCommunityIcons name="wrench" size={18} color={COLORS.textSecondary} />
+            <Text style={styles.sectionLabelText}>Required Services</Text>
+          </View>
+          {job.services.map((service) => (
+            <View key={service.id} style={styles.serviceRow}>
+              <View style={styles.serviceDot} />
               <Text style={styles.serviceName}>{service.name}</Text>
-              <Text style={styles.servicePrice}>₹{service.price}</Text>
+              <Text style={styles.servicePrice}>{formatRupees(service.price)}</Text>
             </View>
           ))}
-
-          <View style={styles.cardDivider} />
-
           <View style={styles.totalRow}>
-            <View>
-              <Text style={styles.totalLabel}>Base Amount</Text>
-              <Text style={styles.totalSub}>Standard labor estimate</Text>
+            <Text style={styles.totalLabel}>
+              {isOffer ? 'Base Estimated Amount' : 'Base Amount'}
+            </Text>
+            <Text style={styles.totalValue}>{formatRupees(job.amounts.base_amount)}</Text>
+          </View>
+          {job.amounts.extra_amount > 0 && (
+            <View style={styles.extraRow}>
+              <Text style={styles.extraLabel}>Approved extra</Text>
+              <Text style={styles.extraValue}>+{formatRupees(job.amounts.extra_amount)}</Text>
             </View>
-            <Text style={styles.totalValue}>₹{job.baseAmount}</Text>
-          </View>
+          )}
+          {job.amounts.extra_amount > 0 && (
+            <View style={styles.totalRow}>
+              <Text style={styles.totalLabel}>Total</Text>
+              <Text style={styles.totalValue}>{formatRupees(job.amounts.total_amount)}</Text>
+            </View>
+          )}
         </Card>
 
-        {/* Communication & Adjustments Action Card */}
+        {/* Communicate before booking (spec #5) */}
         <Card style={styles.card}>
-          <Text style={styles.cardSectionLabel}>Quick In-App Actions</Text>
-          <View style={styles.quickActionsRow}>
+          <View style={styles.actionRow}>
             <TouchableOpacity
-              style={styles.quickActionBtn}
-              onPress={() => navigation.navigate('Chat')}
-              activeOpacity={0.8}
+              style={styles.actionBtn}
+              onPress={() => navigation.navigate('Chat', { jobId })}
             >
-              <MaterialCommunityIcons name="chat-outline" size={20} color={COLORS.primary} />
-              <Text style={styles.quickActionLabel}>Chat</Text>
+              <View style={[styles.actionIconWrap, { backgroundColor: COLORS.primaryLight }]}>
+                <MaterialCommunityIcons name="chat-outline" size={22} color={COLORS.primary} />
+                {job.unread_messages > 0 && (
+                  <View style={styles.unreadDot}>
+                    <Text style={styles.unreadText}>{job.unread_messages}</Text>
+                  </View>
+                )}
+              </View>
+              <Text style={styles.actionLabel}>Chat</Text>
             </TouchableOpacity>
 
             <TouchableOpacity
-              style={styles.quickActionBtn}
-              onPress={() => Alert.alert('Request Call', 'Call request sent to customer via masked phone service.')}
-              activeOpacity={0.8}
+              style={styles.actionBtn}
+              onPress={handleRequestCall}
+              disabled={acting === 'call'}
             >
-              <MaterialCommunityIcons name="phone-shield" size={20} color={COLORS.success} />
-              <Text style={styles.quickActionLabel}>Request Call</Text>
+              <View style={[styles.actionIconWrap, { backgroundColor: COLORS.successLight }]}>
+                {acting === 'call' ? (
+                  <ActivityIndicator size="small" color={COLORS.success} />
+                ) : (
+                  <MaterialCommunityIcons name="phone-outline" size={22} color={COLORS.success} />
+                )}
+              </View>
+              <Text style={styles.actionLabel}>Request{'\n'}Call</Text>
             </TouchableOpacity>
 
             <TouchableOpacity
-              style={styles.quickActionBtn}
-              onPress={() => navigation.navigate('RequestExtraAmount')}
-              activeOpacity={0.8}
+              style={[styles.actionBtn, isOffer && styles.actionDisabled]}
+              disabled={isOffer}
+              onPress={() => navigation.navigate('RequestExtraAmount', { jobId })}
             >
-              <MaterialCommunityIcons name="cash-plus" size={20} color="#B45309" />
-              <Text style={styles.quickActionLabel}>Extra Amount</Text>
+              <View style={[styles.actionIconWrap, { backgroundColor: COLORS.warningLight }]}>
+                <MaterialCommunityIcons name="cash-plus" size={22} color="#B45309" />
+              </View>
+              <Text style={styles.actionLabel}>Extra{'\n'}Amount</Text>
             </TouchableOpacity>
+          </View>
+
+          <View style={styles.privacyNote}>
+            <MaterialCommunityIcons name="shield-lock-outline" size={14} color={COLORS.textTertiary} />
+            <Text style={styles.privacyText}>
+              Phone numbers stay hidden. Chat here, or ask the customer to call you.
+            </Text>
           </View>
         </Card>
 
-        <View style={{ height: 110 }} />
+        <View style={{ height: SPACING.xxl }} />
       </ScrollView>
 
-      {/* Standardized Bottom Actions: Same Green for Accept, Same Red for Reject */}
-      <View style={styles.bottomBar}>
-        <TouchableOpacity
-          style={styles.rejectBtn}
-          onPress={handleReject}
-          activeOpacity={0.8}
-        >
-          <MaterialCommunityIcons name="close-circle-outline" size={22} color={COLORS.danger} />
-          <Text style={styles.rejectBtnText}>Reject</Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          style={styles.acceptBtn}
-          onPress={handleAccept}
-          activeOpacity={0.85}
-        >
-          <MaterialCommunityIcons name="check-bold" size={22} color={COLORS.white} />
-          <Text style={styles.acceptBtnText}>Accept Job</Text>
-        </TouchableOpacity>
-      </View>
-    </SafeAreaView>
+      {/* Accept / Reject (spec #7) — only while the job is still an offer */}
+      {isOffer && (
+        <View style={styles.bottomBar}>
+          <TouchableOpacity
+            style={[styles.bottomBtn, styles.rejectBtn]}
+            onPress={confirmReject}
+            disabled={!!acting}
+            activeOpacity={0.8}
+          >
+            {acting === 'reject' ? (
+              <ActivityIndicator size="small" color={COLORS.danger} />
+            ) : (
+              <>
+                <MaterialCommunityIcons name="close" size={22} color={COLORS.danger} />
+                <Text style={styles.rejectText}>Reject</Text>
+              </>
+            )}
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.bottomBtn, styles.acceptBtn]}
+            onPress={handleAccept}
+            disabled={!!acting}
+            activeOpacity={0.8}
+          >
+            {acting === 'accept' ? (
+              <ActivityIndicator size="small" color={COLORS.white} />
+            ) : (
+              <>
+                <MaterialCommunityIcons name="check" size={22} color={COLORS.white} />
+                <Text style={styles.acceptText}>Accept Job</Text>
+              </>
+            )}
+          </TouchableOpacity>
+        </View>
+      )}
+    </View>
   );
 };
 
 const styles = StyleSheet.create({
-  safeArea: {
+  container: {
     flex: 1,
     backgroundColor: COLORS.background,
   },
   header: {
-    height: 56,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: SPACING.md,
     backgroundColor: COLORS.white,
-    borderBottomWidth: 1,
-    borderBottomColor: COLORS.border,
+    paddingTop: 50,
+    paddingBottom: SPACING.lg,
+    paddingHorizontal: SPACING.xl,
+    ...SHADOWS.sm,
   },
   backBtn: {
-    width: 48,
-    height: 48,
-    borderRadius: RADIUS.full,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: COLORS.background,
     alignItems: 'center',
     justifyContent: 'center',
   },
   headerTitle: {
-    fontSize: FONT_SIZE.md,
+    fontSize: FONT_SIZE.lg,
     fontWeight: FONT_WEIGHT.bold,
     color: COLORS.textPrimary,
   },
@@ -242,265 +427,274 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   bodyContent: {
-    padding: SPACING.md,
+    padding: SPACING.xl,
   },
-  serviceHeaderBanner: {
-    backgroundColor: COLORS.white,
-    borderRadius: RADIUS.lg,
-    padding: SPACING.md,
+  serviceTypeRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    marginBottom: SPACING.md,
-    ...SHADOWS.sm,
+    marginBottom: SPACING.lg,
   },
   serviceIconWrap: {
-    width: 48,
-    height: 48,
-    borderRadius: RADIUS.md,
+    width: 56,
+    height: 56,
+    borderRadius: 28,
     backgroundColor: COLORS.primaryLight,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  serviceHeaderInfo: {
-    flex: 1,
-    marginLeft: SPACING.md,
-  },
   serviceType: {
-    fontSize: FONT_SIZE.md,
+    fontSize: FONT_SIZE.xl,
     fontWeight: FONT_WEIGHT.bold,
     color: COLORS.textPrimary,
   },
   requestTime: {
-    fontSize: 12,
+    fontSize: FONT_SIZE.sm,
     color: COLORS.textSecondary,
     marginTop: 2,
   },
-  newBadge: {
-    backgroundColor: COLORS.primary,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: RADIUS.sm,
-  },
-  newBadgeText: {
-    color: COLORS.white,
-    fontSize: 10,
-    fontWeight: FONT_WEIGHT.extrabold,
-  },
   card: {
+    marginBottom: SPACING.lg,
+  },
+  sectionLabel: {
+    flexDirection: 'row',
+    alignItems: 'center',
     marginBottom: SPACING.md,
   },
-  cardSectionLabel: {
-    fontSize: 11,
-    fontWeight: FONT_WEIGHT.bold,
-    color: COLORS.textTertiary,
+  sectionLabelText: {
+    fontSize: FONT_SIZE.sm,
+    color: COLORS.textSecondary,
+    fontWeight: FONT_WEIGHT.semibold,
+    marginLeft: SPACING.sm,
     textTransform: 'uppercase',
     letterSpacing: 0.5,
-    marginBottom: SPACING.sm,
   },
   customerRow: {
     flexDirection: 'row',
     alignItems: 'center',
   },
-  customerAvatar: {
-    width: 46,
-    height: 46,
-    borderRadius: 23,
-    backgroundColor: COLORS.primaryLight,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  customerAvatarText: {
-    fontSize: FONT_SIZE.md,
-    fontWeight: FONT_WEIGHT.bold,
-    color: COLORS.primary,
-  },
-  customerMeta: {
-    flex: 1,
-    marginLeft: SPACING.md,
-  },
   customerName: {
-    fontSize: FONT_SIZE.md,
+    fontSize: FONT_SIZE.lg,
     fontWeight: FONT_WEIGHT.bold,
     color: COLORS.textPrimary,
   },
   ratingRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 4,
-    marginTop: 2,
-  },
-  ratingText: {
-    fontSize: 12,
-    color: COLORS.textSecondary,
-  },
-  locationAddress: {
-    fontSize: FONT_SIZE.sm,
-    fontWeight: FONT_WEIGHT.bold,
-    color: COLORS.textPrimary,
-  },
-  locationLandmark: {
-    fontSize: 12,
-    color: COLORS.textSecondary,
-    marginTop: 2,
-    marginBottom: SPACING.md,
-  },
-  mapPreview: {
-    height: 110,
-    borderRadius: RADIUS.md,
-    backgroundColor: '#EFF6FF',
-    borderWidth: 1,
-    borderColor: '#BFDBFE',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: SPACING.md,
-  },
-  mapPreviewText: {
-    fontSize: 12,
-    fontWeight: FONT_WEIGHT.bold,
-    color: COLORS.primary,
     marginTop: 4,
   },
-  distanceMetricsRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-around',
-    backgroundColor: COLORS.background,
-    borderRadius: RADIUS.md,
-    paddingVertical: SPACING.sm,
+  workDetails: {
+    fontSize: FONT_SIZE.md,
+    color: COLORS.textPrimary,
+    lineHeight: 22,
   },
-  distanceMetricItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
+  locationAddress: {
+    fontSize: FONT_SIZE.md,
+    fontWeight: FONT_WEIGHT.semibold,
+    color: COLORS.textPrimary,
+    lineHeight: 22,
   },
-  metricVal: {
+  locationLandmark: {
     fontSize: FONT_SIZE.sm,
+    color: COLORS.textSecondary,
+    marginTop: 4,
+  },
+  mapPreview: {
+    marginTop: SPACING.md,
+    borderRadius: RADIUS.md,
+    overflow: 'hidden',
+  },
+  mapPlaceholder: {
+    height: 140,
+    backgroundColor: COLORS.primaryLight,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: RADIUS.md,
+  },
+  mapText: {
+    fontSize: FONT_SIZE.sm,
+    color: COLORS.primary,
+    fontWeight: FONT_WEIGHT.medium,
+    marginTop: SPACING.sm,
+  },
+  distanceRow: {
+    flexDirection: 'row',
+    marginTop: SPACING.lg,
+    paddingTop: SPACING.lg,
+    borderTopWidth: 1,
+    borderTopColor: COLORS.borderLight,
+  },
+  distanceItem: {
+    flex: 1,
+    alignItems: 'center',
+  },
+  distanceDivider: {
+    width: 1,
+    backgroundColor: COLORS.border,
+    marginHorizontal: SPACING.md,
+  },
+  distanceValue: {
+    fontSize: FONT_SIZE.lg,
     fontWeight: FONT_WEIGHT.bold,
     color: COLORS.textPrimary,
+    marginTop: SPACING.sm,
   },
-  metricLbl: {
-    fontSize: 10,
+  distanceLabel: {
+    fontSize: FONT_SIZE.sm,
     color: COLORS.textSecondary,
+    marginTop: 2,
   },
-  metricDivider: {
-    width: 1,
-    height: 24,
-    backgroundColor: COLORS.border,
-  },
-  serviceItemRow: {
+  serviceRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 6,
+    paddingVertical: SPACING.sm,
   },
-  bulletDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
+  serviceDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
     backgroundColor: COLORS.primary,
-    marginRight: SPACING.sm,
+    marginRight: SPACING.md,
   },
   serviceName: {
     flex: 1,
-    fontSize: FONT_SIZE.sm,
+    fontSize: FONT_SIZE.md,
     color: COLORS.textPrimary,
+    fontWeight: FONT_WEIGHT.medium,
   },
   servicePrice: {
-    fontSize: FONT_SIZE.sm,
-    fontWeight: FONT_WEIGHT.bold,
+    fontSize: FONT_SIZE.md,
+    fontWeight: FONT_WEIGHT.semibold,
     color: COLORS.textPrimary,
-  },
-  cardDivider: {
-    height: 1,
-    backgroundColor: COLORS.borderLight,
-    marginVertical: SPACING.sm,
   },
   totalRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
+    marginTop: SPACING.md,
+    paddingTop: SPACING.md,
+    borderTopWidth: 1,
+    borderTopColor: COLORS.borderLight,
   },
   totalLabel: {
-    fontSize: FONT_SIZE.sm,
-    fontWeight: FONT_WEIGHT.bold,
-    color: COLORS.textPrimary,
-  },
-  totalSub: {
-    fontSize: 10,
-    color: COLORS.textTertiary,
+    fontSize: FONT_SIZE.md,
+    fontWeight: FONT_WEIGHT.semibold,
+    color: COLORS.textSecondary,
   },
   totalValue: {
     fontSize: FONT_SIZE.xl,
     fontWeight: FONT_WEIGHT.extrabold,
     color: COLORS.primary,
   },
-  quickActionsRow: {
+  extraRow: {
     flexDirection: 'row',
-    gap: SPACING.sm,
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginTop: SPACING.sm,
   },
-  quickActionBtn: {
+  extraLabel: {
+    fontSize: FONT_SIZE.sm,
+    color: COLORS.textSecondary,
+  },
+  extraValue: {
+    fontSize: FONT_SIZE.md,
+    fontWeight: FONT_WEIGHT.semibold,
+    color: COLORS.textSuccess,
+  },
+  actionRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+  },
+  actionBtn: {
+    alignItems: 'center',
     flex: 1,
-    minHeight: 48,
-    borderRadius: RADIUS.md,
-    borderWidth: 1.2,
-    borderColor: COLORS.border,
-    backgroundColor: COLORS.background,
+  },
+  actionDisabled: {
+    opacity: 0.4,
+  },
+  actionIconWrap: {
+    width: 52,
+    height: 52,
+    borderRadius: 26,
     alignItems: 'center',
     justifyContent: 'center',
-    flexDirection: 'row',
-    gap: 6,
+    marginBottom: SPACING.sm,
   },
-  quickActionLabel: {
-    fontSize: 12,
+  actionLabel: {
+    fontSize: FONT_SIZE.sm,
+    color: COLORS.textSecondary,
+    fontWeight: FONT_WEIGHT.medium,
+    textAlign: 'center',
+    lineHeight: 18,
+  },
+  unreadDot: {
+    position: 'absolute',
+    top: -2,
+    right: -2,
+    minWidth: 18,
+    height: 18,
+    paddingHorizontal: 4,
+    borderRadius: 9,
+    backgroundColor: COLORS.danger,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  unreadText: {
+    color: COLORS.white,
+    fontSize: 10,
     fontWeight: FONT_WEIGHT.bold,
-    color: COLORS.textPrimary,
+  },
+  privacyNote: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    marginTop: SPACING.lg,
+    paddingTop: SPACING.md,
+    borderTopWidth: 1,
+    borderTopColor: COLORS.borderLight,
+  },
+  privacyText: {
+    flex: 1,
+    marginLeft: SPACING.xs,
+    fontSize: FONT_SIZE.xs,
+    color: COLORS.textTertiary,
+    lineHeight: 16,
   },
   bottomBar: {
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
-    backgroundColor: COLORS.white,
-    paddingHorizontal: SPACING.md,
-    paddingVertical: SPACING.md,
     flexDirection: 'row',
+    padding: SPACING.xl,
+    paddingBottom: 34,
+    backgroundColor: COLORS.white,
     gap: SPACING.md,
-    borderTopWidth: 1,
-    borderTopColor: COLORS.border,
     ...SHADOWS.lg,
   },
-  rejectBtn: {
+  bottomBtn: {
     flex: 1,
-    minHeight: 52,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: SPACING.lg,
     borderRadius: RADIUS.md,
+    minHeight: 56,
+  },
+  rejectBtn: {
+    backgroundColor: COLORS.dangerLight,
     borderWidth: 1.5,
     borderColor: COLORS.danger,
-    backgroundColor: COLORS.white,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 6,
-  },
-  rejectBtnText: {
-    fontSize: FONT_SIZE.sm,
-    fontWeight: FONT_WEIGHT.bold,
-    color: COLORS.danger,
   },
   acceptBtn: {
-    flex: 1.8,
-    minHeight: 52,
-    borderRadius: RADIUS.md,
     backgroundColor: COLORS.success,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 6,
-    ...SHADOWS.md,
+    flex: 1.5,
   },
-  acceptBtnText: {
-    fontSize: FONT_SIZE.md,
+  rejectText: {
+    fontSize: FONT_SIZE.lg,
+    fontWeight: FONT_WEIGHT.bold,
+    color: COLORS.danger,
+    marginLeft: SPACING.sm,
+  },
+  acceptText: {
+    fontSize: FONT_SIZE.lg,
     fontWeight: FONT_WEIGHT.bold,
     color: COLORS.white,
+    marginLeft: SPACING.sm,
   },
 });
 

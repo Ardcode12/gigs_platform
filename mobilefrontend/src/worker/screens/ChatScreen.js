@@ -1,4 +1,5 @@
-import React, { useState, useRef } from 'react';
+import React, { useCallback, useRef, useState } from 'react';
+import { useNavigation, useRoute } from '@react-navigation/native';
 import {
   View,
   Text,
@@ -9,47 +10,109 @@ import {
   KeyboardAvoidingView,
   Platform,
   StatusBar,
+  ActivityIndicator,
   Alert,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { COLORS, SPACING, RADIUS, FONT_SIZE, FONT_WEIGHT, SHADOWS } from '../../theme';
-import { CHAT_MESSAGES } from '../data/workerMockData';
+import Avatar from '../../components/Avatar';
+import LoadingState from '../../components/LoadingState';
+import EmptyState from '../../components/EmptyState';
+import useApi from '../../hooks/useApi';
+import { useSocketEvent, WS_EVENTS } from '../../context/SocketContext';
+import { getMessages, sendMessage, requestCall } from '../../api/chat';
+import { getJob } from '../../api/jobs';
+import { formatTime } from '../../utils/format';
 
-const QUICK_WORKER_CHIPS = [
-  'I have reached your gate.',
-  'Reaching in 10 minutes.',
-  'Please share exact flat number.',
-  'Need 5 mins to inspect wiring.',
-];
-
-const ChatScreen = ({ navigation }) => {
-  const [messages, setMessages] = useState(CHAT_MESSAGES);
+/**
+ * Spec #5 — talk to the customer before and during the job.
+ *
+ * Neither side ever sees a phone number: the only way to get a call is to ask the
+ * customer to place one, which is a record on the job, not a number.
+ */
+const ChatScreen = () => {
+  const navigation = useNavigation();
+  const jobId = useRoute().params?.jobId;
   const [inputText, setInputText] = useState('');
+  const [sending, setSending] = useState(false);
+  const [calling, setCalling] = useState(false);
   const flatListRef = useRef(null);
 
-  const sendMessage = (customText) => {
-    const textToSend = customText || inputText;
-    if (!textToSend.trim()) return;
-    const newMsg = {
-      id: String(messages.length + 1),
-      sender: 'worker',
-      text: textToSend.trim(),
-      time: 'Just now',
-    };
-    setMessages([...messages, newMsg]);
-    if (!customText) setInputText('');
-    setTimeout(() => {
-      flatListRef.current?.scrollToEnd({ animated: true });
-    }, 100);
+  const thread = useApi(
+    useCallback(
+      () =>
+        Promise.all([getJob(jobId), getMessages(jobId)]).then(([job, messages]) => ({
+          job,
+          messages,
+        })),
+      [jobId],
+    ),
+    [jobId],
+  );
+
+  // A message from the customer arrives over the socket; pull the thread again so
+  // ordering and ids come from one source.
+  useSocketEvent([WS_EVENTS.CHAT_MESSAGE], (event) => {
+    if (event.payload?.job_id === jobId) thread.refetch();
+  });
+
+  const job = thread.data?.job;
+  const messages = thread.data?.messages ?? [];
+
+  const scrollToEnd = (animated = true) => {
+    setTimeout(() => flatListRef.current?.scrollToEnd({ animated }), 60);
   };
 
-  const handleCall = () => {
-    Alert.alert(
-      'Protected Call',
-      'Calling customer Priya Sharma via WORKMAT masked exchange. Your mobile number remains hidden.',
-      [{ text: 'Start Call' }, { text: 'Cancel', style: 'cancel' }]
-    );
+  const handleSend = async () => {
+    const text = inputText.trim();
+    if (!text || sending) return;
+
+    setInputText('');
+    setSending(true);
+
+    // Show it straight away — a chat that waits for the server feels broken.
+    const optimistic = {
+      id: `pending-${Date.now()}`,
+      sender: 'worker',
+      text,
+      sent_at: new Date().toISOString(),
+      pending: true,
+    };
+    thread.setData((prev) => ({ ...prev, messages: [...(prev?.messages ?? []), optimistic] }));
+    scrollToEnd();
+
+    try {
+      const saved = await sendMessage(jobId, text);
+      thread.setData((prev) => ({
+        ...prev,
+        messages: (prev?.messages ?? []).map((m) => (m.id === optimistic.id ? saved : m)),
+      }));
+    } catch (error) {
+      thread.setData((prev) => ({
+        ...prev,
+        messages: (prev?.messages ?? []).map((m) =>
+          m.id === optimistic.id ? { ...m, pending: false, failed: true } : m,
+        ),
+      }));
+      Alert.alert('Message not sent', error.message);
+    } finally {
+      setSending(false);
+    }
+  };
+
+  const handleRequestCall = async () => {
+    setCalling(true);
+    try {
+      await requestCall(jobId);
+      Alert.alert(
+        'Call requested',
+        'The customer has been asked to call you. Your number stays private.',
+      );
+    } catch (error) {
+      Alert.alert('Could not send the request', error.message);
+    } finally {
+      setCalling(false);
+    }
   };
 
   const renderMessage = ({ item }) => {
@@ -65,6 +128,7 @@ const ChatScreen = ({ navigation }) => {
           style={[
             styles.messageBubble,
             isWorker ? styles.workerBubble : styles.customerBubble,
+            item.failed && styles.failedBubble,
           ]}
         >
           <Text
@@ -76,147 +140,168 @@ const ChatScreen = ({ navigation }) => {
             {item.text}
           </Text>
         </View>
-        <Text
-          style={[
-            styles.messageTime,
-            isWorker ? styles.workerTime : styles.customerTime,
-          ]}
-        >
-          {item.time}
+        <Text style={[styles.messageTime, isWorker ? styles.workerTime : styles.customerTime]}>
+          {item.failed ? 'Not sent' : item.pending ? 'Sending…' : formatTime(item.sent_at)}
         </Text>
       </View>
     );
   };
 
+  const header = (
+    <View style={styles.header}>
+      <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
+        <MaterialCommunityIcons name="arrow-left" size={24} color={COLORS.textPrimary} />
+      </TouchableOpacity>
+      <View style={styles.headerCenter}>
+        <Avatar name={job?.customer.name ?? '?'} uri={job?.customer.photo_url} size={40} />
+        <View style={{ marginLeft: SPACING.sm }}>
+          <Text style={styles.headerName}>{job?.customer.name ?? 'Customer'}</Text>
+          <Text style={styles.headerStatus}>{job?.service_type ?? 'Customer'}</Text>
+        </View>
+      </View>
+      <TouchableOpacity style={styles.callBtn} onPress={handleRequestCall} disabled={calling}>
+        {calling ? (
+          <ActivityIndicator size="small" color={COLORS.success} />
+        ) : (
+          <MaterialCommunityIcons name="phone-outline" size={22} color={COLORS.success} />
+        )}
+      </TouchableOpacity>
+    </View>
+  );
+
+  if (thread.loading && !thread.data) {
+    return (
+      <View style={styles.container}>
+        <StatusBar barStyle="dark-content" backgroundColor={COLORS.white} />
+        {header}
+        <LoadingState />
+      </View>
+    );
+  }
+
+  if (!thread.data) {
+    return (
+      <View style={styles.container}>
+        <StatusBar barStyle="dark-content" backgroundColor={COLORS.white} />
+        {header}
+        <EmptyState
+          tone="error"
+          title="Couldn't load the chat"
+          message={thread.error?.message}
+          actionLabel="Try again"
+          onAction={thread.reload}
+        />
+      </View>
+    );
+  }
+
   return (
-    <SafeAreaView style={styles.safeArea}>
+    <View style={styles.container}>
       <StatusBar barStyle="dark-content" backgroundColor={COLORS.white} />
 
       {/* Header */}
-      <View style={styles.header}>
-        <TouchableOpacity
-          onPress={() => navigation.goBack()}
-          style={styles.backBtn}
-          activeOpacity={0.8}
-        >
-          <MaterialCommunityIcons name="arrow-left" size={24} color={COLORS.textPrimary} />
-        </TouchableOpacity>
+      {header}
 
-        <View style={styles.headerCenter}>
-          <View style={styles.headerAvatar}>
-            <Text style={styles.headerAvatarText}>PS</Text>
-          </View>
-          <View style={{ flex: 1, marginLeft: SPACING.sm }}>
-            <Text style={styles.headerName}>Priya Sharma</Text>
-            <Text style={styles.headerStatus}>Customer • Electrical Job</Text>
-          </View>
-        </View>
-
-        <TouchableOpacity
-          style={styles.callBtn}
-          onPress={handleCall}
-          activeOpacity={0.8}
-        >
-          <MaterialCommunityIcons name="phone-shield" size={20} color={COLORS.white} />
-        </TouchableOpacity>
-      </View>
-
-      {/* Privacy Notice Banner */}
+      {/* Privacy Notice */}
       <View style={styles.privacyNotice}>
-        <MaterialCommunityIcons name="shield-lock-outline" size={16} color={COLORS.primary} />
+        <MaterialCommunityIcons name="shield-check" size={16} color={COLORS.info} />
         <Text style={styles.privacyText}>
-          Privacy Shield: Phone numbers are masked on both ends for safety.
+          Phone numbers are hidden. Use &quot;Request Call&quot; for privacy-protected calling.
         </Text>
       </View>
 
-      <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        style={styles.chatContainer}
-      >
-        {/* Messages */}
+      {/* Messages */}
+      {messages.length === 0 ? (
+        <View style={styles.emptyWrap}>
+          <MaterialCommunityIcons
+            name="message-text-outline"
+            size={40}
+            color={COLORS.textTertiary}
+          />
+          <Text style={styles.emptyTitle}>No messages yet</Text>
+          <Text style={styles.emptyText}>
+            Say hello, confirm the address, or ask what the problem looks like.
+          </Text>
+        </View>
+      ) : (
         <FlatList
           ref={flatListRef}
           data={messages}
           renderItem={renderMessage}
-          keyExtractor={(item) => item.id}
+          keyExtractor={(item) => String(item.id)}
           contentContainerStyle={styles.messagesList}
           showsVerticalScrollIndicator={false}
+          onContentSizeChange={() => flatListRef.current?.scrollToEnd({ animated: false })}
         />
+      )}
 
-        {/* Canned Quick Response Chips for Low-Tech Workers */}
-        <View style={styles.quickChipsContainer}>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-            {QUICK_WORKER_CHIPS.map((chip, idx) => (
-              <TouchableOpacity
-                key={idx}
-                style={styles.chipButton}
-                onPress={() => sendMessage(chip)}
-                activeOpacity={0.8}
-              >
-                <Text style={styles.chipText}>{chip}</Text>
-              </TouchableOpacity>
-            ))}
-          </ScrollView>
-        </View>
-
-        {/* Standardized 48px Input Bar */}
+      {/* Input Bar */}
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        keyboardVerticalOffset={0}
+      >
         <View style={styles.inputBar}>
+          <View style={styles.inputWrap}>
+            <TextInput
+              style={styles.textInput}
+              placeholder="Type a message..."
+              placeholderTextColor={COLORS.textTertiary}
+              value={inputText}
+              onChangeText={setInputText}
+              multiline
+              maxLength={500}
+              onSubmitEditing={handleSend}
+            />
+          </View>
           <TouchableOpacity
-            style={styles.cameraBtn}
-            onPress={() => Alert.alert('Upload Photo', 'Take picture of repair area')}
-            activeOpacity={0.8}
-          >
-            <MaterialCommunityIcons name="camera-outline" size={24} color={COLORS.textSecondary} />
-          </TouchableOpacity>
-
-          <TextInput
-            style={styles.textInput}
-            placeholder="Type your message..."
-            placeholderTextColor={COLORS.textTertiary}
-            value={inputText}
-            onChangeText={setInputText}
-          />
-
-          <TouchableOpacity
-            style={[
-              styles.sendBtn,
-              inputText.trim().length > 0 && styles.sendBtnActive,
-            ]}
-            onPress={() => sendMessage()}
-            disabled={!inputText.trim()}
-            activeOpacity={0.85}
+            style={[styles.sendBtn, inputText.trim() ? styles.sendBtnActive : {}]}
+            onPress={handleSend}
+            disabled={!inputText.trim() || sending}
           >
             <MaterialCommunityIcons
               name="send"
-              size={20}
+              size={22}
               color={inputText.trim() ? COLORS.white : COLORS.textTertiary}
             />
           </TouchableOpacity>
         </View>
+
+        {/* Request Call Button */}
+        <TouchableOpacity
+          style={styles.requestCallBar}
+          activeOpacity={0.8}
+          onPress={handleRequestCall}
+          disabled={calling}
+        >
+          <MaterialCommunityIcons name="phone-in-talk" size={20} color={COLORS.success} />
+          <Text style={styles.requestCallText}>
+            {calling ? 'Sending request…' : 'Request Customer to Call (Privacy Protected)'}
+          </Text>
+        </TouchableOpacity>
       </KeyboardAvoidingView>
-    </SafeAreaView>
+    </View>
   );
 };
 
 const styles = StyleSheet.create({
-  safeArea: {
+  container: {
     flex: 1,
     backgroundColor: COLORS.background,
   },
   header: {
-    height: 56,
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: SPACING.md,
     backgroundColor: COLORS.white,
-    borderBottomWidth: 1,
-    borderBottomColor: COLORS.border,
+    paddingTop: 50,
+    paddingBottom: SPACING.md,
+    paddingHorizontal: SPACING.lg,
+    ...SHADOWS.sm,
   },
   backBtn: {
-    width: 48,
-    height: 48,
-    borderRadius: RADIUS.full,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: COLORS.background,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -224,60 +309,60 @@ const styles = StyleSheet.create({
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
-    marginHorizontal: SPACING.xs,
-  },
-  headerAvatar: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
-    backgroundColor: COLORS.primaryLight,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  headerAvatarText: {
-    fontSize: FONT_SIZE.xs,
-    fontWeight: FONT_WEIGHT.bold,
-    color: COLORS.primary,
+    marginLeft: SPACING.md,
   },
   headerName: {
-    fontSize: FONT_SIZE.sm,
+    fontSize: FONT_SIZE.md,
     fontWeight: FONT_WEIGHT.bold,
     color: COLORS.textPrimary,
   },
   headerStatus: {
-    fontSize: 11,
+    fontSize: FONT_SIZE.xs,
     color: COLORS.textSecondary,
   },
   callBtn: {
     width: 44,
     height: 44,
-    borderRadius: RADIUS.full,
-    backgroundColor: COLORS.success,
+    borderRadius: 22,
+    backgroundColor: COLORS.successLight,
     alignItems: 'center',
     justifyContent: 'center',
-    ...SHADOWS.sm,
   },
   privacyNotice: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#EFF6FF',
-    paddingHorizontal: SPACING.md,
-    paddingVertical: 8,
-    gap: 6,
-    borderBottomWidth: 1,
-    borderBottomColor: '#DBEAFE',
+    backgroundColor: COLORS.infoLight,
+    paddingHorizontal: SPACING.lg,
+    paddingVertical: SPACING.sm,
   },
   privacyText: {
-    fontSize: 11,
-    color: COLORS.primaryDark,
-    fontWeight: FONT_WEIGHT.medium,
+    fontSize: FONT_SIZE.xs,
+    color: '#0369A1',
+    marginLeft: SPACING.sm,
     flex: 1,
+    lineHeight: 16,
   },
-  chatContainer: {
+  emptyWrap: {
     flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: SPACING.xxl,
+  },
+  emptyTitle: {
+    fontSize: FONT_SIZE.md,
+    fontWeight: FONT_WEIGHT.bold,
+    color: COLORS.textPrimary,
+    marginTop: SPACING.md,
+  },
+  emptyText: {
+    fontSize: FONT_SIZE.sm,
+    color: COLORS.textSecondary,
+    textAlign: 'center',
+    marginTop: 4,
+    lineHeight: 20,
   },
   messagesList: {
-    padding: SPACING.md,
+    padding: SPACING.lg,
     paddingBottom: SPACING.sm,
   },
   messageBubbleWrap: {
@@ -291,23 +376,25 @@ const styles = StyleSheet.create({
     alignSelf: 'flex-start',
   },
   messageBubble: {
-    padding: SPACING.md,
     borderRadius: RADIUS.lg,
-    ...SHADOWS.sm,
+    paddingHorizontal: SPACING.lg,
+    paddingVertical: SPACING.md,
   },
   workerBubble: {
     backgroundColor: COLORS.primary,
-    borderBottomRightRadius: 2,
+    borderBottomRightRadius: 4,
   },
   customerBubble: {
     backgroundColor: COLORS.white,
-    borderBottomLeftRadius: 2,
-    borderWidth: 1,
-    borderColor: COLORS.border,
+    borderBottomLeftRadius: 4,
+    ...SHADOWS.sm,
+  },
+  failedBubble: {
+    opacity: 0.55,
   },
   messageText: {
-    fontSize: FONT_SIZE.sm,
-    lineHeight: 20,
+    fontSize: FONT_SIZE.md,
+    lineHeight: 22,
   },
   workerMessageText: {
     color: COLORS.white,
@@ -316,74 +403,64 @@ const styles = StyleSheet.create({
     color: COLORS.textPrimary,
   },
   messageTime: {
-    fontSize: 10,
-    marginTop: 3,
-    alignSelf: 'flex-end',
+    fontSize: FONT_SIZE.xs,
+    marginTop: 4,
   },
   workerTime: {
     color: COLORS.textTertiary,
+    textAlign: 'right',
   },
   customerTime: {
     color: COLORS.textTertiary,
-  },
-  quickChipsContainer: {
-    backgroundColor: COLORS.white,
-    paddingHorizontal: SPACING.md,
-    paddingVertical: SPACING.xs,
-    borderTopWidth: 1,
-    borderTopColor: COLORS.borderLight,
-  },
-  chipButton: {
-    backgroundColor: COLORS.background,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: RADIUS.full,
-    marginRight: SPACING.xs,
-  },
-  chipText: {
-    fontSize: 11,
-    color: COLORS.textPrimary,
-    fontWeight: FONT_WEIGHT.medium,
+    textAlign: 'left',
   },
   inputBar: {
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'flex-end',
     backgroundColor: COLORS.white,
     paddingHorizontal: SPACING.md,
     paddingVertical: SPACING.sm,
     borderTopWidth: 1,
-    borderTopColor: COLORS.border,
+    borderTopColor: COLORS.borderLight,
   },
-  cameraBtn: {
-    width: 48,
-    height: 48,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: 4,
-  },
-  textInput: {
+  inputWrap: {
     flex: 1,
     backgroundColor: COLORS.background,
-    borderRadius: RADIUS.full,
-    paddingHorizontal: SPACING.md,
-    paddingVertical: 10,
-    fontSize: FONT_SIZE.sm,
+    borderRadius: RADIUS.xl,
+    paddingHorizontal: SPACING.lg,
+    paddingVertical: Platform.OS === 'ios' ? SPACING.sm : 0,
+    marginRight: SPACING.sm,
+    maxHeight: 100,
+  },
+  textInput: {
+    fontSize: FONT_SIZE.md,
     color: COLORS.textPrimary,
-    maxHeight: 80,
+    minHeight: 40,
   },
   sendBtn: {
-    width: 48,
-    height: 48,
-    borderRadius: RADIUS.full,
-    backgroundColor: COLORS.borderLight,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: COLORS.border,
     alignItems: 'center',
     justifyContent: 'center',
-    marginLeft: 6,
   },
   sendBtnActive: {
     backgroundColor: COLORS.primary,
+  },
+  requestCallBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: COLORS.successLight,
+    paddingVertical: SPACING.md,
+    paddingBottom: 34,
+  },
+  requestCallText: {
+    fontSize: FONT_SIZE.sm,
+    color: COLORS.textSuccess,
+    fontWeight: FONT_WEIGHT.semibold,
+    marginLeft: SPACING.sm,
   },
 });
 

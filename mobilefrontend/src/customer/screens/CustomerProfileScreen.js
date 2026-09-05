@@ -12,12 +12,14 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { COLORS, SPACING, RADIUS, FONT_SIZE, FONT_WEIGHT, SHADOWS } from '../../theme';
+import { useAuth } from '../../context/AuthContext';
 import { CUSTOMER_PROFILE } from '../data/customerMockData';
 
 const CustomerProfileScreen = ({ navigation }) => {
   const [profile] = useState(CUSTOMER_PROFILE);
   const [pushNotif, setPushNotif] = useState(true);
   const [selectedLanguage, setSelectedLanguage] = useState('English');
+  const { signOut } = useAuth();
 
   const handleLogout = () => {
     Alert.alert(
@@ -28,7 +30,9 @@ const CustomerProfileScreen = ({ navigation }) => {
         {
           text: 'Log Out',
           style: 'destructive',
-          onPress: () => navigation.navigate('Auth'),
+          // Clearing the session unmounts this whole group, so the shared Login
+          // screen appears on its own — no navigation call needed.
+          onPress: signOut,
         },
       ]
     );

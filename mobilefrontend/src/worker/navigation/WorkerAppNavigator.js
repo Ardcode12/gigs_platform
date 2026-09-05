@@ -1,12 +1,19 @@
+/**
+ * The worker app's tab tree.
+ *
+ * This exports the navigator *config*, not a rendered navigation container:
+ * RootNavigator mounts it inside the one container the app has, so switching
+ * roles cannot leave two containers alive at once.
+ */
+
 import React from 'react';
 import { View, StyleSheet, Platform } from 'react-native';
-import { createStaticNavigation } from '@react-navigation/native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { createStackNavigator } from '@react-navigation/stack';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { COLORS, FONT_SIZE, FONT_WEIGHT, SHADOWS } from '../../theme';
 
-// Worker Screens
+// Worker screens
 import HomeScreen from '../screens/HomeScreen';
 import JobsScreen from '../screens/JobsScreen';
 import EarningsScreen from '../screens/EarningsScreen';
@@ -15,30 +22,49 @@ import NewJobRequestScreen from '../screens/NewJobRequestScreen';
 import ChatScreen from '../screens/ChatScreen';
 import RequestExtraAmountScreen from '../screens/RequestExtraAmountScreen';
 import CurrentJobScreen from '../screens/CurrentJobScreen';
+import JobRequestsListScreen from '../screens/JobRequestsListScreen';
+import JobLocationScreen from '../screens/JobLocationScreen';
+import RatingsScreen from '../screens/RatingsScreen';
+import NotificationsScreen from '../screens/NotificationsScreen';
 
-// Home Stack
+// Shared with the customer role.
+import ChangePasswordScreen from '../../auth/ChangePasswordScreen';
+
 const HomeStackNav = createStackNavigator({
   screenOptions: { headerShown: false },
   screens: {
     HomeMain: HomeScreen,
-    NewJobRequest: NewJobRequestScreen,
+    JobRequests: JobRequestsListScreen,
+    JobRequest: NewJobRequestScreen,
     CurrentJob: CurrentJobScreen,
     Chat: ChatScreen,
     RequestExtraAmount: RequestExtraAmountScreen,
+    JobLocation: JobLocationScreen,
+    Notifications: NotificationsScreen,
   },
 });
 
-// Jobs Stack
 const JobsStackNav = createStackNavigator({
   screenOptions: { headerShown: false },
   screens: {
     JobsMain: JobsScreen,
+    JobRequest: NewJobRequestScreen,
     CurrentJob: CurrentJobScreen,
     Chat: ChatScreen,
+    RequestExtraAmount: RequestExtraAmountScreen,
+    JobLocation: JobLocationScreen,
   },
 });
 
-// Tab icons configuration
+const ProfileStackNav = createStackNavigator({
+  screenOptions: { headerShown: false },
+  screens: {
+    ProfileMain: ProfileScreen,
+    Ratings: RatingsScreen,
+    ChangePassword: ChangePasswordScreen,
+  },
+});
+
 const TAB_ICONS = {
   HomeTab: { focused: 'home', unfocused: 'home-outline' },
   JobsTab: { focused: 'briefcase', unfocused: 'briefcase-outline' },
@@ -46,8 +72,7 @@ const TAB_ICONS = {
   ProfileTab: { focused: 'account-circle', unfocused: 'account-circle-outline' },
 };
 
-// Root Tab Navigator
-const RootNavigator = createBottomTabNavigator({
+const WorkerTabs = createBottomTabNavigator({
   screenOptions: ({ route }) => ({
     headerShown: false,
     tabBarIcon: ({ focused, color }) => {
@@ -79,17 +104,11 @@ const RootNavigator = createBottomTabNavigator({
       options: { tabBarLabel: 'Earnings' },
     },
     ProfileTab: {
-      screen: ProfileScreen,
+      screen: ProfileStackNav,
       options: { tabBarLabel: 'Profile' },
     },
   },
 });
-
-const Navigation = createStaticNavigation(RootNavigator);
-
-const WorkerAppNavigator = () => {
-  return <Navigation />;
-};
 
 const styles = StyleSheet.create({
   tabBar: {
@@ -122,4 +141,4 @@ const styles = StyleSheet.create({
   },
 });
 
-export default WorkerAppNavigator;
+export default WorkerTabs;
