@@ -1,0 +1,234 @@
+/* =====================================================================
+   Authenticated shell -- placeholder until the governance modules land
+   ===================================================================== */
+
+.shell {
+  min-height: 100vh;
+  background: var(--ink-50);
+}
+
+.shell__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  padding: 14px 28px;
+  background: var(--white);
+  border-bottom: 1px solid var(--ink-200);
+}
+
+.shell__brand {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.shell__mark {
+  display: grid;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  color: var(--white);
+  background: linear-gradient(140deg, var(--brand-700), var(--brand-500));
+  border-radius: 10px;
+}
+
+.shell__brand strong {
+  display: block;
+  font-size: 14.5px;
+  font-weight: 600;
+}
+
+.shell__brand small {
+  display: block;
+  font-size: 12px;
+  color: var(--ink-500);
+}
+
+.shell__user {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.shell__avatar {
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--brand-700);
+  background: var(--brand-50);
+  border: 1px solid var(--brand-100);
+  border-radius: 50%;
+}
+
+.shell__identity strong {
+  display: block;
+  font-size: 13.5px;
+  font-weight: 600;
+}
+
+.shell__identity small {
+  display: block;
+  font-size: 12px;
+  color: var(--ink-500);
+}
+
+.shell__main {
+  display: grid;
+  gap: 20px;
+  max-width: 1080px;
+  margin: 0 auto;
+  padding: 28px 24px 56px;
+}
+
+/* ---------- Panel ---------- */
+
+.panel {
+  padding: 24px 26px;
+  background: var(--white);
+  border: 1px solid var(--ink-200);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+}
+
+.panel__title {
+  font-size: 22px;
+  font-weight: 700;
+  letter-spacing: -0.015em;
+}
+
+.panel__heading {
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.panel__subtitle,
+.panel__note {
+  margin-top: 6px;
+  font-size: 14px;
+  color: var(--ink-500);
+}
+
+.panel__empty {
+  padding: 24px 0;
+  color: var(--ink-500);
+  font-size: 14px;
+  text-align: center;
+}
+
+/* ---------- Profile grid ---------- */
+
+.profile-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 18px;
+  margin: 24px 0 0;
+  padding-top: 22px;
+  border-top: 1px solid var(--ink-200);
+}
+
+.profile-grid dt {
+  font-size: 11.5px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--ink-500);
+}
+
+.profile-grid dd {
+  margin: 5px 0 0;
+  font-size: 14.5px;
+  font-weight: 500;
+  color: var(--ink-900);
+  word-break: break-word;
+}
+
+/* ---------- Badge ---------- */
+
+.badge {
+  display: inline-block;
+  padding: 3px 9px;
+  font-size: 12px;
+  font-weight: 600;
+  border-radius: 999px;
+  text-transform: capitalize;
+}
+
+.badge--brand {
+  color: var(--brand-700);
+  background: var(--brand-50);
+}
+
+.badge--success {
+  color: var(--success-600);
+  background: var(--success-50);
+}
+
+.badge--danger {
+  color: var(--danger-600);
+  background: var(--danger-50);
+}
+
+.badge--muted {
+  color: var(--ink-700);
+  background: var(--ink-100);
+}
+
+/* ---------- Table ---------- */
+
+.table {
+  width: 100%;
+  margin-top: 18px;
+  border-collapse: collapse;
+  font-size: 13.5px;
+}
+
+.table th {
+  padding: 9px 12px;
+  font-size: 11.5px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  text-align: left;
+  color: var(--ink-500);
+  background: var(--ink-50);
+  border-bottom: 1px solid var(--ink-200);
+}
+
+.table th:first-child {
+  border-top-left-radius: var(--radius-sm);
+}
+
+.table th:last-child {
+  border-top-right-radius: var(--radius-sm);
+}
+
+.table td {
+  padding: 11px 12px;
+  border-bottom: 1px solid var(--ink-100);
+  color: var(--ink-700);
+}
+
+.table tr:last-child td {
+  border-bottom: none;
+}
+
+.table__mono {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12.5px;
+  color: var(--ink-500);
+}
+
+@media (max-width: 640px) {
+  .shell__header {
+    flex-wrap: wrap;
+    padding: 14px 18px;
+  }
+
+  .shell__identity {
+    display: none;
+  }
+}

@@ -27,3 +27,11 @@ Thumbs.db
 .env.local
 .env.development.local
 .env.production.local
+
+# Build output
+frontend/dist/
+dist/
+
+# Extracted/source documents kept out of the repo
+pdf_content.txt
+gigs.odt
