@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { useNavigation } from '@react-navigation/native';
+import React, { useState, useEffect, useCallback } from 'react';
+import { useNavigation, useRoute } from '@react-navigation/native';
 import {
   View,
   Text,
@@ -8,44 +8,102 @@ import {
   ScrollView,
   Image,
   Alert,
+  ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { COLORS, SPACING, RADIUS, FONT_SIZE, FONT_WEIGHT, SHADOWS } from '../../theme';
 import { useT } from '../../i18n/LanguageContext';
 import { ONGOING_BOOKING } from '../data/customerMockData';
+import { listExtraRequests, decideExtraAmount, getJobDetail } from '../../api/jobs';
 
 const ExtraAmountScreen = () => {
   const navigation = useNavigation();
-  const t = useT();
-  const [status, setStatus] = useState('pending'); // 'pending' | 'accepted' | 'rejected'
-  const worker = ONGOING_BOOKING.worker;
-  const baseAmount = 650;
-  const extraAmount = 100;
-  const reason = 'Additional wiring';
+  const route = useRoute();
+  const { jobId } = route.params ?? {};
+
+  const [loading, setLoading] = useState(true);
+  const [submitting, setSubmitting] = useState(false);
+  const [job, setJob] = useState(null);
+  const [extras, setExtras] = useState([]);
+
+  // Fetch job detail + extra requests
+  const fetchData = useCallback(async () => {
+    if (!jobId) return;
+    try {
+      const [jobData, extraData] = await Promise.all([
+        getJobDetail(jobId),
+        listExtraRequests(jobId),
+      ]);
+      setJob(jobData);
+      setExtras(extraData || []);
+    } catch {
+      // keep existing state
+    } finally {
+      setLoading(false);
+    }
+  }, [jobId]);
+
+  useEffect(() => { fetchData(); }, [fetchData]);
+
+  // Find first pending request to show, otherwise show the latest
+  const pendingExtra = extras.find((e) => e.status === 'pending');
+  const activeExtra = pendingExtra || extras[0];
+
+  const workerInfo = job?.worker
+    ? { name: job.worker.name, photo: job.worker.photo_url, trade: 'Cooperative Technician' }
+    : { name: 'Worker', photo: null, trade: 'Cooperative Technician' };
+
+  const baseAmount = job?.amounts?.base_amount || 0;
+  const extraAmount = activeExtra ? activeExtra.amount : 0;
+  const reason = activeExtra ? activeExtra.reason : 'Additional work';
+  const extraStatus = activeExtra ? activeExtra.status : 'pending';
   const totalAmount = baseAmount + extraAmount;
 
-  const handleAccept = () => {
-    setStatus('accepted');
-    Alert.alert(
-      t('extra.approvedTitle'),
-      t('extra.approvedBody', { amount: `₹${extraAmount}`, reason, total: `₹${totalAmount}` }),
-      [
-        {
-          text: t('extra.viewUpdated'),
-          onPress: () => navigation.navigate('ConfirmBooking', { totalAmount, hasExtra: true }),
-        },
-      ]
-    );
+  const handleAccept = async () => {
+    if (!activeExtra || submitting) return;
+    setSubmitting(true);
+    try {
+      await decideExtraAmount(activeExtra.id, true);
+      Alert.alert(
+        'Extra Amount Approved',
+        `You accepted ₹${extraAmount} for ${reason}. The updated total is ₹${totalAmount}.`,
+        [{ text: 'Back to Tracking', onPress: () => navigation.goBack() }],
+      );
+      fetchData(); // refresh
+    } catch (err) {
+      Alert.alert('Error', err.message || 'Could not approve. Try again.');
+    } finally {
+      setSubmitting(false);
+    }
   };
 
-  const handleReject = () => {
-    setStatus('rejected');
-    Alert.alert(
-      t('extra.rejectedTitle'), t('extra.rejectedBody'),
-      [{ text: t('common.ok'), onPress: () => navigation.goBack() }]
-    );
+  const handleReject = async () => {
+    if (!activeExtra || submitting) return;
+    setSubmitting(true);
+    try {
+      await decideExtraAmount(activeExtra.id, false);
+      Alert.alert(
+        'Extra Amount Rejected',
+        'The worker has been notified. They will proceed only with the original scope of work.',
+        [{ text: 'OK', onPress: () => navigation.goBack() }],
+      );
+      fetchData();
+    } catch (err) {
+      Alert.alert('Error', err.message || 'Could not reject. Try again.');
+    } finally {
+      setSubmitting(false);
+    }
   };
+
+  if (loading) {
+    return (
+      <SafeAreaView style={[styles.safeArea, { justifyContent: 'center', alignItems: 'center' }]}>
+        <ActivityIndicator size="large" color={COLORS.primary} />
+        <Text style={{ color: COLORS.textSecondary, marginTop: SPACING.md }}>Loading…</Text>
+      </SafeAreaView>
+    );
+  }
 
   return (
     <SafeAreaView style={styles.safeArea}>
@@ -72,14 +130,20 @@ const ExtraAmountScreen = () => {
 
         {/* Worker Information Strip */}
         <View style={styles.workerStrip}>
-          <Image source={{ uri: worker.photo }} style={styles.workerAvatar} />
+          {workerInfo.photo ? (
+            <Image source={{ uri: workerInfo.photo }} style={styles.workerAvatar} />
+          ) : (
+            <View style={[styles.workerAvatar, { backgroundColor: COLORS.primaryLight, alignItems: 'center', justifyContent: 'center' }]}>
+              <MaterialCommunityIcons name="account" size={22} color={COLORS.primary} />
+            </View>
+          )}
           <View style={styles.workerMeta}>
-            <Text style={styles.workerName}>{worker.name}</Text>
-            <Text style={styles.workerTrade}>{t(worker.tradeKey)}</Text>
+            <Text style={styles.workerName}>{workerInfo.name}</Text>
+            <Text style={styles.workerTrade}>{workerInfo.trade}</Text>
           </View>
           <TouchableOpacity
             style={styles.chatIconBtn}
-            onPress={() => navigation.navigate('CustomerChat', { worker })}
+            onPress={() => navigation.navigate('CustomerChat', { worker: workerInfo })}
           >
             <MaterialCommunityIcons name="chat-outline" size={20} color={COLORS.primary} />
           </TouchableOpacity>
@@ -105,7 +169,9 @@ const ExtraAmountScreen = () => {
               <View style={styles.extraTagRow}>
                  <Text style={styles.extraTagTitle}>{t('customer.extraAmount')}</Text>
                 <View style={styles.pendingPill}>
-                   <Text style={styles.pendingPillText}>{t('extra.requiresConsent')}</Text>
+                  <Text style={styles.pendingPillText}>
+                    {extraStatus === 'pending' ? t('extra.requiresConsent') : extraStatus.toUpperCase()}
+                  </Text>
                 </View>
               </View>
                <Text style={styles.extraReasonText}>{t('common.reason', { reason })}</Text>
@@ -137,35 +203,43 @@ const ExtraAmountScreen = () => {
         </View>
 
         {/* Action Buttons */}
-        {status === 'pending' ? (
+        {extraStatus === 'pending' ? (
           <View style={styles.actionButtonsContainer}>
             <TouchableOpacity
               style={styles.rejectButton}
               onPress={handleReject}
               activeOpacity={0.8}
+              disabled={submitting}
             >
               <MaterialCommunityIcons name="close-circle-outline" size={20} color={COLORS.danger} />
                <Text style={styles.rejectButtonText}>{t('common.reject')}</Text>
             </TouchableOpacity>
 
             <TouchableOpacity
-              style={styles.acceptButton}
+              style={[styles.acceptButton, submitting && { opacity: 0.7 }]}
               onPress={handleAccept}
               activeOpacity={0.85}
+              disabled={submitting}
             >
-              <MaterialCommunityIcons name="check-circle-outline" size={20} color={COLORS.white} />
-               <Text style={styles.acceptButtonText}>{t('extra.acceptAmount', { amount: `₹${totalAmount}` })}</Text>
+              {submitting ? (
+                <ActivityIndicator size="small" color={COLORS.white} />
+              ) : (
+                <>
+                  <MaterialCommunityIcons name="check-circle-outline" size={20} color={COLORS.white} />
+                  <Text style={styles.acceptButtonText}>{t('extra.acceptAmount', { amount: `₹${totalAmount}` })}</Text>
+                </>
+              )}
             </TouchableOpacity>
           </View>
         ) : (
           <View style={styles.statusResultBox}>
             <MaterialCommunityIcons
-              name={status === 'accepted' ? 'check-circle' : 'close-circle'}
+              name={extraStatus === 'approved' ? 'check-circle' : 'close-circle'}
               size={22}
-              color={status === 'accepted' ? COLORS.success : COLORS.danger}
+              color={extraStatus === 'approved' ? COLORS.success : COLORS.danger}
             />
             <Text style={styles.statusResultText}>
-               {status === 'accepted' ? t('extra.acceptedAmount', { amount: `₹${totalAmount}` }) : t('extra.rejected')}
+              {extraStatus === 'approved' ? t('extra.acceptedAmount', { amount: `₹${totalAmount}` }) : t('extra.rejected')}
             </Text>
           </View>
         )}

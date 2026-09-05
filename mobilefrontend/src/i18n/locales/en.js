@@ -97,6 +97,7 @@ export default {
   'auth.signUp': 'Sign up',
   'auth.signInAction': 'Sign In',
   'auth.createAccount': 'Create Account',
+  'auth.continueVerification': 'Continue to Verification',
   'auth.signInHintWorker':
     'Use the worker ID your society gave you, or your registered phone number.',
   'auth.fullName': 'Full Name',

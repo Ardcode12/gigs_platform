@@ -30,6 +30,7 @@ import LoginScreen from '../auth/LoginScreen';
 import ForgotPasswordScreen from '../auth/ForgotPasswordScreen';
 import ResetPasswordScreen from '../auth/ResetPasswordScreen';
 import ChangePasswordScreen from '../auth/ChangePasswordScreen';
+import SignupOtpScreen from '../auth/SignupOtpScreen';
 
 import WorkerTabs from '../worker/navigation/WorkerAppNavigator';
 import CustomerTabs from '../customer/navigation/CustomerAppNavigator';
@@ -43,6 +44,7 @@ const RootStack = createStackNavigator({
         Login: LoginScreen,
         ForgotPassword: ForgotPasswordScreen,
         ResetPassword: ResetPasswordScreen,
+        SignupOtp: SignupOtpScreen,
       },
     },
     ForcedPasswordChange: {

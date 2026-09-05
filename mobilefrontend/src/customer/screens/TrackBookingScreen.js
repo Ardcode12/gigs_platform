@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { useNavigation } from '@react-navigation/native';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { useNavigation, useRoute, useFocusEffect } from '@react-navigation/native';
 import {
   View,
   Text,
@@ -8,41 +8,189 @@ import {
   ScrollView,
   Image,
   Alert,
+  ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { COLORS, SPACING, RADIUS, FONT_SIZE, FONT_WEIGHT, SHADOWS } from '../../theme';
 import { useT } from '../../i18n/LanguageContext';
 import { ONGOING_BOOKING } from '../data/customerMockData';
+import { getJobDetail, getActiveJob, cancelJob } from '../../api/jobs';
 
-const TRACKING_STEPS = [
-  { id: 1, titleKey: 'customer.bookingConfirmedStep', subKey: 'customer.assignedTo', icon: 'check-circle' },
-  { id: 2, titleKey: 'customer.workerOnWay', subKey: 'customer.distanceArriving', icon: 'motorbike' },
-  { id: 3, titleKey: 'customer.workerArrived', subKey: 'customer.shareOtpStep', icon: 'map-marker-check' },
-  { id: 4, titleKey: 'customer.workStarted', subKey: 'customer.inspectionProgress', icon: 'tools' },
-  { id: 5, titleKey: 'customer.workCompleted', subKey: 'customer.reviewPayment', icon: 'star-check' },
-];
+/**
+ * Map a backend status string to a human label for the stepper subtitles.
+ */
+const STATUS_LABELS = {
+  requested: 'Waiting for a worker to accept…',
+  accepted: 'A worker has accepted your booking',
+  on_the_way: 'Worker is heading to your location',
+  arrived: 'Worker arrived — share OTP to begin',
+  work_started: 'Service is in progress',
+  completed: 'Work finished — review & pay',
+  cancelled: 'This booking was cancelled',
+  rejected: 'No worker available right now',
+};
+
+/**
+ * Backend current_step (0-indexed over JOB_PROGRESS_STEPS which starts at
+ * ACCEPTED) maps to our 5-step UI as follows:
+ *   backend null/0 → UI 1  (Confirmed / Accepted)
+ *   backend 1      → UI 2  (On The Way)
+ *   backend 2      → UI 3  (Arrived)
+ *   backend 3      → UI 4  (Work Started)
+ *   backend 4      → UI 5  (Completed)
+ */
+const toUiStep = (backendStep) => {
+  if (backendStep == null || backendStep <= 0) return 1;
+  return backendStep + 1; // 1→2, 2→3, 3→4, 4→5
+};
+
+const POLL_INTERVAL_MS = 3500;
 
 const TrackBookingScreen = () => {
   const navigation = useNavigation();
   const t = useT();
-  const [currentStep, setCurrentStep] = useState(2); // 2: Worker On The Way
-  const booking = ONGOING_BOOKING;
+  const route = useRoute();
+  const { jobId: routeJobId, otp: routeOtp, workerData: routeWorker } = route.params ?? {};
 
-  const handleNextSimulationStep = () => {
-    if (currentStep < 5) {
-      setCurrentStep(currentStep + 1);
-    } else {
-      navigation.navigate('Payment', { amount: booking.pricing.baseAmount });
+  const [job, setJob] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [cancelling, setCancelling] = useState(false);
+  const pollRef = useRef(null);
+
+  // Derive UI values from the real job, with sensible fallbacks
+  const currentStep = job ? toUiStep(job.current_step) : 1;
+  const otpCode = job?.otp_code || routeOtp || ONGOING_BOOKING.otpCode;
+  const hasWorker = Boolean(job?.worker || routeWorker);
+  const workerInfo = job?.worker
+    ? {
+        id: job.worker.id,
+        name: job.worker.name,
+        photo: job.worker.photo_url || ONGOING_BOOKING.worker.photo,
+        trade: job.service_type ? `${job.service_type} Specialist` : 'Cooperative Technician',
+        coopBranch: 'WORKMAT Cooperative Member',
+        phone: job.worker.phone,
+        rating: job.worker.rating_avg || 4.9,
+        reviewsCount: job.worker.rating_count || 38,
+      }
+    : routeWorker
+      ? {
+          id: routeWorker.id,
+          name: routeWorker.name,
+          photo: routeWorker.photo,
+          trade: routeWorker.trade || 'Cooperative Technician',
+          coopBranch: routeWorker.coopBranch || 'WORKMAT Cooperative',
+          phone: routeWorker.phone || '9876543210',
+          rating: routeWorker.rating || 4.8,
+          reviewsCount: routeWorker.reviewsCount || 24,
+        }
+      : ONGOING_BOOKING.worker;
+
+  const serviceType = job?.service_type || ONGOING_BOOKING.serviceType;
+  const jobStatus = job?.status || 'requested';
+  const baseAmount = job?.amounts?.base_amount ?? ONGOING_BOOKING.pricing.baseAmount;
+  const approvedExtraAmount = job?.amounts?.extra_amount ?? 0;
+  const pendingExtraAmount = job?.amounts?.pending_extra_amount ?? 0;
+  const totalAmount = job?.amounts?.total_amount ?? (baseAmount + approvedExtraAmount);
+  const jobIdDisplay = job?.id ? `WM-${job.id}` : ONGOING_BOOKING.bookingId;
+  const serviceItems = job?.services && job.services.length > 0
+    ? job.services
+    : ONGOING_BOOKING.items;
+
+  // Build dynamic step descriptions from the live job
+  const trackingSteps = [
+    {
+      id: 1,
+      title: 'Booking Confirmed',
+      sub: hasWorker ? `Assigned to ${workerInfo.name}` : 'Broadcasting to nearby workers…',
+      icon: 'check-circle',
+    },
+    { id: 2, title: 'Worker On The Way', sub: STATUS_LABELS.on_the_way, icon: 'motorbike' },
+    { id: 3, title: 'Worker Arrived', sub: `Share OTP ${otpCode} to start service`, icon: 'map-marker-check' },
+    { id: 4, title: 'Work Started', sub: 'Inspection, repair & service in progress', icon: 'tools' },
+    { id: 5, title: 'Work Completed', sub: 'Review, payment & digital receipt', icon: 'star-check' },
+  ];
+
+  /** Fetch job detail — either by explicit ID or via the active-job endpoint. */
+  const fetchJob = useCallback(async () => {
+    try {
+      let data;
+      if (routeJobId) {
+        data = await getJobDetail(routeJobId);
+      } else {
+        data = await getActiveJob();
+      }
+      if (data) setJob(data);
+    } catch {
+      // Network blip — keep last known state
+    } finally {
+      setLoading(false);
     }
-  };
+  }, [routeJobId]);
+
+  // Initial fetch + poll every 3.5 s while screen is focused
+  useFocusEffect(
+    useCallback(() => {
+      fetchJob();
+      pollRef.current = setInterval(fetchJob, POLL_INTERVAL_MS);
+      return () => clearInterval(pollRef.current);
+    }, [fetchJob]),
+  );
+
+  // Stop polling when job reaches a terminal state
+  useEffect(() => {
+    if (job && ['completed', 'cancelled', 'rejected'].includes(job.status)) {
+      clearInterval(pollRef.current);
+    }
+  }, [job?.status]);
 
   const handleCallWorker = () => {
     Alert.alert(
-       t('customer.maskedCall'), t('customer.callingWorker', { name: booking.worker.name }),
-       [{ text: t('customer.startCall') }, { text: t('common.cancel'), style: 'cancel' }]
+      'Masked Secure Call',
+      `Connecting to ${workerInfo.name} via WORKMAT secure relay.\nYour private phone number remains hidden.`,
+      [{ text: 'Start Call' }, { text: 'Cancel', style: 'cancel' }]
     );
   };
+
+  const handleCancelBooking = () => {
+    if (!job?.id) {
+      navigation.goBack();
+      return;
+    }
+    Alert.alert(
+      'Cancel Booking?',
+      'Are you sure you want to cancel this booking? No penalty applies before service starts.',
+      [
+        { text: 'Keep Booking', style: 'cancel' },
+        {
+          text: 'Yes, Cancel',
+          style: 'destructive',
+          onPress: async () => {
+            setCancelling(true);
+            try {
+              await cancelJob(job.id);
+              Alert.alert('Booking Cancelled', 'Your booking has been cancelled successfully.', [
+                { text: 'OK', onPress: () => navigation.goBack() },
+              ]);
+            } catch (err) {
+              Alert.alert('Cancellation Error', err.message || 'Could not cancel booking.');
+            } finally {
+              setCancelling(false);
+            }
+          },
+        },
+      ]
+    );
+  };
+
+  if (loading && !job) {
+    return (
+      <SafeAreaView style={[styles.safeArea, { justifyContent: 'center', alignItems: 'center' }]}>
+        <ActivityIndicator size="large" color={COLORS.primary} />
+        <Text style={{ color: COLORS.textSecondary, marginTop: SPACING.md }}>Loading booking…</Text>
+      </SafeAreaView>
+    );
+  }
 
   return (
     <SafeAreaView style={styles.safeArea}>
@@ -51,7 +199,10 @@ const TrackBookingScreen = () => {
         <TouchableOpacity style={styles.backButton} onPress={() => navigation.goBack()}>
           <MaterialCommunityIcons name="arrow-left" size={24} color={COLORS.textPrimary} />
         </TouchableOpacity>
-         <Text style={styles.headerTitle}>{t('customer.liveTrackingTitle')}</Text>
+         <View style={styles.headerCenter}>
+           <Text style={styles.headerTitle}>{t('customer.liveTrackingTitle')}</Text>
+           <Text style={styles.headerSubtitle}>{t('customer.bookingNumber', { number: jobIdDisplay })}</Text>
+         </View>
         <TouchableOpacity
           style={styles.helpButton}
            onPress={() => Alert.alert(t('customer.support'), t('customer.supportConnecting'))}
@@ -63,7 +214,6 @@ const TrackBookingScreen = () => {
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
         {/* Map / Live Location Section */}
         <View style={styles.mapSectionCard}>
-          {/* Simulated Map Graphical Canvas */}
           <View style={styles.mapCanvas}>
             {/* Grid Map Road Lines */}
             <View style={styles.mapRoadHorizontal} />
@@ -79,28 +229,34 @@ const TrackBookingScreen = () => {
             </View>
 
             {/* Moving Worker Marker */}
-            <View style={styles.workerMarkerBox}>
-              <View style={styles.workerMarkerPin}>
-                <MaterialCommunityIcons name="motorbike" size={18} color={COLORS.white} />
+            {hasWorker && (
+              <View style={styles.workerMarkerBox}>
+                <View style={styles.workerMarkerPin}>
+                  <MaterialCommunityIcons name="motorbike" size={18} color={COLORS.white} />
+                </View>
+                <View style={styles.workerPulseCircle} />
+                <Text style={styles.workerMarkerText}>{workerInfo.name ? `${workerInfo.name.split(' ')[0]}` : 'Worker'}</Text>
               </View>
-              <View style={styles.workerPulseCircle} />
-               <Text style={styles.workerMarkerText}>{t('customer.workerDistance', { name: booking.worker.name, distance: '1.4 km' })}</Text>
-            </View>
+            )}
 
             {/* Floating Live Badge */}
             <View style={styles.liveTrackingPill}>
               <View style={styles.liveGreenDot} />
-               <Text style={styles.liveTrackingPillText}>{t('customer.liveGps')}</Text>
+              <Text style={styles.liveTrackingPillText}>
+                {jobStatus === 'requested' ? 'SEARCHING NEARBY' : 'REAL-TIME SYNC'}
+              </Text>
             </View>
 
             {/* Floating ETA Card */}
             <View style={styles.etaFloatingCard}>
-              <View>
-                 <Text style={styles.etaTitle}>{t('customer.estimatedArrival')}</Text>
-                 <Text style={styles.etaTimeText}>{t('customer.arriving', { time: '3:45 PM', minutes: 15 })}</Text>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.etaTitle}>{t('customer.estimatedArrival')}</Text>
+                <Text style={styles.etaTimeText} numberOfLines={1}>
+                  {STATUS_LABELS[jobStatus] || 'Tracking…'}
+                </Text>
               </View>
               <View style={styles.speedPill}>
-                 <Text style={styles.speedText}>{t('customer.normalTraffic')}</Text>
+                <Text style={styles.speedText}>{t('customer.normalTraffic')}</Text>
               </View>
             </View>
           </View>
@@ -111,75 +267,161 @@ const TrackBookingScreen = () => {
           <View style={styles.otpLeft}>
              <Text style={styles.otpTitle}>{t('customer.shareOtp')}</Text>
             <Text style={styles.otpDesc}>
-               {t('customer.otpWarning')}
+                {t('customer.otpWarning')}
             </Text>
           </View>
           <View style={styles.otpCodeContainer}>
-            <Text style={styles.otpCodeText}>{booking.otpCode}</Text>
+            <Text style={styles.otpCodeText}>{otpCode}</Text>
           </View>
         </View>
 
-        {/* Worker Quick Contact Card */}
-        <View style={styles.workerCard}>
-          <Image source={{ uri: booking.worker.photo }} style={styles.workerAvatar} />
-          <View style={styles.workerMeta}>
-            <View style={styles.workerNameRow}>
-              <Text style={styles.workerName}>{booking.worker.name}</Text>
-              <MaterialCommunityIcons name="check-decagram" size={16} color={COLORS.primary} />
+        {/* Worker Quick Contact Card or Awaiting Match Banner */}
+        {hasWorker ? (
+          <View style={styles.workerCard}>
+            <Image source={{ uri: workerInfo.photo }} style={styles.workerAvatar} />
+            <View style={styles.workerMeta}>
+              <View style={styles.workerNameRow}>
+                <Text style={styles.workerName}>{workerInfo.name}</Text>
+                <MaterialCommunityIcons name="check-decagram" size={16} color={COLORS.primary} />
+              </View>
+              <Text style={styles.workerTrade}>{workerInfo.trade}</Text>
+              <View style={styles.workerRatingRow}>
+                <MaterialCommunityIcons name="star" size={14} color="#EAB308" />
+                <Text style={styles.workerRatingText}>
+                  {typeof workerInfo.rating === 'number' ? workerInfo.rating.toFixed(1) : '4.9'} ({workerInfo.reviewsCount} jobs)
+                </Text>
+              </View>
+              <Text style={styles.coopBranch}>{workerInfo.coopBranch}</Text>
             </View>
-            <Text style={styles.workerTrade}>{t(booking.worker.tradeKey)}</Text>
-            <Text style={styles.coopBranch}>{booking.worker.coopBranch}</Text>
+            <View style={styles.contactButtonsRow}>
+              <TouchableOpacity
+                style={styles.circleIconButton}
+                onPress={() => navigation.navigate('CustomerChat', { worker: workerInfo, jobId: job?.id })}
+              >
+                <MaterialCommunityIcons name="chat-outline" size={20} color={COLORS.primary} />
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[styles.circleIconButton, styles.callIconActive]}
+                onPress={handleCallWorker}
+              >
+                <MaterialCommunityIcons name="phone-shield" size={20} color={COLORS.white} />
+              </TouchableOpacity>
+            </View>
+          </View>
+        ) : (
+          <View style={styles.searchingCard}>
+            <View style={styles.searchingIconCircle}>
+              <ActivityIndicator size="small" color={COLORS.primary} />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.searchingTitle}>Finding Nearby Technicians</Text>
+              <Text style={styles.searchingSub}>
+                Your request has been broadcasted to verified cooperative workers nearby.
+              </Text>
+            </View>
+          </View>
+        )}
+
+        {/* Extra Amount Alert — only shown when there are pending extras */}
+        {pendingExtraAmount > 0 && (
+          <TouchableOpacity
+            style={styles.extraAmountTriggerBanner}
+            onPress={() => navigation.navigate('ExtraAmount', { jobId: job?.id })}
+            activeOpacity={0.85}
+          >
+            <View style={styles.extraBannerIcon}>
+              <MaterialCommunityIcons name="cash-plus" size={22} color="#B45309" />
+            </View>
+            <View style={styles.extraBannerTextWrap}>
+              <Text style={styles.extraBannerTitle}>
+                Extra Amount Requested: ₹{pendingExtraAmount}
+              </Text>
+              <Text style={styles.extraBannerSub}>
+                Technician requested additional scope/parts. Tap to review & approve.
+              </Text>
+            </View>
+            <MaterialCommunityIcons name="chevron-right" size={22} color="#B45309" />
+          </TouchableOpacity>
+        )}
+
+        {/* Booked Services & Pricing Card (Taken from backend) */}
+        <View style={styles.itemsCard}>
+          <View style={styles.itemsHeaderRow}>
+            <MaterialCommunityIcons name="clipboard-text-outline" size={18} color={COLORS.primary} />
+            <Text style={styles.itemsCardTitle}>Booked Services & Charges</Text>
           </View>
 
-          <View style={styles.contactButtonsRow}>
-            <TouchableOpacity
-              style={styles.circleIconButton}
-              onPress={() => navigation.navigate('CustomerChat', { worker: booking.worker })}
-            >
-              <MaterialCommunityIcons name="chat-outline" size={20} color={COLORS.primary} />
-            </TouchableOpacity>
+          <View style={styles.itemsList}>
+            {serviceItems.map((item, idx) => (
+              <View key={item.id || idx} style={styles.itemRow}>
+                <View style={styles.itemBullet} />
+                <Text style={styles.itemName}>{item.name}</Text>
+                <Text style={styles.itemPrice}>₹{item.price}</Text>
+              </View>
+            ))}
+          </View>
 
-            <TouchableOpacity
-              style={[styles.circleIconButton, styles.callIconActive]}
-              onPress={handleCallWorker}
-            >
-              <MaterialCommunityIcons name="phone-shield" size={20} color={COLORS.white} />
-            </TouchableOpacity>
+          {job?.work_details ? (
+            <View style={styles.workNotesBox}>
+              <MaterialCommunityIcons name="text-box-outline" size={14} color={COLORS.textSecondary} />
+              <Text style={styles.workNotesText} numberOfLines={2}>
+                Notes: {job.work_details}
+              </Text>
+            </View>
+          ) : null}
+
+          <View style={styles.itemsDivider} />
+
+          {/* Pricing breakdown */}
+          <View style={styles.priceBreakdownRow}>
+            <Text style={styles.priceBreakdownLabel}>Base Service Amount</Text>
+            <Text style={styles.priceBreakdownVal}>₹{baseAmount}</Text>
+          </View>
+          {approvedExtraAmount > 0 && (
+            <View style={styles.priceBreakdownRow}>
+              <Text style={[styles.priceBreakdownLabel, { color: COLORS.success }]}>
+                Approved Extra Work
+              </Text>
+              <Text style={[styles.priceBreakdownVal, { color: COLORS.success }]}>
+                +₹{approvedExtraAmount}
+              </Text>
+            </View>
+          )}
+          <View style={[styles.priceBreakdownRow, styles.priceTotalRow]}>
+            <Text style={styles.totalPriceLabel}>Total Amount Due</Text>
+            <Text style={styles.totalPriceVal}>₹{totalAmount}</Text>
           </View>
         </View>
 
-        {/* Extra Amount Alert Trigger Link (if pending) */}
-        <TouchableOpacity
-          style={styles.extraAmountTriggerBanner}
-          onPress={() => navigation.navigate('ExtraAmount')}
-          activeOpacity={0.85}
-        >
-          <View style={styles.extraBannerIcon}>
-            <MaterialCommunityIcons name="cash-plus" size={20} color="#B45309" />
+        {/* Destination / Address Card */}
+        {job?.address && (
+          <View style={styles.addressCard}>
+            <View style={styles.addressIconWrap}>
+              <MaterialCommunityIcons name="map-marker-radius" size={20} color={COLORS.primary} />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.addressCardTitle}>Service Location</Text>
+              <Text style={styles.addressCardText}>{job.address}</Text>
+              {job.landmark ? (
+                <Text style={styles.addressCardLandmark}>Landmark: {job.landmark}</Text>
+              ) : null}
+            </View>
           </View>
-          <View style={styles.extraBannerTextWrap}>
-            <Text style={styles.extraBannerTitle}>{t('customer.extraRequested', { amount: '₹100' })}</Text>
-            <Text style={styles.extraBannerSub}>{t('customer.extraRequestedBody')}</Text>
-          </View>
-          <MaterialCommunityIcons name="chevron-right" size={22} color="#B45309" />
-        </TouchableOpacity>
+        )}
 
         {/* 5-Step Progress Stepper */}
         <View style={styles.progressCard}>
           <View style={styles.progressHeaderRow}>
             <Text style={styles.progressCardTitle}>{t('customer.bookingProgress')}</Text>
-            <TouchableOpacity onPress={handleNextSimulationStep}>
-              <Text style={styles.simLink}>
-                 {currentStep < 5 ? t('customer.advanceStep') : t('customer.proceedPayment')}
-              </Text>
-            </TouchableOpacity>
+            <Text style={styles.simLink}>#{jobIdDisplay}</Text>
           </View>
 
           <View style={styles.stepperContainer}>
-            {TRACKING_STEPS.map((step, idx) => {
+            {trackingSteps.map((step, idx) => {
               const isCompleted = step.id < currentStep;
               const isCurrent = step.id === currentStep;
-              const isLast = idx === TRACKING_STEPS.length - 1;
+              const isLast = idx === trackingSteps.length - 1;
 
               return (
                 <View key={step.id} style={styles.stepItemRow}>
@@ -226,9 +468,9 @@ const TrackBookingScreen = () => {
                       )}
                     </View>
                      <Text style={styles.stepSubtitle}>{
-                       step.id === 1 ? t(step.subKey, { name: booking.worker.name }) :
-                       step.id === 2 ? t(step.subKey, { distance: '1.4 km', minutes: 15 }) :
-                       step.id === 3 ? t(step.subKey, { otp: booking.otpCode }) : t(step.subKey)
+                       step.id === 1 ? t('customer.assignedTo', { name: workerInfo.name }) :
+                       step.id === 2 ? t('customer.distanceArriving', { distance: '1.4 km', minutes: 15 }) :
+                       step.id === 3 ? t('customer.shareOtpStep', { otp: otpCode }) : t(step.subKey)
                      }</Text>
                   </View>
                 </View>
@@ -236,16 +478,35 @@ const TrackBookingScreen = () => {
             })}
           </View>
         </View>
+
+        {/* Cancellation Option (Available before work starts) */}
+        {['requested', 'accepted'].includes(jobStatus) && (
+          <TouchableOpacity
+            style={styles.cancelBookingButton}
+            onPress={handleCancelBooking}
+            disabled={cancelling}
+            activeOpacity={0.7}
+          >
+            {cancelling ? (
+              <ActivityIndicator size="small" color="#DC2626" />
+            ) : (
+              <>
+                <MaterialCommunityIcons name="close-circle-outline" size={18} color="#DC2626" />
+                <Text style={styles.cancelBookingText}>Cancel Booking</Text>
+              </>
+            )}
+          </TouchableOpacity>
+        )}
       </ScrollView>
 
-      {/* Bottom Sticky Action */}
-      {currentStep === 5 && (
+      {/* Bottom Sticky Action for Payment */}
+      {(currentStep === 5 || jobStatus === 'completed') && (
         <View style={styles.bottomBar}>
           <TouchableOpacity
             style={styles.paymentCTAButton}
-            onPress={() => navigation.navigate('Payment', { amount: 650 })}
+            onPress={() => navigation.navigate('Payment', { amount: totalAmount, jobId: job?.id })}
           >
-             <Text style={styles.paymentCTAText}>{t('customer.workCompletedPay', { amount: '₹650' })}</Text>
+             <Text style={styles.paymentCTAText}>{t('customer.workCompletedPay', { amount: `₹${totalAmount}` })}</Text>
             <MaterialCommunityIcons name="arrow-right" size={20} color={COLORS.white} />
           </TouchableOpacity>
         </View>
@@ -706,6 +967,206 @@ const styles = StyleSheet.create({
     fontSize: FONT_SIZE.md,
     fontWeight: FONT_WEIGHT.bold,
     color: COLORS.white,
+  },
+  headerCenter: {
+    alignItems: 'center',
+  },
+  headerSubtitle: {
+    fontSize: 11,
+    color: COLORS.textTertiary,
+    marginTop: 1,
+  },
+  workerRatingRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    marginTop: 2,
+  },
+  workerRatingText: {
+    fontSize: 11,
+    color: COLORS.textSecondary,
+    fontWeight: FONT_WEIGHT.semibold,
+  },
+  searchingCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#EFF6FF',
+    borderRadius: RADIUS.xl,
+    padding: SPACING.md,
+    borderWidth: 1.2,
+    borderColor: '#BFDBFE',
+    marginBottom: SPACING.lg,
+    gap: SPACING.md,
+  },
+  searchingIconCircle: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: '#DBEAFE',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  searchingTitle: {
+    fontSize: FONT_SIZE.sm,
+    fontWeight: FONT_WEIGHT.bold,
+    color: COLORS.primaryDark,
+  },
+  searchingSub: {
+    fontSize: 11,
+    color: COLORS.textSecondary,
+    marginTop: 2,
+    lineHeight: 16,
+  },
+  itemsCard: {
+    backgroundColor: COLORS.white,
+    borderRadius: RADIUS.xl,
+    padding: SPACING.lg,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    marginBottom: SPACING.lg,
+    ...SHADOWS.md,
+  },
+  itemsHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: SPACING.md,
+  },
+  itemsCardTitle: {
+    fontSize: FONT_SIZE.sm,
+    fontWeight: FONT_WEIGHT.bold,
+    color: COLORS.textPrimary,
+  },
+  itemsList: {
+    gap: 8,
+  },
+  itemRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 2,
+  },
+  itemBullet: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: COLORS.primary,
+    marginRight: 8,
+  },
+  itemName: {
+    flex: 1,
+    fontSize: 13,
+    color: COLORS.textPrimary,
+    fontWeight: FONT_WEIGHT.medium,
+  },
+  itemPrice: {
+    fontSize: 13,
+    fontWeight: FONT_WEIGHT.bold,
+    color: COLORS.textPrimary,
+  },
+  workNotesBox: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 6,
+    backgroundColor: COLORS.background,
+    borderRadius: RADIUS.md,
+    padding: SPACING.sm,
+    marginTop: SPACING.sm,
+  },
+  workNotesText: {
+    flex: 1,
+    fontSize: 11,
+    color: COLORS.textSecondary,
+    fontStyle: 'italic',
+  },
+  itemsDivider: {
+    height: 1,
+    backgroundColor: COLORS.border,
+    marginVertical: SPACING.md,
+  },
+  priceBreakdownRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginVertical: 2,
+  },
+  priceBreakdownLabel: {
+    fontSize: 12,
+    color: COLORS.textSecondary,
+  },
+  priceBreakdownVal: {
+    fontSize: 12,
+    fontWeight: FONT_WEIGHT.semibold,
+    color: COLORS.textPrimary,
+  },
+  priceTotalRow: {
+    marginTop: SPACING.xs,
+    paddingTop: SPACING.xs,
+    borderTopWidth: 1,
+    borderTopColor: '#F1F5F9',
+  },
+  totalPriceLabel: {
+    fontSize: FONT_SIZE.sm,
+    fontWeight: FONT_WEIGHT.bold,
+    color: COLORS.textPrimary,
+  },
+  totalPriceVal: {
+    fontSize: FONT_SIZE.md,
+    fontWeight: FONT_WEIGHT.extrabold,
+    color: COLORS.primary,
+  },
+  addressCard: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    backgroundColor: COLORS.white,
+    borderRadius: RADIUS.xl,
+    padding: SPACING.md,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    marginBottom: SPACING.lg,
+    gap: SPACING.sm,
+    ...SHADOWS.sm,
+  },
+  addressIconWrap: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: COLORS.primaryLight,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  addressCardTitle: {
+    fontSize: FONT_SIZE.xs,
+    fontWeight: FONT_WEIGHT.bold,
+    color: COLORS.textPrimary,
+  },
+  addressCardText: {
+    fontSize: 12,
+    color: COLORS.textSecondary,
+    marginTop: 2,
+  },
+  addressCardLandmark: {
+    fontSize: 11,
+    color: COLORS.textTertiary,
+    marginTop: 1,
+  },
+  cancelBookingButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: SPACING.md,
+    borderRadius: RADIUS.lg,
+    borderWidth: 1,
+    borderColor: '#FECACA',
+    backgroundColor: '#FEF2F2',
+    gap: 6,
+    marginTop: SPACING.sm,
+    marginBottom: SPACING.xl,
+  },
+  cancelBookingText: {
+    fontSize: 13,
+    fontWeight: FONT_WEIGHT.semibold,
+    color: '#DC2626',
   },
 });
 

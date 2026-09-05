@@ -21,6 +21,7 @@ from app.models.enums import (
 from app.models.extra_amount import ExtraAmountRequest
 from app.models.job import Job, JobRejection, JobService, JobStatusEvent
 from app.models.notification import Notification
+from app.models.otp_verification import OtpVerification
 from app.models.password_reset import PasswordReset
 from app.models.payment import Payment
 from app.models.report import JobReport
@@ -46,6 +47,7 @@ __all__ = [
     "MessageSender",
     "Notification",
     "NotificationType",
+    "OtpVerification",
     "PasswordReset",
     "Payment",
     "PaymentStatus",

@@ -35,7 +35,7 @@ from app.schemas.auth import MessageResponse
 from app.schemas.job import JobDetail, JobListItem, JobRejectRequest, JobStatusUpdate
 from app.services.access import get_job_for_worker
 from app.services.geo import distance_and_eta
-from app.services.notify import notify, push_event
+from app.services.notify import notify, notify_customer, push_event
 from app.services.otp import generate_code
 from app.core.security import hash_password, verify_password
 from app.services.serialize import (
@@ -205,6 +205,16 @@ def accept_job(job_id: int, worker: CurrentWorker, db: DbSession) -> JobDetail:
 
     # Other devices signed in as this worker should drop the request from their list.
     push_event(worker.id, WsEvent.JOB_UPDATE, {"job_id": job.id, "status": job.status.value})
+
+    # Notify customer live that a worker accepted their request
+    notify_customer(
+        db,
+        job.customer_id,
+        NotificationType.JOB_UPDATE,
+        title=f"Worker {worker.name} accepted your request",
+        body=f"{worker.name} is assigned to your {job.service_type} booking.",
+        data={"job_id": job.id, "status": job.status.value, "worker_id": worker.id},
+    )
     return serialize_job_detail(db, job, worker)
 
 
@@ -264,7 +274,7 @@ def update_status(
                 f"Cannot go from '{job.status.value}' to '{payload.status.value}'. "
                 f"Allowed from here: {sorted(s.value for s in allowed) or 'nothing'}"
             ),
-            )
+        )
 
     if payload.status == JobStatus.ARRIVED:
         _verify_job_otp(db, job, payload.otp, "arrival")
@@ -284,6 +294,24 @@ def update_status(
     db.refresh(job)
 
     push_event(worker.id, WsEvent.JOB_UPDATE, {"job_id": job.id, "status": job.status.value})
+
+    # Notify customer live of worker status change
+    status_titles = {
+        JobStatus.ON_THE_WAY: f"{worker.name} is on the way",
+        JobStatus.ARRIVED: f"{worker.name} has arrived at your location",
+        JobStatus.WORK_STARTED: f"Work started for {job.service_type}",
+        JobStatus.COMPLETED: f"Job completed by {worker.name}",
+    }
+    title = status_titles.get(payload.status, f"Job status updated to {payload.status.value}")
+
+    notify_customer(
+        db,
+        job.customer_id,
+        NotificationType.JOB_UPDATE,
+        title=title,
+        body=f"Status: {payload.status.value}",
+        data={"job_id": job.id, "status": payload.status.value},
+    )
     return serialize_job_detail(db, job, worker)
 
 

@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session
 from app.models import (
     JOB_PROGRESS_STEPS,
     ChatMessage,
+    Customer,
     ExtraAmountRequest,
     ExtraAmountStatus,
     Job,
@@ -18,6 +19,12 @@ from app.models import (
     MessageSender,
     Payment,
     Worker,
+)
+from app.schemas.customer import (
+    AssignedWorkerOut,
+    CustomerJobDetail,
+    CustomerJobListItem,
+    CustomerOut as CustomerSchemaOut,
 )
 from app.schemas.job import (
     AmountsOut,
@@ -141,3 +148,77 @@ def serialize_payment(payment: Payment) -> PaymentOut:
         data.service_type = payment.job.service_type
         data.customer_name = payment.job.customer.name if payment.job.customer else None
     return data
+
+
+def serialize_customer(customer: Customer) -> CustomerSchemaOut:
+    addresses = customer.saved_addresses if isinstance(customer.saved_addresses, list) else []
+    return CustomerSchemaOut(
+        id=customer.id,
+        name=customer.name,
+        phone=customer.phone,
+        email=customer.email,
+        city=customer.city,
+        photo_url=customer.photo_url,
+        rating_avg=float(customer.rating_avg or 0),
+        rating_count=customer.rating_count or 0,
+        saved_addresses=addresses,
+        created_at=customer.created_at,
+    )
+
+
+def serialize_customer_job_list_item(job: Job) -> CustomerJobListItem:
+    approved, _ = split_extras(job)
+    assigned_worker = (
+        AssignedWorkerOut.model_validate(job.worker) if job.worker is not None else None
+    )
+    return CustomerJobListItem(
+        id=job.id,
+        service_type=job.service_type,
+        service_icon=job.service_icon,
+        status=job.status,
+        worker=assigned_worker,
+        address=job.address,
+        total_amount=float(job.base_amount) + approved,
+        requested_at=job.requested_at,
+        accepted_at=job.accepted_at,
+        completed_at=job.completed_at,
+        current_step=current_step(job.status),
+    )
+
+
+def serialize_customer_job_detail(db: Session, job: Job) -> CustomerJobDetail:
+    unread = db.scalar(
+        select(func.count())
+        .select_from(ChatMessage)
+        .where(
+            ChatMessage.job_id == job.id,
+            ChatMessage.sender == MessageSender.WORKER,
+            ChatMessage.read_at.is_(None),
+        )
+    )
+    assigned_worker = (
+        AssignedWorkerOut.model_validate(job.worker) if job.worker is not None else None
+    )
+
+    return CustomerJobDetail(
+        id=job.id,
+        service_type=job.service_type,
+        service_icon=job.service_icon,
+        work_details=job.work_details,
+        status=job.status,
+        current_step=current_step(job.status),
+        otp_code=job.otp_code,
+        worker=assigned_worker,
+        address=job.address,
+        landmark=job.landmark,
+        lat=job.lat,
+        lng=job.lng,
+        services=[JobServiceOut.model_validate(s) for s in job.services],
+        amounts=job_amounts(job),
+        extra_requests=[ExtraAmountOut.model_validate(r) for r in job.extra_requests],
+        status_events=[StatusEventOut.model_validate(e) for e in job.status_events],
+        requested_at=job.requested_at,
+        accepted_at=job.accepted_at,
+        completed_at=job.completed_at,
+        unread_messages=unread or 0,
+    )

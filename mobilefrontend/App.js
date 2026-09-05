@@ -1,5 +1,5 @@
 import React from 'react';
-import { StatusBar, StyleSheet, View } from 'react-native';
+import { StatusBar, StyleSheet, View, Platform } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import * as Font from 'expo-font';
@@ -54,17 +54,18 @@ export default function App() {
     Poppins_800ExtraBold,
   });
 
-  if (!fontsLoaded) {
+  // On web, CSS @import in globalFonts loads Poppins; don't stay stuck on blank screen
+  if (!fontsLoaded && Platform.OS !== 'web') {
     return (
       <View style={styles.splash}>
-        <LoadingState message="" />
+        <LoadingState message="Loading..." />
       </View>
     );
   }
 
   return (
     <GestureHandlerRootView style={styles.flex}>
-      <SafeAreaProvider>
+      <SafeAreaProvider style={styles.flex}>
         <StatusBar barStyle="light-content" />
         <LanguageProvider>
           <AuthProvider>
@@ -79,9 +80,14 @@ export default function App() {
 const styles = StyleSheet.create({
   flex: {
     flex: 1,
+    height: '100%',
+    width: '100%',
   },
   splash: {
     flex: 1,
+    height: '100%',
+    justifyContent: 'center',
+    alignItems: 'center',
     backgroundColor: COLORS.background,
   },
 });

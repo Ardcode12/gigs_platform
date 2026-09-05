@@ -29,6 +29,15 @@ from app.routers import (
     workers,
     ws,
 )
+from app.routers.customer import (
+    auth_router as customer_auth_router,
+    chat_router as customer_chat_router,
+    extra_amount_router as customer_extra_amount_router,
+    jobs_router as customer_jobs_router,
+    notifications_router as customer_notifications_router,
+    payments_router as customer_payments_router,
+    ratings_router as customer_ratings_router,
+)
 from app.ws.manager import manager
 
 logging.basicConfig(
@@ -44,18 +53,18 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
     # the event loop here is what lets those threads push WebSocket events back onto
     # it (see ws/manager.push_threadsafe).
     manager.bind_loop(asyncio.get_running_loop())
-    logger.info("worker API started (dev_mode=%s)", settings.DEV_MODE)
+    logger.info("WORKMAT API started (dev_mode=%s)", settings.DEV_MODE)
     yield
     engine.dispose()
 
 
 def create_app() -> FastAPI:
     app = FastAPI(
-        title="WORKMAT Worker API",
+        title="WORKMAT API (Worker & Customer)",
         description=(
-            "Backend for the worker-side mobile app: login, availability, job "
-            "requests, job lifecycle, chat, extra-amount requests, earnings, "
-            "ratings and notifications."
+            "Unified Backend for WORKMAT: Worker & Customer mobile applications, "
+            "authentication, job lifecycle, chat, payments, ratings, notifications, "
+            "and real-time WebSockets."
         ),
         version="1.0.0",
         lifespan=lifespan,
@@ -69,6 +78,7 @@ def create_app() -> FastAPI:
         allow_headers=["*"],
     )
 
+    # Worker Routers
     app.include_router(auth.router)
     app.include_router(workers.router)
     app.include_router(jobs.router)
@@ -80,6 +90,15 @@ def create_app() -> FastAPI:
     app.include_router(notifications.router)
     app.include_router(admin.router)
     app.include_router(ws.router)
+
+    # Customer Routers
+    app.include_router(customer_auth_router)
+    app.include_router(customer_jobs_router)
+    app.include_router(customer_extra_amount_router)
+    app.include_router(customer_chat_router)
+    app.include_router(customer_payments_router)
+    app.include_router(customer_ratings_router)
+    app.include_router(customer_notifications_router)
 
     if settings.DEV_MODE:
         # Imported inside the branch so a production process never even loads the

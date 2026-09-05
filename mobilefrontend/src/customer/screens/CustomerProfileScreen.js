@@ -23,9 +23,16 @@ const CustomerProfileScreen = () => {
   const t = useT();
   const { language, changeLanguage } = useLanguageState();
   const [profile] = useState(CUSTOMER_PROFILE);
+  const { customer, signOut } = useAuth();
   const [pushNotif, setPushNotif] = useState(true);
   const [selectedLanguage, setSelectedLanguage] = useState('English');
-  const { signOut } = useAuth();
+
+  const displayName = customer?.name || 'Customer';
+  const displayPhone = customer?.phone || 'No phone number';
+  const displayEmail = customer?.email || 'No email provided';
+  const displayCity = customer?.city || 'Noida';
+  const memberId = customer?.id ? `WM-CUST-${String(customer.id).padStart(4, '0')}` : 'WM-CUST-0001';
+  const savedAddresses = customer?.saved_addresses || [];
 
   const handleLogout = () => {
     Alert.alert(
@@ -36,8 +43,6 @@ const CustomerProfileScreen = () => {
         {
            text: t('customer.cancel'),
           style: 'destructive',
-          // Clearing the session unmounts this whole group, so the shared Login
-          // screen appears on its own — no navigation call needed.
           onPress: signOut,
         },
       ]
@@ -61,11 +66,15 @@ const CustomerProfileScreen = () => {
         {/* Customer Identity Card */}
         <View style={styles.profileCard}>
           <View style={styles.avatarRow}>
-            <Image source={{ uri: profile.avatar }} style={styles.avatarImage} />
+            <View style={styles.avatarCircle}>
+              <Text style={styles.avatarText}>
+                {displayName.charAt(0).toUpperCase()}
+              </Text>
+            </View>
             <View style={styles.profileMeta}>
-              <Text style={styles.customerName}>{profile.name}</Text>
-              <Text style={styles.memberIdBadge}>{profile.coopMemberId}</Text>
-               <Text style={styles.memberSince}>{t('customer.cooperative')} {profile.memberSince}</Text>
+              <Text style={styles.customerName}>{displayName}</Text>
+              <Text style={styles.memberIdBadge}>{memberId}</Text>
+              <Text style={styles.memberSince}>{t('customer.cooperative')} {displayCity}</Text>
             </View>
           </View>
 
@@ -75,7 +84,7 @@ const CustomerProfileScreen = () => {
           <View style={styles.contactDetailsList}>
             <View style={styles.contactRow}>
               <MaterialCommunityIcons name="phone-outline" size={18} color={COLORS.primary} />
-              <Text style={styles.contactText}>{profile.mobile}</Text>
+              <Text style={styles.contactText}>{displayPhone}</Text>
               <View style={styles.verifiedTag}>
                  <Text style={styles.verifiedTagText}>{t('customer.verified')}</Text>
               </View>
@@ -83,7 +92,7 @@ const CustomerProfileScreen = () => {
 
             <View style={styles.contactRow}>
               <MaterialCommunityIcons name="email-outline" size={18} color={COLORS.primary} />
-              <Text style={styles.contactText}>{profile.email}</Text>
+              <Text style={styles.contactText}>{displayEmail}</Text>
             </View>
           </View>
         </View>
@@ -96,21 +105,24 @@ const CustomerProfileScreen = () => {
                <Text style={styles.sectionTitle}>{t('customer.serviceLocation')}</Text>
             </View>
             <TouchableOpacity onPress={() => Alert.alert(t('customer.addAddress'), t('customer.addressModal'))}>
-               <Text style={styles.addLink}>+ {t('customer.addNew')}</Text>
+              <Text style={styles.addLink}>+ {t('customer.addNew')}</Text>
             </TouchableOpacity>
           </View>
 
-          {profile.savedAddresses.map((addr) => (
-            <View key={addr.id} style={styles.addressItem}>
-              <View style={styles.addressHeader}>
-                <View style={styles.addressTypeBadge}>
-                  <Text style={styles.addressTypeText}>{t(addr.typeKey)}</Text>
-                </View>
-                 {addr.isDefault && <Text style={styles.defaultLabel}>{t('customer.default')}</Text>}
+          {savedAddresses.length === 0 ? (
+            <Text style={styles.emptyAddressText}>No saved addresses yet.</Text>
+          ) : (
+            savedAddresses.map((addr, idx) => (
+              <View key={addr.id || idx} style={styles.addressItem}>
+                <View style={styles.addressHeader}>
+                 <View style={styles.addressTypeBadge}>
+                   <Text style={styles.addressTypeText}>{addr.title || addr.type || t('customer.serviceLocation')}</Text>
+                 </View>
+               </View>
+                <Text style={styles.addressString}>{addr.address}</Text>
               </View>
-              <Text style={styles.addressString}>{addr.address}</Text>
-            </View>
-          ))}
+            ))
+          )}
         </View>
 
         {/* 2. Payment Methods */}
@@ -125,7 +137,11 @@ const CustomerProfileScreen = () => {
             </TouchableOpacity>
           </View>
 
-          {profile.paymentMethods.map((pm) => (
+          {[
+            { id: 'pm_1', type: 'UPI AutoPay / GPay', detail: 'Linked to Mobile / UPI', icon: 'cellphone-nfc', isDefault: true },
+            { id: 'pm_2', type: 'Credit / Debit Card', detail: '•••• •••• •••• 4021', icon: 'credit-card', isDefault: false },
+            { id: 'pm_3', type: 'Cash on Completion', detail: 'Direct payout to technician', icon: 'cash', isDefault: false },
+          ].map((pm) => (
             <View key={pm.id} style={styles.paymentMethodRow}>
               <MaterialCommunityIcons name={pm.icon} size={20} color={COLORS.textSecondary} />
               <View style={styles.pmInfo}>
@@ -281,6 +297,26 @@ const styles = StyleSheet.create({
     height: 64,
     borderRadius: RADIUS.full,
     marginRight: SPACING.md,
+  },
+  avatarCircle: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    backgroundColor: COLORS.primaryLight,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: SPACING.md,
+  },
+  avatarText: {
+    fontSize: 24,
+    fontWeight: FONT_WEIGHT.bold,
+    color: COLORS.primary,
+  },
+  emptyAddressText: {
+    fontSize: FONT_SIZE.xs,
+    color: COLORS.textTertiary,
+    fontStyle: 'italic',
+    marginTop: 4,
   },
   profileMeta: {
     flex: 1,

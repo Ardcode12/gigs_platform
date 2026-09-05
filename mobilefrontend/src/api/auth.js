@@ -10,6 +10,33 @@ export const login = async (identifier, password) => {
   return data;
 };
 
+export const customerLogin = async (identifier, password) => {
+  const { data } = await client.post(
+    '/api/customer/auth/login',
+    { identifier, password },
+    { skipAuth: true },
+  );
+  await saveTokens(data);
+  return data;
+};
+
+export const sendSignupOtp = ({ phone, email }) =>
+  client
+    .post('/api/customer/auth/send-signup-otp', { phone, email }, { skipAuth: true })
+    .then((r) => r.data);
+
+export const customerSignup = async ({ name, phone, email, password, city, otp }) => {
+  const { data } = await client.post(
+    '/api/customer/auth/signup',
+    { name, phone, email, password, city, otp },
+    { skipAuth: true },
+  );
+  await saveTokens(data);
+  return data;
+};
+
+export const getCustomerMe = () => client.get('/api/customer/auth/me').then((r) => r.data);
+
 export const logout = async () => {
   try {
     await client.post('/api/auth/logout');

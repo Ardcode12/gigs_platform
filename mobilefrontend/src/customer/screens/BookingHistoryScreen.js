@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { useNavigation } from '@react-navigation/native';
+import React, { useState, useCallback } from 'react';
+import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import {
   View,
   Text,
@@ -8,29 +8,61 @@ import {
   ScrollView,
   Modal,
   Alert,
+  ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { COLORS, SPACING, RADIUS, FONT_SIZE, FONT_WEIGHT, SHADOWS } from '../../theme';
 import { useT } from '../../i18n/LanguageContext';
-import { BOOKING_HISTORY_SAMPLE } from '../data/customerMockData';
+import { listJobs } from '../../api/jobs';
 
 const BookingHistoryScreen = () => {
   const navigation = useNavigation();
   const t = useT();
   const [activeTab, setActiveTab] = useState('completed'); // 'completed' | 'cancelled'
   const [selectedInvoice, setSelectedInvoice] = useState(null);
+  const [completedList, setCompletedList] = useState([]);
+  const [cancelledList, setCancelledList] = useState([]);
+  const [loading, setLoading] = useState(true);
 
-  const completedList = BOOKING_HISTORY_SAMPLE.completed;
-  const cancelledList = BOOKING_HISTORY_SAMPLE.cancelled;
+  useFocusEffect(
+    useCallback(() => {
+      let cancelled = false;
+      (async () => {
+        setLoading(true);
+        try {
+          const [completed, cancelledJobs] = await Promise.all([
+            listJobs({ status: 'completed' }),
+            listJobs({ status: 'cancelled' }),
+          ]);
+          if (!cancelled) {
+            setCompletedList(completed || []);
+            setCancelledList(cancelledJobs || []);
+          }
+        } catch {
+          // Network error — keep existing state
+        } finally {
+          if (!cancelled) setLoading(false);
+        }
+      })();
+      return () => { cancelled = true; };
+    }, []),
+  );
+
+  /** Format ISO date to readable string */
+  const fmtDate = (iso) => {
+    if (!iso) return '';
+    const d = new Date(iso);
+    return d.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+  };
 
   const handleBookAgain = (booking) => {
     Alert.alert(
-       t('booking.rebookTitle'), t('booking.rebookBody', { service: booking.serviceType }),
+      t('booking.rebookTitle'), t('booking.rebookBody', { service: booking.service_type }),
       [
         {
-           text: t('common.proceed'),
-          onPress: () => navigation.navigate('SearchService', { category: booking.serviceType }),
+          text: t('common.proceed'),
+          onPress: () => navigation.navigate('SearchService', { category: booking.service_type }),
         },
          { text: t('common.cancel'), style: 'cancel' },
       ]
@@ -72,7 +104,18 @@ const BookingHistoryScreen = () => {
       </View>
 
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
-        {activeTab === 'completed' ? (
+        {loading ? (
+          <View style={{ alignItems: 'center', paddingTop: 60 }}>
+            <ActivityIndicator size="large" color={COLORS.primary} />
+            <Text style={{ color: COLORS.textSecondary, marginTop: SPACING.md }}>Loading bookings…</Text>
+          </View>
+        ) : activeTab === 'completed' ? (
+          completedList.length === 0 ? (
+            <View style={{ alignItems: 'center', paddingTop: 60 }}>
+              <MaterialCommunityIcons name="clipboard-check-outline" size={48} color={COLORS.textTertiary} />
+              <Text style={{ color: COLORS.textSecondary, marginTop: SPACING.md }}>No completed bookings yet</Text>
+            </View>
+          ) : (
           completedList.map((item) => (
             <View key={item.id} style={styles.historyCard}>
               <View style={styles.cardHeader}>
@@ -82,34 +125,24 @@ const BookingHistoryScreen = () => {
                       <MaterialCommunityIcons name="check-circle" size={12} color={COLORS.success} />
                        <Text style={styles.completedBadgeText}>{t('booking.badgeCompleted')}</Text>
                     </View>
-                    <Text style={styles.bookingIdText}>#{item.bookingId}</Text>
+                    <Text style={styles.bookingIdText}>#WM-{item.id}</Text>
                   </View>
-                  <Text style={styles.serviceTitle}>{item.serviceType}</Text>
+                  <Text style={styles.serviceTitle}>{item.service_type}</Text>
                 </View>
 
-                <Text style={styles.priceTag}>₹{item.amount}</Text>
+                <Text style={styles.priceTag}>₹{item.total_amount}</Text>
               </View>
 
               <View style={styles.divider} />
 
               <View style={styles.metaRow}>
                 <MaterialCommunityIcons name="account-outline" size={16} color={COLORS.textSecondary} />
-                 <Text style={styles.metaText}>{t('booking.technician', { name: item.workerName })}</Text>
+                <Text style={styles.metaText}>Technician: {item.worker?.name || 'Cooperative Worker'}</Text>
               </View>
 
               <View style={styles.metaRow}>
                 <MaterialCommunityIcons name="calendar-clock" size={16} color={COLORS.textSecondary} />
-                <Text style={styles.metaText}>{item.date}</Text>
-              </View>
-
-              {/* Items Breakdown List */}
-              <View style={styles.itemsBox}>
-                {item.items.map((subItem, idx) => (
-                  <View key={idx} style={styles.subItemRow}>
-                    <Text style={styles.subItemBullet}>•</Text>
-                    <Text style={styles.subItemText}>{subItem}</Text>
-                  </View>
-                ))}
+                <Text style={styles.metaText}>{fmtDate(item.completed_at || item.requested_at)}</Text>
               </View>
 
               <View style={styles.divider} />
@@ -136,7 +169,14 @@ const BookingHistoryScreen = () => {
               </View>
             </View>
           ))
+          )
         ) : (
+          cancelledList.length === 0 ? (
+            <View style={{ alignItems: 'center', paddingTop: 60 }}>
+              <MaterialCommunityIcons name="cancel" size={48} color={COLORS.textTertiary} />
+              <Text style={{ color: COLORS.textSecondary, marginTop: SPACING.md }}>No cancelled bookings</Text>
+            </View>
+          ) : (
           cancelledList.map((item) => (
             <View key={item.id} style={styles.historyCard}>
               <View style={styles.cardHeader}>
@@ -146,20 +186,19 @@ const BookingHistoryScreen = () => {
                       <MaterialCommunityIcons name="close-circle" size={12} color={COLORS.danger} />
                        <Text style={styles.cancelledBadgeText}>{t('booking.badgeCancelled')}</Text>
                     </View>
-                    <Text style={styles.bookingIdText}>#{item.bookingId}</Text>
+                    <Text style={styles.bookingIdText}>#WM-{item.id}</Text>
                   </View>
-                  <Text style={styles.serviceTitle}>{item.serviceType}</Text>
+                  <Text style={styles.serviceTitle}>{item.service_type}</Text>
                 </View>
 
-                <Text style={[styles.priceTag, { color: COLORS.textTertiary }]}>₹{item.amount}</Text>
+                <Text style={[styles.priceTag, { color: COLORS.textTertiary }]}>₹{item.total_amount}</Text>
               </View>
 
               <View style={styles.divider} />
 
-               <Text style={styles.cancelReasonText}>{t('common.reason', { reason: item.reason })}</Text>
-              <View style={styles.refundPill}>
-                <MaterialCommunityIcons name="cash-refund" size={14} color={COLORS.success} />
-                <Text style={styles.refundText}>{item.refundStatus}</Text>
+              <View style={styles.metaRow}>
+                <MaterialCommunityIcons name="calendar-clock" size={16} color={COLORS.textSecondary} />
+                <Text style={styles.metaText}>{fmtDate(item.requested_at)}</Text>
               </View>
 
               <View style={styles.divider} />
@@ -172,6 +211,7 @@ const BookingHistoryScreen = () => {
               </TouchableOpacity>
             </View>
           ))
+          )
         )}
       </ScrollView>
 
@@ -187,30 +227,30 @@ const BookingHistoryScreen = () => {
                 </TouchableOpacity>
               </View>
 
-               <Text style={styles.invoiceNumberText}>{t('invoice.number', { number: selectedInvoice.invoiceNumber })}</Text>
-              <Text style={styles.invoiceDateText}>{selectedInvoice.date}</Text>
+              <Text style={styles.invoiceNumberText}>{t('invoice.number', { number: `WM-${selectedInvoice.id}` })}</Text>
+              <Text style={styles.invoiceDateText}>{fmtDate(selectedInvoice.completed_at || selectedInvoice.requested_at)}</Text>
 
               <View style={styles.divider} />
 
-               <Text style={styles.invoiceSectionTitle}>{t('invoice.serviceProvided')}</Text>
-              <Text style={styles.invoiceServiceType}>{selectedInvoice.serviceType}</Text>
-               <Text style={styles.invoiceWorker}>{t('booking.technician', { name: selectedInvoice.workerName })}</Text>
+              <Text style={styles.invoiceSectionTitle}>{t('invoice.serviceProvided')}</Text>
+              <Text style={styles.invoiceServiceType}>{selectedInvoice.service_type}</Text>
+              <Text style={styles.invoiceWorker}>{t('booking.technician', { name: selectedInvoice.worker?.name || 'Cooperative Worker' })}</Text>
 
               <View style={styles.divider} />
 
                <Text style={styles.invoiceSectionTitle}>{t('invoice.tasksCompleted')}</Text>
-              {selectedInvoice.items.map((it, i) => (
+              {(selectedInvoice.services || []).map((it, i) => (
                 <View key={i} style={styles.invoiceItemRow}>
                   <MaterialCommunityIcons name="check" size={14} color={COLORS.success} />
-                  <Text style={styles.invoiceItemText}>{it}</Text>
+                  <Text style={styles.invoiceItemText}>{it.name || it}</Text>
                 </View>
               ))}
 
               <View style={styles.divider} />
 
               <View style={styles.invoiceTotalRow}>
-                 <Text style={styles.invoiceTotalLabel}>{t('invoice.paidInFull')}</Text>
-                <Text style={styles.invoiceTotalVal}>₹{selectedInvoice.amount}</Text>
+                <Text style={styles.invoiceTotalLabel}>{t('invoice.paidInFull')}</Text>
+                <Text style={styles.invoiceTotalVal}>₹{selectedInvoice.total_amount}</Text>
               </View>
 
               <TouchableOpacity

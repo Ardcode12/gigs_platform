@@ -11,7 +11,7 @@ import {
 } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import MapView, { Marker, Polyline, PROVIDER_DEFAULT } from 'react-native-maps';
+import MapView, { Marker, Polyline, PROVIDER_DEFAULT } from '../../components/AppMapView';
 import { COLORS, SPACING, RADIUS, FONT_SIZE, FONT_WEIGHT, SHADOWS } from '../../theme';
 import ScreenHeader from '../../components/ScreenHeader';
 import IconButton from '../../components/IconButton';
@@ -55,13 +55,15 @@ const JobLocationScreen = () => {
   // Once both pins are known, frame them together.
   useEffect(() => {
     if (!target || !coords || !mapRef.current) return;
-    mapRef.current.fitToCoordinates(
-      [
-        { latitude: target.lat, longitude: target.lng },
-        coords,
-      ],
-      { edgePadding: { top: 90, right: 70, bottom: 240, left: 70 }, animated: true },
-    );
+    if (typeof mapRef.current.fitToCoordinates === 'function') {
+      mapRef.current.fitToCoordinates(
+        [
+          { latitude: target.lat, longitude: target.lng },
+          coords,
+        ],
+        { edgePadding: { top: 90, right: 70, bottom: 240, left: 70 }, animated: true },
+      );
+    }
   }, [target, coords]);
 
   const openNavigation = () => {

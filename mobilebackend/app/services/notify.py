@@ -65,3 +65,45 @@ def notify(
 def push_event(worker_id: int, event: WsEvent, payload: dict[str, Any]) -> None:
     """Push a live event with no notification row — for silent screen refreshes."""
     manager.push_threadsafe(worker_id, event.value, payload)
+
+
+def notify_customer(
+    db: Session,
+    customer_id: int,
+    notification_type: NotificationType,
+    title: str,
+    body: str | None = None,
+    data: dict[str, Any] | None = None,
+    *,
+    push: bool = True,
+) -> Notification:
+    """Persist a notification for customer and (by default) push it live."""
+    notification = Notification(
+        customer_id=customer_id,
+        type=notification_type,
+        title=title,
+        body=body,
+        data=data or {},
+    )
+    db.add(notification)
+    db.flush()
+
+    if push:
+        event = _EVENT_FOR_TYPE[notification_type]
+        manager.push_threadsafe_customer(
+            customer_id,
+            event.value,
+            {
+                "notification_id": notification.id,
+                "title": title,
+                "body": body,
+                **(data or {}),
+            },
+        )
+
+    return notification
+
+
+def push_customer_event(customer_id: int, event: WsEvent, payload: dict[str, Any]) -> None:
+    """Push a live event to customer with no notification row."""
+    manager.push_threadsafe_customer(customer_id, event.value, payload)

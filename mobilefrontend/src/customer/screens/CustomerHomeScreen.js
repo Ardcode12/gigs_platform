@@ -1,5 +1,5 @@
-import React from 'react';
-import { useNavigation } from '@react-navigation/native';
+import React, { useState, useCallback } from 'react';
+import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import {
   View,
   Text,
@@ -12,17 +12,49 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { COLORS, SPACING, RADIUS, FONT_SIZE, FONT_WEIGHT, SHADOWS } from '../../theme';
 import { useT } from '../../i18n/LanguageContext';
+import { useAuth } from '../../context/AuthContext';
+import { getActiveJob } from '../../api/jobs';
 import {
-  CUSTOMER_PROFILE,
   SERVICE_CATEGORIES,
   POPULAR_SERVICES,
-  ONGOING_BOOKING,
+  CUSTOMER_PROFILE,
 } from '../data/customerMockData';
+
+const STATUS_DISPLAY = {
+  requested: { label: 'Booking Requested', icon: 'clock-outline' },
+  accepted: { label: 'Worker Assigned', icon: 'check-circle' },
+  on_the_way: { label: 'Worker On The Way', icon: 'motorbike' },
+  arrived: { label: 'Worker Arrived', icon: 'map-marker-check' },
+  work_started: { label: 'Work In Progress', icon: 'tools' },
+};
 
 const CustomerHomeScreen = () => {
   const navigation = useNavigation();
   const t = useT();
   const defaultAddress = CUSTOMER_PROFILE.savedAddresses.find((a) => a.isDefault) || CUSTOMER_PROFILE.savedAddresses[0];
+  const { customer } = useAuth();
+  const [activeJob, setActiveJob] = useState(null);
+
+  // Fetch active job every time the screen gains focus
+  useFocusEffect(
+    useCallback(() => {
+      let cancelled = false;
+      (async () => {
+        try {
+          const data = await getActiveJob();
+          if (!cancelled) setActiveJob(data);
+        } catch {
+          // API unreachable — keep null
+        }
+      })();
+      return () => { cancelled = true; };
+    }, []),
+  );
+
+  const addressTitle = customer?.saved_addresses?.[0]?.title || 'Location';
+  const addressText =
+    customer?.saved_addresses?.[0]?.address ||
+    (customer?.city ? `${customer.city}, India` : 'Set your location');
 
   return (
     <SafeAreaView style={styles.safeArea}>
@@ -35,11 +67,11 @@ const CustomerHomeScreen = () => {
             </View>
             <View style={styles.locationTextWrapper}>
               <View style={styles.locationTitleRow}>
-                <Text style={styles.locationType}>{t('customer.homeAddress')}</Text>
+                <Text style={styles.locationType}>{addressTitle}</Text>
                 <MaterialCommunityIcons name="chevron-down" size={18} color={COLORS.primary} />
               </View>
               <Text style={styles.locationAddress} numberOfLines={1}>
-                {defaultAddress.address}
+                {addressText}
               </Text>
             </View>
           </View>
@@ -92,8 +124,8 @@ const CustomerHomeScreen = () => {
           </View>
         </TouchableOpacity>
 
-        {/* Ongoing Booking Card */}
-        {ONGOING_BOOKING && (
+        {/* Ongoing Booking Card — real backend data */}
+        {activeJob && (
           <View style={styles.sectionContainer}>
             <View style={styles.sectionHeaderRow}>
               <Text style={styles.sectionTitle}>{t('customer.ongoingBooking')}</Text>
@@ -105,32 +137,42 @@ const CustomerHomeScreen = () => {
 
             <TouchableOpacity
               style={styles.ongoingCard}
-              onPress={() => navigation.navigate('TrackBooking')}
+              onPress={() => navigation.navigate('TrackBooking', { jobId: activeJob.id, otp: activeJob.otp_code })}
               activeOpacity={0.9}
             >
               <View style={styles.ongoingCardTop}>
-                <Image
-                  source={{ uri: ONGOING_BOOKING.worker.photo }}
-                  style={styles.workerAvatar}
-                />
+                {activeJob.worker?.photo_url ? (
+                  <Image
+                    source={{ uri: activeJob.worker.photo_url }}
+                    style={styles.workerAvatar}
+                  />
+                ) : (
+                  <View style={[styles.workerAvatar, { backgroundColor: COLORS.primaryLight, alignItems: 'center', justifyContent: 'center' }]}>
+                    <MaterialCommunityIcons name="account" size={26} color={COLORS.primary} />
+                  </View>
+                )}
                 <View style={styles.ongoingCardMeta}>
                   <View style={styles.ongoingStatusPill}>
-                    <MaterialCommunityIcons name="motorbike" size={14} color={COLORS.primary} />
+                    <MaterialCommunityIcons
+                      name={STATUS_DISPLAY[activeJob.status]?.icon || 'clock-outline'}
+                      size={14}
+                      color={COLORS.primary}
+                    />
                     <Text style={styles.ongoingStatusPillText}>
-                      {t('status.on_the_way')}
+                      {STATUS_DISPLAY[activeJob.status]?.label || activeJob.status}
                     </Text>
                   </View>
                   <Text style={styles.ongoingWorkerName}>
-                    {ONGOING_BOOKING.worker.name}
+                    {activeJob.worker?.name || 'Finding Worker…'}
                   </Text>
                   <Text style={styles.ongoingServiceType}>
-                    {t('customer.electricalRepair')}
+                    {activeJob.service_type}
                   </Text>
                 </View>
 
                 <View style={styles.etaBox}>
-                  <Text style={styles.etaNumber}>15</Text>
-                    <Text style={styles.etaUnit}>{t('customer.mins')}</Text>
+                  <Text style={styles.etaNumber}>#{activeJob.id}</Text>
+                  <Text style={styles.etaUnit}>JOB</Text>
                 </View>
               </View>
 
@@ -138,13 +180,13 @@ const CustomerHomeScreen = () => {
 
               <View style={styles.ongoingCardBottom}>
                 <View style={styles.otpWrapper}>
-                  <Text style={styles.otpLabel}>{t('customer.startOtp')} </Text>
-                  <Text style={styles.otpValue}>{ONGOING_BOOKING.otpCode}</Text>
+                  <Text style={styles.otpLabel}>Start OTP: </Text>
+                  <Text style={styles.otpValue}>{activeJob.otp_code}</Text>
                 </View>
 
                 <TouchableOpacity
                   style={styles.trackButton}
-                  onPress={() => navigation.navigate('TrackBooking')}
+                  onPress={() => navigation.navigate('TrackBooking', { jobId: activeJob.id, otp: activeJob.otp_code })}
                 >
                   <Text style={styles.trackButtonText}>{t('customer.trackLive')}</Text>
                   <MaterialCommunityIcons name="arrow-right" size={16} color={COLORS.white} />
