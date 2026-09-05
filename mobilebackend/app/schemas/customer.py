@@ -42,12 +42,24 @@ class CustomerOut(BaseModel):
         from_attributes = True
 
 
+class SendSignupOtpRequest(BaseModel):
+    phone: str = Field(min_length=10, max_length=20)
+    email: str | None = Field(default=None, max_length=255)
+
+
+class SendSignupOtpResponse(BaseModel):
+    message: str
+    masked_phone: str
+    dev_code: str | None = None
+
+
 class CustomerSignupRequest(BaseModel):
     name: str = Field(min_length=2, max_length=150)
     phone: str = Field(min_length=10, max_length=20)
     email: str | None = Field(default=None, max_length=255)
     password: str = Field(min_length=6, max_length=100)
     city: str | None = None
+    otp: str = Field(min_length=4, max_length=10)
 
 
 class CustomerLoginRequest(BaseModel):

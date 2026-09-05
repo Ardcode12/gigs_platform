@@ -32,12 +32,16 @@ from app.schemas.customer import (
     CustomerSignupRequest,
     SaveAddressRequest,
     SavedAddressItem,
+    SendSignupOtpRequest,
+    SendSignupOtpResponse,
 )
 from app.services.otp import (
     create_customer_reset_code,
+    create_signup_otp,
     expose_code,
     mask_phone,
     verify_customer_reset_code,
+    verify_signup_otp,
 )
 from app.services.serialize import serialize_customer
 
@@ -68,6 +72,35 @@ def _find_customer(db: DbSession, identifier: str) -> Customer | None:
     return None
 
 
+@router.post("/send-signup-otp", response_model=SendSignupOtpResponse)
+def send_signup_otp(payload: SendSignupOtpRequest, db: DbSession) -> SendSignupOtpResponse:
+    existing_phone = db.scalars(select(Customer).where(Customer.phone == payload.phone)).first()
+    if existing_phone is not None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="A customer with this phone number already exists",
+        )
+
+    if payload.email:
+        existing_email = db.scalars(
+            select(Customer).where(func.lower(Customer.email) == payload.email.lower())
+        ).first()
+        if existing_email is not None:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="A customer with this email address already exists",
+            )
+
+    code = create_signup_otp(db, payload.phone)
+    db.commit()
+
+    return SendSignupOtpResponse(
+        message=f"Verification code sent to {mask_phone(payload.phone)}",
+        masked_phone=mask_phone(payload.phone),
+        dev_code=expose_code(code),
+    )
+
+
 @router.post("/signup", response_model=CustomerLoginResponse, status_code=status.HTTP_201_CREATED)
 def signup(payload: CustomerSignupRequest, db: DbSession) -> CustomerLoginResponse:
     existing_phone = db.scalars(select(Customer).where(Customer.phone == payload.phone)).first()
@@ -86,6 +119,14 @@ def signup(payload: CustomerSignupRequest, db: DbSession) -> CustomerLoginRespon
                 status_code=status.HTTP_409_CONFLICT,
                 detail="A customer with this email address already exists",
             )
+
+    ok, reason = verify_signup_otp(db, payload.phone, payload.otp)
+    if not ok:
+        db.commit()
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=reason,
+        )
 
     customer = Customer(
         name=payload.name,

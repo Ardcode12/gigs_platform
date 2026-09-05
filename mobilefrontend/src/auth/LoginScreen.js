@@ -38,7 +38,7 @@ const ROLE_TABS = [
 
 const LoginScreen = () => {
   const navigation = useNavigation();
-  const { signIn, signInCustomer, signUpCustomer } = useAuth();
+  const { signIn, signInCustomer, sendSignupOtp } = useAuth();
 
   const [role, setRole] = useState('worker');
   // Customer-only: registration is not offered to workers.
@@ -66,7 +66,8 @@ const LoginScreen = () => {
     !submitting &&
     identifier.trim().length >= 3 &&
     password.length > 0 &&
-    (!isRegister || fullName.trim().length >= 2);
+    (!isRegister ||
+      (fullName.trim().length >= 2 && identifier.trim().length >= 10 && password.length >= 6));
 
   const handleSubmit = async () => {
     if (!canSubmit) return;
@@ -76,16 +77,22 @@ const LoginScreen = () => {
       if (isWorker) {
         await signIn(identifier.trim(), password);
       } else if (isRegister) {
-        await signUpCustomer({
+        const data = await sendSignupOtp({
+          phone: identifier.trim(),
+          email: email.trim() || null,
+        });
+        navigation.navigate('SignupOtp', {
           name: fullName.trim(),
           phone: identifier.trim(),
           email: email.trim() || null,
           password,
+          maskedPhone: data?.masked_phone,
+          devCode: data?.dev_code ?? null,
         });
       } else {
         await signInCustomer(identifier.trim(), password);
       }
-      // Nothing to navigate: the auth gate swaps the whole stack out.
+      // Nothing to navigate for sign in: the auth gate swaps the whole stack out.
     } catch (caught) {
       setError(caught.message);
     } finally {
@@ -239,8 +246,8 @@ const LoginScreen = () => {
             )}
 
             <IconButton
-              label={isRegister ? 'Create Account' : 'Sign In'}
-              icon={isRegister ? 'account-plus' : 'login'}
+              label={isRegister ? 'Continue to Verification' : 'Sign In'}
+              icon={isRegister ? 'arrow-right-circle' : 'login'}
               onPress={handleSubmit}
               disabled={!canSubmit}
               loading={submitting}

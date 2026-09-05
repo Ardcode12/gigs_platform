@@ -123,6 +123,10 @@ export const AuthProvider = ({ children }) => {
     return data;
   }, []);
 
+  const sendSignupOtp = useCallback(async (payload) => {
+    return await authApi.sendSignupOtp(payload);
+  }, []);
+
   const completePasswordChange = useCallback(async (currentPassword, newPassword) => {
     await authApi.changePassword(currentPassword, newPassword);
     setMustChangePassword(false);
@@ -162,6 +166,7 @@ export const AuthProvider = ({ children }) => {
       signIn,
       signInCustomer,
       signUpCustomer,
+      sendSignupOtp,
       signOut,
       completePasswordChange,
       refreshWorker,
@@ -178,6 +183,7 @@ export const AuthProvider = ({ children }) => {
       signIn,
       signInCustomer,
       signUpCustomer,
+      sendSignupOtp,
       signOut,
       completePasswordChange,
       refreshWorker,

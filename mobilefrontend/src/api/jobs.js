@@ -53,3 +53,41 @@ export const listJobs = ({ status, limit = 50, offset = 0 } = {}) => {
  */
 export const cancelJob = (jobId) =>
   client.post(`/api/customer/jobs/${jobId}/cancel`).then((r) => r.data);
+
+// -- Extra amount endpoints --------------------------------------------------
+
+/**
+ * List all extra-amount requests for a job.
+ * @param {number} jobId
+ * @returns {Promise<Object[]>} ExtraAmountOut[]
+ */
+export const listExtraRequests = (jobId) =>
+  client.get(`/api/customer/extra-amount/job/${jobId}`).then((r) => r.data);
+
+/**
+ * Approve or reject a specific extra-amount request.
+ * @param {number} requestId
+ * @param {boolean} approve — true to approve, false to reject
+ * @returns {Promise<Object>} ExtraAmountOut (updated)
+ */
+export const decideExtraAmount = (requestId, approve) =>
+  client.post(`/api/customer/extra-amount/${requestId}/decide`, { approve }).then((r) => r.data);
+
+// -- Customer Payment endpoints ---------------------------------------------
+
+/**
+ * Get payment/invoice record for a job.
+ * @param {number} jobId
+ * @returns {Promise<Object>} CustomerPaymentOut
+ */
+export const getJobPayment = (jobId) =>
+  client.get(`/api/customer/payments/job/${jobId}`).then((r) => r.data);
+
+/**
+ * Settle payment for a completed job invoice.
+ * @param {number} paymentId
+ * @returns {Promise<Object>} MessageResponse
+ */
+export const payInvoice = (paymentId) =>
+  client.post(`/api/customer/payments/${paymentId}/pay`).then((r) => r.data);
+

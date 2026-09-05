@@ -20,10 +20,15 @@ export const customerLogin = async (identifier, password) => {
   return data;
 };
 
-export const customerSignup = async ({ name, phone, email, password, city }) => {
+export const sendSignupOtp = ({ phone, email }) =>
+  client
+    .post('/api/customer/auth/send-signup-otp', { phone, email }, { skipAuth: true })
+    .then((r) => r.data);
+
+export const customerSignup = async ({ name, phone, email, password, city, otp }) => {
   const { data } = await client.post(
     '/api/customer/auth/signup',
-    { name, phone, email, password, city },
+    { name, phone, email, password, city, otp },
     { skipAuth: true },
   );
   await saveTokens(data);

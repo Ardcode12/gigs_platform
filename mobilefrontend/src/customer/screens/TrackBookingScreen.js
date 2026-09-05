@@ -44,7 +44,7 @@ const toUiStep = (backendStep) => {
   return backendStep + 1; // 1→2, 2→3, 3→4, 4→5
 };
 
-const POLL_INTERVAL_MS = 10_000;
+const POLL_INTERVAL_MS = 3500;
 
 const TrackBookingScreen = () => {
   const navigation = useNavigation();
@@ -53,30 +53,56 @@ const TrackBookingScreen = () => {
 
   const [job, setJob] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [cancelling, setCancelling] = useState(false);
   const pollRef = useRef(null);
 
   // Derive UI values from the real job, with sensible fallbacks
   const currentStep = job ? toUiStep(job.current_step) : 1;
   const otpCode = job?.otp_code || routeOtp || ONGOING_BOOKING.otpCode;
+  const hasWorker = Boolean(job?.worker || routeWorker);
   const workerInfo = job?.worker
     ? {
+        id: job.worker.id,
         name: job.worker.name,
         photo: job.worker.photo_url || ONGOING_BOOKING.worker.photo,
-        trade: 'Cooperative Technician',
-        coopBranch: 'WORKMAT Cooperative',
+        trade: job.service_type ? `${job.service_type} Specialist` : 'Cooperative Technician',
+        coopBranch: 'WORKMAT Cooperative Member',
         phone: job.worker.phone,
+        rating: job.worker.rating_avg || 4.9,
+        reviewsCount: job.worker.rating_count || 38,
       }
     : routeWorker
-      ? { name: routeWorker.name, photo: routeWorker.photo, trade: routeWorker.trade, coopBranch: routeWorker.coopBranch || 'WORKMAT Cooperative' }
+      ? {
+          id: routeWorker.id,
+          name: routeWorker.name,
+          photo: routeWorker.photo,
+          trade: routeWorker.trade || 'Cooperative Technician',
+          coopBranch: routeWorker.coopBranch || 'WORKMAT Cooperative',
+          phone: routeWorker.phone || '9876543210',
+          rating: routeWorker.rating || 4.8,
+          reviewsCount: routeWorker.reviewsCount || 24,
+        }
       : ONGOING_BOOKING.worker;
+
   const serviceType = job?.service_type || ONGOING_BOOKING.serviceType;
   const jobStatus = job?.status || 'requested';
-  const totalAmount = job?.amounts?.total_amount || ONGOING_BOOKING.pricing.baseAmount;
+  const baseAmount = job?.amounts?.base_amount ?? ONGOING_BOOKING.pricing.baseAmount;
+  const approvedExtraAmount = job?.amounts?.extra_amount ?? 0;
+  const pendingExtraAmount = job?.amounts?.pending_extra_amount ?? 0;
+  const totalAmount = job?.amounts?.total_amount ?? (baseAmount + approvedExtraAmount);
   const jobIdDisplay = job?.id ? `WM-${job.id}` : ONGOING_BOOKING.bookingId;
+  const serviceItems = job?.services && job.services.length > 0
+    ? job.services
+    : ONGOING_BOOKING.items;
 
   // Build dynamic step descriptions from the live job
   const trackingSteps = [
-    { id: 1, title: 'Booking Confirmed', sub: workerInfo.name ? `Assigned to ${workerInfo.name}` : 'Waiting for worker…', icon: 'check-circle' },
+    {
+      id: 1,
+      title: 'Booking Confirmed',
+      sub: hasWorker ? `Assigned to ${workerInfo.name}` : 'Broadcasting to nearby workers…',
+      icon: 'check-circle',
+    },
     { id: 2, title: 'Worker On The Way', sub: STATUS_LABELS.on_the_way, icon: 'motorbike' },
     { id: 3, title: 'Worker Arrived', sub: `Share OTP ${otpCode} to start service`, icon: 'map-marker-check' },
     { id: 4, title: 'Work Started', sub: 'Inspection, repair & service in progress', icon: 'tools' },
@@ -100,7 +126,7 @@ const TrackBookingScreen = () => {
     }
   }, [routeJobId]);
 
-  // Initial fetch + poll every 10 s while screen is focused
+  // Initial fetch + poll every 3.5 s while screen is focused
   useFocusEffect(
     useCallback(() => {
       fetchJob();
@@ -118,9 +144,40 @@ const TrackBookingScreen = () => {
 
   const handleCallWorker = () => {
     Alert.alert(
-      'Masked Call',
-      `Calling ${workerInfo.name} through WORKMAT protected line.`,
+      'Masked Secure Call',
+      `Connecting to ${workerInfo.name} via WORKMAT secure relay.\nYour private phone number remains hidden.`,
       [{ text: 'Start Call' }, { text: 'Cancel', style: 'cancel' }]
+    );
+  };
+
+  const handleCancelBooking = () => {
+    if (!job?.id) {
+      navigation.goBack();
+      return;
+    }
+    Alert.alert(
+      'Cancel Booking?',
+      'Are you sure you want to cancel this booking? No penalty applies before service starts.',
+      [
+        { text: 'Keep Booking', style: 'cancel' },
+        {
+          text: 'Yes, Cancel',
+          style: 'destructive',
+          onPress: async () => {
+            setCancelling(true);
+            try {
+              await cancelJob(job.id);
+              Alert.alert('Booking Cancelled', 'Your booking has been cancelled successfully.', [
+                { text: 'OK', onPress: () => navigation.goBack() },
+              ]);
+            } catch (err) {
+              Alert.alert('Cancellation Error', err.message || 'Could not cancel booking.');
+            } finally {
+              setCancelling(false);
+            }
+          },
+        },
+      ]
     );
   };
 
@@ -140,10 +197,13 @@ const TrackBookingScreen = () => {
         <TouchableOpacity style={styles.backButton} onPress={() => navigation.goBack()}>
           <MaterialCommunityIcons name="arrow-left" size={24} color={COLORS.textPrimary} />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>Live Tracking</Text>
+        <View style={styles.headerCenter}>
+          <Text style={styles.headerTitle}>Live Booking Tracker</Text>
+          <Text style={styles.headerSubtitle}>Booking #{jobIdDisplay}</Text>
+        </View>
         <TouchableOpacity
           style={styles.helpButton}
-          onPress={() => Alert.alert('Support', 'Connecting with Cooperative Support Agent...')}
+          onPress={() => Alert.alert('Cooperative Helpline', '24x7 Customer Support: 1800-420-COOP')}
         >
           <MaterialCommunityIcons name="lifebuoy" size={22} color={COLORS.primary} />
         </TouchableOpacity>
@@ -152,7 +212,6 @@ const TrackBookingScreen = () => {
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
         {/* Map / Live Location Section */}
         <View style={styles.mapSectionCard}>
-          {/* Simulated Map Graphical Canvas */}
           <View style={styles.mapCanvas}>
             {/* Grid Map Road Lines */}
             <View style={styles.mapRoadHorizontal} />
@@ -168,28 +227,36 @@ const TrackBookingScreen = () => {
             </View>
 
             {/* Moving Worker Marker */}
-            <View style={styles.workerMarkerBox}>
-              <View style={styles.workerMarkerPin}>
-                <MaterialCommunityIcons name="motorbike" size={18} color={COLORS.white} />
+            {hasWorker && (
+              <View style={styles.workerMarkerBox}>
+                <View style={styles.workerMarkerPin}>
+                  <MaterialCommunityIcons name="motorbike" size={18} color={COLORS.white} />
+                </View>
+                <View style={styles.workerPulseCircle} />
+                <Text style={styles.workerMarkerText}>{workerInfo.name ? `${workerInfo.name.split(' ')[0]}` : 'Worker'}</Text>
               </View>
-              <View style={styles.workerPulseCircle} />
-              <Text style={styles.workerMarkerText}>{workerInfo.name ? `${workerInfo.name.split(' ')[0]}` : 'Worker'}</Text>
-            </View>
+            )}
 
             {/* Floating Live Badge */}
             <View style={styles.liveTrackingPill}>
               <View style={styles.liveGreenDot} />
-              <Text style={styles.liveTrackingPillText}>LIVE GPS TRACKING</Text>
+              <Text style={styles.liveTrackingPillText}>
+                {jobStatus === 'requested' ? 'SEARCHING NEARBY' : 'REAL-TIME SYNC'}
+              </Text>
             </View>
 
             {/* Floating ETA Card */}
             <View style={styles.etaFloatingCard}>
-              <View>
-                <Text style={styles.etaTitle}>Estimated Arrival</Text>
-                <Text style={styles.etaTimeText}>{STATUS_LABELS[jobStatus] || 'Tracking…'}</Text>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.etaTitle}>Booking Status</Text>
+                <Text style={styles.etaTimeText} numberOfLines={1}>
+                  {STATUS_LABELS[jobStatus] || 'Tracking…'}
+                </Text>
               </View>
               <View style={styles.speedPill}>
-                <Text style={styles.speedText}>Normal Traffic</Text>
+                <Text style={styles.speedText}>
+                  {jobStatus === 'requested' ? 'Matching' : 'Active'}
+                </Text>
               </View>
             </View>
           </View>
@@ -198,9 +265,9 @@ const TrackBookingScreen = () => {
         {/* Start OTP Code Card */}
         <View style={styles.otpCard}>
           <View style={styles.otpLeft}>
-            <Text style={styles.otpTitle}>Share Start OTP with Worker</Text>
+            <Text style={styles.otpTitle}>Start Verification OTP</Text>
             <Text style={styles.otpDesc}>
-              Do not share OTP until the worker arrives at your doorstep.
+              Share this 4-digit code with the technician upon doorstep arrival to begin work.
             </Text>
           </View>
           <View style={styles.otpCodeContainer}>
@@ -208,51 +275,140 @@ const TrackBookingScreen = () => {
           </View>
         </View>
 
-        {/* Worker Quick Contact Card */}
-        <View style={styles.workerCard}>
-          <Image source={{ uri: workerInfo.photo }} style={styles.workerAvatar} />
-          <View style={styles.workerMeta}>
-            <View style={styles.workerNameRow}>
-              <Text style={styles.workerName}>{workerInfo.name}</Text>
-              <MaterialCommunityIcons name="check-decagram" size={16} color={COLORS.primary} />
+        {/* Worker Quick Contact Card or Awaiting Match Banner */}
+        {hasWorker ? (
+          <View style={styles.workerCard}>
+            <Image source={{ uri: workerInfo.photo }} style={styles.workerAvatar} />
+            <View style={styles.workerMeta}>
+              <View style={styles.workerNameRow}>
+                <Text style={styles.workerName}>{workerInfo.name}</Text>
+                <MaterialCommunityIcons name="check-decagram" size={16} color={COLORS.primary} />
+              </View>
+              <Text style={styles.workerTrade}>{workerInfo.trade}</Text>
+              <View style={styles.workerRatingRow}>
+                <MaterialCommunityIcons name="star" size={14} color="#EAB308" />
+                <Text style={styles.workerRatingText}>
+                  {typeof workerInfo.rating === 'number' ? workerInfo.rating.toFixed(1) : '4.9'} ({workerInfo.reviewsCount} jobs)
+                </Text>
+              </View>
+              <Text style={styles.coopBranch}>{workerInfo.coopBranch}</Text>
             </View>
-            <Text style={styles.workerTrade}>{workerInfo.trade}</Text>
-            <Text style={styles.coopBranch}>{workerInfo.coopBranch}</Text>
-          </View>
 
-          <View style={styles.contactButtonsRow}>
-            <TouchableOpacity
-              style={styles.circleIconButton}
-              onPress={() => navigation.navigate('CustomerChat', { worker: workerInfo })}
-            >
-              <MaterialCommunityIcons name="chat-outline" size={20} color={COLORS.primary} />
-            </TouchableOpacity>
+            <View style={styles.contactButtonsRow}>
+              <TouchableOpacity
+                style={styles.circleIconButton}
+                onPress={() => navigation.navigate('CustomerChat', { worker: workerInfo, jobId: job?.id })}
+              >
+                <MaterialCommunityIcons name="chat-outline" size={20} color={COLORS.primary} />
+              </TouchableOpacity>
 
-            <TouchableOpacity
-              style={[styles.circleIconButton, styles.callIconActive]}
-              onPress={handleCallWorker}
-            >
-              <MaterialCommunityIcons name="phone-shield" size={20} color={COLORS.white} />
-            </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.circleIconButton, styles.callIconActive]}
+                onPress={handleCallWorker}
+              >
+                <MaterialCommunityIcons name="phone-shield" size={20} color={COLORS.white} />
+              </TouchableOpacity>
+            </View>
           </View>
-        </View>
+        ) : (
+          <View style={styles.searchingCard}>
+            <View style={styles.searchingIconCircle}>
+              <ActivityIndicator size="small" color={COLORS.primary} />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.searchingTitle}>Finding Nearby Technicians</Text>
+              <Text style={styles.searchingSub}>
+                Your request has been broadcasted to verified cooperative workers nearby.
+              </Text>
+            </View>
+          </View>
+        )}
 
         {/* Extra Amount Alert — only shown when there are pending extras */}
-        {job?.amounts?.pending_extra_amount > 0 && (
+        {pendingExtraAmount > 0 && (
           <TouchableOpacity
             style={styles.extraAmountTriggerBanner}
-            onPress={() => navigation.navigate('ExtraAmount', { jobId: job.id })}
+            onPress={() => navigation.navigate('ExtraAmount', { jobId: job?.id })}
             activeOpacity={0.85}
           >
             <View style={styles.extraBannerIcon}>
-              <MaterialCommunityIcons name="cash-plus" size={20} color="#B45309" />
+              <MaterialCommunityIcons name="cash-plus" size={22} color="#B45309" />
             </View>
             <View style={styles.extraBannerTextWrap}>
-              <Text style={styles.extraBannerTitle}>Extra Amount Requested (₹{job.amounts.pending_extra_amount})</Text>
-              <Text style={styles.extraBannerSub}>Worker requested additional work. Tap to review.</Text>
+              <Text style={styles.extraBannerTitle}>
+                Extra Amount Requested: ₹{pendingExtraAmount}
+              </Text>
+              <Text style={styles.extraBannerSub}>
+                Technician requested additional scope/parts. Tap to review & approve.
+              </Text>
             </View>
             <MaterialCommunityIcons name="chevron-right" size={22} color="#B45309" />
           </TouchableOpacity>
+        )}
+
+        {/* Booked Services & Pricing Card (Taken from backend) */}
+        <View style={styles.itemsCard}>
+          <View style={styles.itemsHeaderRow}>
+            <MaterialCommunityIcons name="clipboard-text-outline" size={18} color={COLORS.primary} />
+            <Text style={styles.itemsCardTitle}>Booked Services & Charges</Text>
+          </View>
+
+          <View style={styles.itemsList}>
+            {serviceItems.map((item, idx) => (
+              <View key={item.id || idx} style={styles.itemRow}>
+                <View style={styles.itemBullet} />
+                <Text style={styles.itemName}>{item.name}</Text>
+                <Text style={styles.itemPrice}>₹{item.price}</Text>
+              </View>
+            ))}
+          </View>
+
+          {job?.work_details ? (
+            <View style={styles.workNotesBox}>
+              <MaterialCommunityIcons name="text-box-outline" size={14} color={COLORS.textSecondary} />
+              <Text style={styles.workNotesText} numberOfLines={2}>
+                Notes: {job.work_details}
+              </Text>
+            </View>
+          ) : null}
+
+          <View style={styles.itemsDivider} />
+
+          {/* Pricing breakdown */}
+          <View style={styles.priceBreakdownRow}>
+            <Text style={styles.priceBreakdownLabel}>Base Service Amount</Text>
+            <Text style={styles.priceBreakdownVal}>₹{baseAmount}</Text>
+          </View>
+          {approvedExtraAmount > 0 && (
+            <View style={styles.priceBreakdownRow}>
+              <Text style={[styles.priceBreakdownLabel, { color: COLORS.success }]}>
+                Approved Extra Work
+              </Text>
+              <Text style={[styles.priceBreakdownVal, { color: COLORS.success }]}>
+                +₹{approvedExtraAmount}
+              </Text>
+            </View>
+          )}
+          <View style={[styles.priceBreakdownRow, styles.priceTotalRow]}>
+            <Text style={styles.totalPriceLabel}>Total Amount Due</Text>
+            <Text style={styles.totalPriceVal}>₹{totalAmount}</Text>
+          </View>
+        </View>
+
+        {/* Destination / Address Card */}
+        {job?.address && (
+          <View style={styles.addressCard}>
+            <View style={styles.addressIconWrap}>
+              <MaterialCommunityIcons name="map-marker-radius" size={20} color={COLORS.primary} />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.addressCardTitle}>Service Location</Text>
+              <Text style={styles.addressCardText}>{job.address}</Text>
+              {job.landmark ? (
+                <Text style={styles.addressCardLandmark}>Landmark: {job.landmark}</Text>
+              ) : null}
+            </View>
+          </View>
         )}
 
         {/* 5-Step Progress Stepper */}
@@ -319,10 +475,29 @@ const TrackBookingScreen = () => {
             })}
           </View>
         </View>
+
+        {/* Cancellation Option (Available before work starts) */}
+        {['requested', 'accepted'].includes(jobStatus) && (
+          <TouchableOpacity
+            style={styles.cancelBookingButton}
+            onPress={handleCancelBooking}
+            disabled={cancelling}
+            activeOpacity={0.7}
+          >
+            {cancelling ? (
+              <ActivityIndicator size="small" color="#DC2626" />
+            ) : (
+              <>
+                <MaterialCommunityIcons name="close-circle-outline" size={18} color="#DC2626" />
+                <Text style={styles.cancelBookingText}>Cancel Booking</Text>
+              </>
+            )}
+          </TouchableOpacity>
+        )}
       </ScrollView>
 
-      {/* Bottom Sticky Action */}
-      {currentStep === 5 && (
+      {/* Bottom Sticky Action for Payment */}
+      {(currentStep === 5 || jobStatus === 'completed') && (
         <View style={styles.bottomBar}>
           <TouchableOpacity
             style={styles.paymentCTAButton}
@@ -789,6 +964,206 @@ const styles = StyleSheet.create({
     fontSize: FONT_SIZE.md,
     fontWeight: FONT_WEIGHT.bold,
     color: COLORS.white,
+  },
+  headerCenter: {
+    alignItems: 'center',
+  },
+  headerSubtitle: {
+    fontSize: 11,
+    color: COLORS.textTertiary,
+    marginTop: 1,
+  },
+  workerRatingRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    marginTop: 2,
+  },
+  workerRatingText: {
+    fontSize: 11,
+    color: COLORS.textSecondary,
+    fontWeight: FONT_WEIGHT.semibold,
+  },
+  searchingCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#EFF6FF',
+    borderRadius: RADIUS.xl,
+    padding: SPACING.md,
+    borderWidth: 1.2,
+    borderColor: '#BFDBFE',
+    marginBottom: SPACING.lg,
+    gap: SPACING.md,
+  },
+  searchingIconCircle: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: '#DBEAFE',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  searchingTitle: {
+    fontSize: FONT_SIZE.sm,
+    fontWeight: FONT_WEIGHT.bold,
+    color: COLORS.primaryDark,
+  },
+  searchingSub: {
+    fontSize: 11,
+    color: COLORS.textSecondary,
+    marginTop: 2,
+    lineHeight: 16,
+  },
+  itemsCard: {
+    backgroundColor: COLORS.white,
+    borderRadius: RADIUS.xl,
+    padding: SPACING.lg,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    marginBottom: SPACING.lg,
+    ...SHADOWS.md,
+  },
+  itemsHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: SPACING.md,
+  },
+  itemsCardTitle: {
+    fontSize: FONT_SIZE.sm,
+    fontWeight: FONT_WEIGHT.bold,
+    color: COLORS.textPrimary,
+  },
+  itemsList: {
+    gap: 8,
+  },
+  itemRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 2,
+  },
+  itemBullet: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: COLORS.primary,
+    marginRight: 8,
+  },
+  itemName: {
+    flex: 1,
+    fontSize: 13,
+    color: COLORS.textPrimary,
+    fontWeight: FONT_WEIGHT.medium,
+  },
+  itemPrice: {
+    fontSize: 13,
+    fontWeight: FONT_WEIGHT.bold,
+    color: COLORS.textPrimary,
+  },
+  workNotesBox: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 6,
+    backgroundColor: COLORS.background,
+    borderRadius: RADIUS.md,
+    padding: SPACING.sm,
+    marginTop: SPACING.sm,
+  },
+  workNotesText: {
+    flex: 1,
+    fontSize: 11,
+    color: COLORS.textSecondary,
+    fontStyle: 'italic',
+  },
+  itemsDivider: {
+    height: 1,
+    backgroundColor: COLORS.border,
+    marginVertical: SPACING.md,
+  },
+  priceBreakdownRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginVertical: 2,
+  },
+  priceBreakdownLabel: {
+    fontSize: 12,
+    color: COLORS.textSecondary,
+  },
+  priceBreakdownVal: {
+    fontSize: 12,
+    fontWeight: FONT_WEIGHT.semibold,
+    color: COLORS.textPrimary,
+  },
+  priceTotalRow: {
+    marginTop: SPACING.xs,
+    paddingTop: SPACING.xs,
+    borderTopWidth: 1,
+    borderTopColor: '#F1F5F9',
+  },
+  totalPriceLabel: {
+    fontSize: FONT_SIZE.sm,
+    fontWeight: FONT_WEIGHT.bold,
+    color: COLORS.textPrimary,
+  },
+  totalPriceVal: {
+    fontSize: FONT_SIZE.md,
+    fontWeight: FONT_WEIGHT.extrabold,
+    color: COLORS.primary,
+  },
+  addressCard: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    backgroundColor: COLORS.white,
+    borderRadius: RADIUS.xl,
+    padding: SPACING.md,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    marginBottom: SPACING.lg,
+    gap: SPACING.sm,
+    ...SHADOWS.sm,
+  },
+  addressIconWrap: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: COLORS.primaryLight,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  addressCardTitle: {
+    fontSize: FONT_SIZE.xs,
+    fontWeight: FONT_WEIGHT.bold,
+    color: COLORS.textPrimary,
+  },
+  addressCardText: {
+    fontSize: 12,
+    color: COLORS.textSecondary,
+    marginTop: 2,
+  },
+  addressCardLandmark: {
+    fontSize: 11,
+    color: COLORS.textTertiary,
+    marginTop: 1,
+  },
+  cancelBookingButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: SPACING.md,
+    borderRadius: RADIUS.lg,
+    borderWidth: 1,
+    borderColor: '#FECACA',
+    backgroundColor: '#FEF2F2',
+    gap: 6,
+    marginTop: SPACING.sm,
+    marginBottom: SPACING.xl,
+  },
+  cancelBookingText: {
+    fontSize: 13,
+    fontWeight: FONT_WEIGHT.semibold,
+    color: '#DC2626',
   },
 });
 

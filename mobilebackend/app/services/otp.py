@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 
 from app.core.config import settings
 from app.core.security import hash_password, verify_password
-from app.models import Customer, PasswordReset, Worker
+from app.models import Customer, OtpVerification, PasswordReset, Worker
 
 logger = logging.getLogger(__name__)
 
@@ -206,3 +206,87 @@ def verify_customer_reset_code(db: Session, customer: Customer, code: str) -> tu
 def expose_code(code: str) -> str | None:
     """The code to echo back in the response — only ever in DEV_MODE."""
     return code if settings.DEV_MODE else None
+
+
+# ---------------------------------------------------------------------------
+# Signup OTP
+# ---------------------------------------------------------------------------
+
+def create_signup_otp(db: Session, phone: str) -> str:
+    """Invalidate any outstanding signup codes for this phone and issue a fresh one."""
+    now = datetime.now(timezone.utc)
+
+    outstanding = db.scalars(
+        select(OtpVerification).where(
+            OtpVerification.phone == phone,
+            OtpVerification.purpose == "signup",
+            OtpVerification.used_at.is_(None),
+        )
+    ).all()
+    for row in outstanding:
+        row.used_at = now
+
+    code = generate_code()
+    db.add(
+        OtpVerification(
+            phone=phone,
+            code_hash=hash_password(code),
+            purpose="signup",
+            expires_at=now + timedelta(minutes=CODE_TTL_MINUTES),
+        )
+    )
+    db.flush()
+
+    send_sms(
+        phone,
+        f"WORKMAT: your verification code for signup is {code}. "
+        f"It expires in {CODE_TTL_MINUTES} minutes.",
+    )
+    return code
+
+
+def verify_signup_otp(db: Session, phone: str, code: str) -> tuple[bool, str]:
+    """Check a submitted signup OTP for phone and consume it on success.
+
+    Returns (ok, reason).
+    """
+    now = datetime.now(timezone.utc)
+
+    otp_row = db.scalars(
+        select(OtpVerification)
+        .where(
+            OtpVerification.phone == phone,
+            OtpVerification.purpose == "signup",
+            OtpVerification.used_at.is_(None),
+        )
+        .order_by(OtpVerification.id.desc())
+        .limit(1)
+    ).first()
+
+    if otp_row is None:
+        return False, "No verification code has been requested for this phone number. Please request a new one."
+
+    if otp_row.expires_at <= now:
+        otp_row.used_at = now
+        db.flush()
+        return False, "This verification code has expired. Please request a new one."
+
+    if otp_row.attempts >= MAX_ATTEMPTS:
+        otp_row.used_at = now
+        db.flush()
+        return False, "Too many incorrect attempts. Please request a new verification code."
+
+    if not verify_password(code, otp_row.code_hash):
+        otp_row.attempts += 1
+        db.flush()
+        remaining = MAX_ATTEMPTS - otp_row.attempts
+        if remaining <= 0:
+            otp_row.used_at = now
+            db.flush()
+            return False, "Too many incorrect attempts. Please request a new verification code."
+        return False, f"Incorrect verification code. {remaining} attempt(s) remaining."
+
+    otp_row.used_at = now
+    db.flush()
+    return True, "OK"
+
