@@ -33,9 +33,9 @@ const DashboardPage = () => {
     { label: 'Total Workers', value: workers.length, change: '+8 this month', up: true, icon: <Users size={20} />, color: '#2563EB', bg: '#DBEAFE' },
     { label: 'Available Now', value: available, change: `${onJob} on job`, up: true, icon: <CheckCircle size={20} />, color: '#10B981', bg: '#D1FAE5' },
     { label: "Today's Bookings", value: dashboard.todayBookings, change: `${pendingBookings} pending`, up: true, icon: <Briefcase size={20} />, color: '#F59E0B', bg: '#FEF3C7' },
-    { label: "Today's Earnings", value: formatCurrency(dashboard.todayEarnings), change: '+12% vs yesterday', up: true, icon: <TrendingUp size={20} />, color: '#8B5CF6', bg: '#EDE9FE' },
-    { label: 'KYC Pending', value: kycPending, change: 'Need action', up: false, icon: <Clock size={20} />, color: '#F97316', bg: '#FFEDD5' },
-    { label: 'Open Complaints', value: openComplaints, change: '1 escalated', up: false, icon: <AlertTriangle size={20} />, color: '#EF4444', bg: '#FEE2E2' },
+    { label: "Today's Earnings", value: formatCurrency(dashboard.todayEarnings || 0), change: dashboard.todayEarnings > 0 ? 'Recorded today' : 'No jobs completed today', up: dashboard.todayEarnings > 0, icon: <TrendingUp size={20} />, color: '#8B5CF6', bg: '#EDE9FE' },
+    { label: 'KYC Pending', value: kycPending, change: `${kycPending} need review`, up: false, icon: <Clock size={20} />, color: '#F97316', bg: '#FFEDD5' },
+    { label: 'Open Complaints', value: openComplaints, change: openComplaints > 0 ? 'Needs resolution' : 'All resolved', up: openComplaints === 0, icon: <AlertTriangle size={20} />, color: '#EF4444', bg: '#FEE2E2' },
   ];
 
   const recentBookings = [...bookings].slice(0, 5);
@@ -51,7 +51,7 @@ const DashboardPage = () => {
               <div className="stat-value">{s.value}</div>
               <div className="stat-label">{s.label}</div>
               <div className={`stat-change ${s.up ? 'up' : 'down'}`}>
-                {s.up ? '▲' : '▼'} {s.change}
+                {s.up ? '▲' : '●'} {s.change}
               </div>
             </div>
           </div>
@@ -63,10 +63,10 @@ const DashboardPage = () => {
         <div className="card">
           <div className="card-header">
             <div>
-              <div className="card-title">Weekly Earnings</div>
-              <div className="card-subtitle">{formatCurrency(182500)} this week</div>
+              <div className="card-title">Weekly Earnings Overview</div>
+              <div className="card-subtitle">{formatCurrency(dashboard.todayEarnings || 0)} earned today</div>
             </div>
-            <span className="badge badge-success">↑ 14.2%</span>
+            <span className="badge badge-success">Active Society</span>
           </div>
           <div className="card-body" style={{ paddingTop: 10 }}>
             <ResponsiveContainer width="100%" height={200}>

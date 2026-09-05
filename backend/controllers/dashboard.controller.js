@@ -9,7 +9,13 @@ const getSummary = async (req, res, next) => {
       pool.query("SELECT COUNT(*) AS total, COUNT(*) FILTER (WHERE kyc_status='active') AS active, COUNT(*) FILTER (WHERE availability='available' AND kyc_status='active') AS available_now, COUNT(*) FILTER (WHERE availability='on_job' OR availability='dispatched') AS on_job, COUNT(*) FILTER (WHERE kyc_status IN ('pending','inspection_required')) AS kyc_pending FROM workers WHERE society_id=$1 AND is_active=TRUE", [sid]).catch(() => ({ rows: [{ total: 0, active: 0, available_now: 0, on_job: 0, kyc_pending: 0 }] })),
       pool.query("SELECT COUNT(*) AS total, COUNT(*) FILTER (WHERE status='pending') AS pending, COUNT(*) FILTER (WHERE DATE(requested_at)=CURRENT_DATE) AS today FROM jobs WHERE society_id=$1", [sid]).catch(() => ({ rows: [{ total: 0, pending: 0, today: 0 }] })),
       pool.query("SELECT COUNT(*) FILTER (WHERE status IN ('open','under_review')) AS open_count FROM job_reports").catch(() => ({ rows: [{ open_count: 0 }] })),
-      pool.query("SELECT COALESCE(SUM(total_amount) FILTER (WHERE DATE(paid_at)=CURRENT_DATE),0) AS today_earnings, COALESCE(SUM(total_amount) FILTER (WHERE DATE_TRUNC('month', paid_at)=DATE_TRUNC('month', NOW())),0) AS month_earnings FROM payments").catch(() => ({ rows: [{ today_earnings: 0, month_earnings: 0 }] })),
+      pool.query(`
+        SELECT COALESCE(SUM(p.total_amount) FILTER (WHERE DATE(p.paid_at)=CURRENT_DATE AND p.status='paid'),0) AS today_earnings,
+               COALESCE(SUM(p.total_amount) FILTER (WHERE DATE_TRUNC('month', p.paid_at)=DATE_TRUNC('month', NOW()) AND p.status='paid'),0) AS month_earnings
+        FROM payments p
+        LEFT JOIN jobs j ON p.job_id = j.id
+        WHERE (j.society_id = $1 OR j.society_id IS NULL)
+      `, [sid]).catch(() => ({ rows: [{ today_earnings: 0, month_earnings: 0 }] })),
     ]);
 
     const w = workersRes.rows[0] || {};

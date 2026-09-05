@@ -2,6 +2,8 @@ import React, { useState, useEffect } from 'react';
 import PortalSelector from './pages/PortalSelector';
 import SocietyApp from './pages/society/SocietyApp';
 
+import { authAPI } from './services/api';
+
 // Worker & Customer portals are built separately by other team members
 const ComingSoon = ({ role, onLogout }) => (
   <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', background: 'var(--bg-primary)', gap: 16 }}>
@@ -13,14 +15,38 @@ const ComingSoon = ({ role, onLogout }) => (
 );
 
 const App = () => {
-  const [session, setSession] = useState(() => {
-    try {
-      const saved = localStorage.getItem('gm_session');
-      return saved ? JSON.parse(saved) : null;
-    } catch {
-      return null;
-    }
-  });
+  const [session, setSession] = useState(null);
+  const [initializing, setInitializing] = useState(true);
+
+  // Validate session against server on startup
+  useEffect(() => {
+    const verifyAuth = async () => {
+      const savedToken = localStorage.getItem('gm_token');
+      const savedSession = localStorage.getItem('gm_session');
+      if (!savedToken || !savedSession) {
+        setSession(null);
+        setInitializing(false);
+        return;
+      }
+
+      try {
+        const parsed = JSON.parse(savedSession);
+        const res = await authAPI.getMe();
+        if (res.data?.success) {
+          setSession(parsed);
+        } else {
+          handleLogout();
+        }
+      } catch (err) {
+        // Token is invalid, expired, or server rejected
+        handleLogout();
+      } finally {
+        setInitializing(false);
+      }
+    };
+
+    verifyAuth();
+  }, []);
 
   const handleLogin = (role, token, data) => {
     const sess = { role, token, data };
@@ -34,6 +60,17 @@ const App = () => {
     localStorage.removeItem('gm_session');
     setSession(null);
   };
+
+  if (initializing) {
+    return (
+      <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--bg-primary)' }}>
+        <div style={{ textAlign: 'center' }}>
+          <div className="spinner" style={{ width: 36, height: 36, margin: '0 auto 12px' }} />
+          <p style={{ color: 'var(--text-muted)', fontSize: 14 }}>Authenticating...</p>
+        </div>
+      </div>
+    );
+  }
 
   if (!session) return <PortalSelector onLogin={handleLogin} />;
   if (session.role === 'society') return <SocietyApp session={session} onLogout={handleLogout} />;

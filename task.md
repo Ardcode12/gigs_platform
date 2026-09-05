@@ -1,0 +1,12 @@
+- `[x]` Clean up development environment and Vite ports
+- `[x]` Migrate Supabase Database to V2 Schema (No dummy data)
+- `[x]` Re-implement Backend API with Unified Role-Based Auth
+- `[x]` Write `backend/controllers/bookings.controller.js`
+- `[x]` Write `backend/controllers/workers.controller.js`
+- `[x]` Write `backend/controllers/auth.controller.js`
+- `[x]` Set up backend dummy login (`SOC-TEST-1`, `pass`)
+- `[x]` Frontend Society Portal Architecture (`SocietyApp.jsx`)
+- `[x]` Update `SocietyContext.jsx` to fetch real data via `services/api.js`
+- `[x]` Rewrite `WorkersPage.jsx` with 2-tier KYC flow (Certificate / Community Voucher)
+- `[x]` Verify Frontend Society Dashboard and Login Flow
+- `[x]` Final Polish and Delivery

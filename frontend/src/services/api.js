@@ -18,6 +18,7 @@ export const authAPI = {
   customerRegister: (data) => api.post('/auth/customer/register', data),
   customerLogin:    (data) => api.post('/auth/customer/login', data),
   logout:           ()     => api.post('/auth/logout'),
+  getMe:            ()     => api.get('/auth/me'),
 };
 
 // ── SOCIETY — DASHBOARD ─────────────────────────────────

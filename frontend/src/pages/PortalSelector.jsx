@@ -45,9 +45,14 @@ const PortalSelector = ({ onLogin }) => {
     try {
       let res;
       if (selected === 'society') {
+        if (!form.code || !form.password) {
+          setError('Please enter both Society Code and Password.');
+          setLoading(false);
+          return;
+        }
         const payload = {
-          societyCode: form.code || 'SOC-TEST-1',
-          password: form.password || 'pass',
+          societyCode: form.code.trim(),
+          password: form.password,
         };
         res = await authAPI.societyLogin(payload);
         onLogin('society', res.data.token, res.data.society);
@@ -66,18 +71,7 @@ const PortalSelector = ({ onLogin }) => {
         }
       }
     } catch (err) {
-      // If network/backend error in development, provide fallback direct login for society so testing is unblocked!
-      if (selected === 'society') {
-        console.warn('API fallback login triggered:', err);
-        onLogin('society', 'dev-dummy-token-fallback', {
-          id: 1,
-          code: form.code || 'SOC-TEST-1',
-          name: 'GigMat Test Society',
-          district: 'Chennai',
-        });
-        return;
-      }
-      setError(err.response?.data?.message || 'Login failed. Please check connection and try again.');
+      setError(err.response?.data?.message || 'Login failed. Please check your credentials and try again.');
     } finally {
       setLoading(false);
     }
@@ -160,7 +154,7 @@ const PortalSelector = ({ onLogin }) => {
                     className="modern-portal-card"
                     onClick={() => {
                       setSelected(p.id);
-                      setForm(p.id === 'society' ? { code: 'SOC-TEST-1', password: 'pass' } : {});
+                      setForm({});
                       setError('');
                       setIsRegister(false);
                     }}
@@ -205,7 +199,7 @@ const PortalSelector = ({ onLogin }) => {
                       <input
                         type="text"
                         placeholder="e.g. SOC-TEST-1"
-                        value={form.code !== undefined ? form.code : 'SOC-TEST-1'}
+                        value={form.code || ''}
                         onChange={e => set('code', e.target.value)}
                         required
                       />
@@ -214,8 +208,8 @@ const PortalSelector = ({ onLogin }) => {
                       <label>Password</label>
                       <input
                         type="password"
-                        placeholder="Enter password"
-                        value={form.password !== undefined ? form.password : 'pass'}
+                        placeholder="Enter your password"
+                        value={form.password || ''}
                         onChange={e => set('password', e.target.value)}
                         required
                       />
@@ -274,27 +268,9 @@ const PortalSelector = ({ onLogin }) => {
                 
                 {selected === 'society' && (
                   <div style={{ textAlign: 'center', marginTop: 14 }}>
-                    <button
-                      type="button"
-                      onClick={() => onLogin('society', 'dev-token-auto', { id: 1, code: 'SOC-TEST-1', name: 'GigMat Test Society', district: 'Chennai' })}
-                      style={{
-                        background: '#eff6ff',
-                        color: '#2563eb',
-                        border: '1px solid #bfdbfe',
-                        padding: '9px 18px',
-                        borderRadius: 10,
-                        fontSize: 13,
-                        fontWeight: 600,
-                        cursor: 'pointer',
-                        width: '100%',
-                        transition: 'all 0.2s',
-                      }}
-                    >
-                      ⚡ Instant Demo Login (Skip Form)
-                    </button>
-                    <p style={{ marginTop: 8, fontSize: 12, color: '#64748b' }}>
-                      Auto-filled for testing. Click either button to enter!
-                    </p>
+                    <div style={{ padding: '10px 14px', background: '#eff6ff', borderRadius: 10, border: '1px solid #bfdbfe', fontSize: 12, color: '#1e40af' }}>
+                      🔑 <strong>Society Login:</strong> Code: <code>SOC-TEST-1</code> | Password: <code>pass</code>
+                    </div>
                   </div>
                 )}
               </form>

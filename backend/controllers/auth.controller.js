@@ -57,25 +57,9 @@ const societyLogin = async (req, res, next) => {
       }
     }
 
-    // DEVELOPMENT DUMMY OVERRIDE:
-    // If DB is empty, or credentials don't match real society record, automatically log in with dummy session
-    const token = sign({
-      role: 'society',
-      societyId: 1,
-      societyCode: code || 'SOC-TEST-1',
-      name: 'GigMat Test Society',
-    });
-
-    return res.json({
-      success: true,
-      role: 'society',
-      token,
-      society: {
-        id: 1,
-        code: code || 'SOC-TEST-1',
-        name: 'GigMat Test Society',
-        district: 'Chennai',
-      },
+    return res.status(401).json({
+      success: false,
+      message: 'Invalid Society Code or Password. Please check your credentials.',
     });
   } catch (err) { next(err); }
 };
@@ -236,4 +220,15 @@ const customerLogin = async (req, res, next) => {
 // ── SHARED LOGOUT ────────────────────────────────────────
 const logout = (req, res) => res.json({ success: true, message: 'Logged out.' });
 
-module.exports = { societyLogin, workerLogin, customerRegister, customerLogin, logout };
+// ── GET AUTH USER (Verify Session) ───────────────────────
+const getMe = async (req, res, next) => {
+  try {
+    res.json({
+      success: true,
+      user: req.user,
+      role: req.user?.role,
+    });
+  } catch (err) { next(err); }
+};
+
+module.exports = { societyLogin, workerLogin, customerRegister, customerLogin, logout, getMe };
