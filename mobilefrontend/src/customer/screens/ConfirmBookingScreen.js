@@ -8,10 +8,13 @@ import {
   ScrollView,
   Image,
   Alert,
+  ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { COLORS, SPACING, RADIUS, FONT_SIZE, FONT_WEIGHT, SHADOWS } from '../../theme';
+import { useAuth } from '../../context/AuthContext';
+import { createJob } from '../../api/jobs';
 import {
   RECOMMENDED_WORKERS,
   CUSTOMER_PROFILE,
@@ -20,25 +23,70 @@ import {
 
 const ConfirmBookingScreen = () => {
   const navigation = useNavigation();
+  const { customer } = useAuth();
   const { worker = RECOMMENDED_WORKERS[0], hasExtra = false } = useRoute().params ?? {};
   const baseAmount = 650;
   const extraAmount = hasExtra ? 100 : 0;
   const finalAmount = baseAmount + extraAmount;
 
   const [serviceTime, setServiceTime] = useState('Today, 3:45 PM - 4:45 PM');
-  const address = CUSTOMER_PROFILE.savedAddresses[0];
+  const [submitting, setSubmitting] = useState(false);
 
-  const handleConfirm = () => {
-    Alert.alert(
-      'Booking Confirmed! 🎉',
-      `Your service has been confirmed with ${worker.name}. OTP for starting service is 4829.`,
-      [
-        {
-          text: 'Track Booking Live',
-          onPress: () => navigation.navigate('TrackBooking'),
-        },
-      ]
-    );
+  // Use real customer address if available, else fall back to mock
+  const address = customer?.saved_addresses?.[0]
+    ? {
+        type: customer.saved_addresses[0].title,
+        address: customer.saved_addresses[0].address,
+        landmark: customer.saved_addresses[0].landmark,
+        lat: customer.saved_addresses[0].lat,
+        lng: customer.saved_addresses[0].lng,
+      }
+    : { ...CUSTOMER_PROFILE.savedAddresses[0], lat: 12.9279, lng: 77.6751, landmark: 'Near Green Glen Park Gate 2' };
+
+  const handleConfirm = async () => {
+    if (submitting) return;
+    setSubmitting(true);
+
+    try {
+      const payload = {
+        service_type: AI_DETECTION_SAMPLE.detectedCategory,
+        service_icon: 'flash',
+        work_details: AI_DETECTION_SAMPLE.userInput,
+        address: address.address,
+        landmark: address.landmark || null,
+        lat: address.lat,
+        lng: address.lng,
+        base_amount: finalAmount,
+        services: AI_DETECTION_SAMPLE.detectedServices.map((s) => ({
+          name: s.name,
+          price: s.totalPrice,
+        })),
+        // Only send a preferred worker if the ID is a real backend integer
+        preferred_worker_id: typeof worker.id === 'number' ? worker.id : null,
+      };
+
+      const job = await createJob(payload);
+
+      Alert.alert(
+        'Booking Confirmed! 🎉',
+        `Your service has been confirmed. OTP for starting service is ${job.otp_code}.`,
+        [
+          {
+            text: 'Track Booking Live',
+            onPress: () =>
+              navigation.navigate('TrackBooking', {
+                jobId: job.id,
+                otp: job.otp_code,
+                workerData: worker,
+              }),
+          },
+        ],
+      );
+    } catch (err) {
+      Alert.alert('Booking Failed', err.message || 'Could not create booking. Please try again.');
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   const handleCancel = () => {
@@ -191,12 +239,19 @@ const ConfirmBookingScreen = () => {
           </TouchableOpacity>
 
           <TouchableOpacity
-            style={styles.confirmBookingButton}
+            style={[styles.confirmBookingButton, submitting && { opacity: 0.7 }]}
             onPress={handleConfirm}
             activeOpacity={0.85}
+            disabled={submitting}
           >
-            <Text style={styles.confirmBookingText}>Confirm Booking</Text>
-            <MaterialCommunityIcons name="check-bold" size={18} color={COLORS.white} />
+            {submitting ? (
+              <ActivityIndicator size="small" color={COLORS.white} />
+            ) : (
+              <>
+                <Text style={styles.confirmBookingText}>Confirm Booking</Text>
+                <MaterialCommunityIcons name="check-bold" size={18} color={COLORS.white} />
+              </>
+            )}
           </TouchableOpacity>
         </View>
       </ScrollView>

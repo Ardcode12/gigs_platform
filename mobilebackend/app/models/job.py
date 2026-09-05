@@ -54,6 +54,7 @@ class Job(Base):
         job_status_enum, default=JobStatus.REQUESTED, nullable=False, index=True
     )
     reject_reason: Mapped[str | None] = mapped_column(String(300))
+    otp_code: Mapped[str | None] = mapped_column(String(10), nullable=True)
 
     requested_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
@@ -62,6 +63,7 @@ class Job(Base):
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
     customer: Mapped["Customer"] = relationship(lazy="joined")  # noqa: F821
+    worker: Mapped["Worker | None"] = relationship(lazy="joined")  # noqa: F821
     services: Mapped[list["JobService"]] = relationship(
         back_populates="job", cascade="all, delete-orphan", order_by="JobService.id"
     )

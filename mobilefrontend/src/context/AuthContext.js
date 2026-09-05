@@ -28,6 +28,7 @@ const AuthContext = createContext(null);
 export const AuthProvider = ({ children }) => {
   const [role, setRole] = useState(null);
   const [worker, setWorker] = useState(null);
+  const [customer, setCustomer] = useState(null);
   const [mustChangePassword, setMustChangePassword] = useState(false);
   // `restoring` covers the first frame, before AsyncStorage has been read.
   const [restoring, setRestoring] = useState(true);
@@ -37,6 +38,7 @@ export const AuthProvider = ({ children }) => {
     await AsyncStorage.removeItem(ROLE_KEY);
     setRole(null);
     setWorker(null);
+    setCustomer(null);
     setMustChangePassword(false);
   }, []);
 
@@ -46,6 +48,7 @@ export const AuthProvider = ({ children }) => {
       AsyncStorage.removeItem(ROLE_KEY);
       setRole(null);
       setWorker(null);
+      setCustomer(null);
       setMustChangePassword(false);
     });
   }, []);
@@ -56,19 +59,24 @@ export const AuthProvider = ({ children }) => {
     (async () => {
       try {
         const storedRole = await AsyncStorage.getItem(ROLE_KEY);
+        const { access } = await loadTokens();
 
-        if (storedRole === ROLES.CUSTOMER) {
-          if (!cancelled) setRole(ROLES.CUSTOMER);
+        if (storedRole === ROLES.CUSTOMER && access) {
+          const me = await authApi.getCustomerMe();
+          if (!cancelled) {
+            setCustomer(me);
+            setRole(ROLES.CUSTOMER);
+          }
           return;
         }
 
-        const { access } = await loadTokens();
-        if (access) {
+        if (storedRole === ROLES.WORKER && access) {
           const me = await authApi.getMe();
           if (!cancelled) {
             setWorker(me);
             setRole(ROLES.WORKER);
           }
+          return;
         }
       } catch {
         // Expired or invalid stored token — stay signed out, silently.
@@ -87,21 +95,32 @@ export const AuthProvider = ({ children }) => {
     const data = await authApi.login(identifier, password);
     await AsyncStorage.setItem(ROLE_KEY, ROLES.WORKER);
     setWorker(data.worker);
+    setCustomer(null);
     setRole(ROLES.WORKER);
     setMustChangePassword(data.must_change_password);
     return data;
   }, []);
 
-  /**
-   * Customer sign-in. There are no customer endpoints yet, so this opens the
-   * customer app against its mock data instead of authenticating. Swap the body
-   * for a real call once those endpoints exist — no caller needs to change.
-   */
-  const signInCustomer = useCallback(async () => {
+  /** Customer sign-in: phone or email + password, against the real backend. */
+  const signInCustomer = useCallback(async (identifier, password) => {
+    const data = await authApi.customerLogin(identifier, password);
     await AsyncStorage.setItem(ROLE_KEY, ROLES.CUSTOMER);
+    setCustomer(data.customer);
     setWorker(null);
     setMustChangePassword(false);
     setRole(ROLES.CUSTOMER);
+    return data;
+  }, []);
+
+  /** Customer sign-up: register new customer and store session against real backend. */
+  const signUpCustomer = useCallback(async (payload) => {
+    const data = await authApi.customerSignup(payload);
+    await AsyncStorage.setItem(ROLE_KEY, ROLES.CUSTOMER);
+    setCustomer(data.customer);
+    setWorker(null);
+    setMustChangePassword(false);
+    setRole(ROLES.CUSTOMER);
+    return data;
   }, []);
 
   const completePasswordChange = useCallback(async (currentPassword, newPassword) => {
@@ -117,36 +136,54 @@ export const AuthProvider = ({ children }) => {
     return me;
   }, []);
 
+  const refreshCustomer = useCallback(async () => {
+    const me = await authApi.getCustomerMe();
+    setCustomer(me);
+    return me;
+  }, []);
+
   /** Optimistic local patch, so a toggle doesn't wait for a round trip. */
   const patchWorker = useCallback((patch) => {
     setWorker((prev) => (prev ? { ...prev, ...patch } : prev));
+  }, []);
+
+  const patchCustomer = useCallback((patch) => {
+    setCustomer((prev) => (prev ? { ...prev, ...patch } : prev));
   }, []);
 
   const value = useMemo(
     () => ({
       role,
       worker,
+      customer,
       restoring,
       mustChangePassword,
       isSignedIn: !!role && !mustChangePassword,
       signIn,
       signInCustomer,
+      signUpCustomer,
       signOut,
       completePasswordChange,
       refreshWorker,
+      refreshCustomer,
       patchWorker,
+      patchCustomer,
     }),
     [
       role,
       worker,
+      customer,
       restoring,
       mustChangePassword,
       signIn,
       signInCustomer,
+      signUpCustomer,
       signOut,
       completePasswordChange,
       refreshWorker,
+      refreshCustomer,
       patchWorker,
+      patchCustomer,
     ],
   );
 

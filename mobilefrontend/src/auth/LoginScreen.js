@@ -38,7 +38,7 @@ const ROLE_TABS = [
 
 const LoginScreen = () => {
   const navigation = useNavigation();
-  const { signIn, signInCustomer } = useAuth();
+  const { signIn, signInCustomer, signUpCustomer } = useAuth();
 
   const [role, setRole] = useState('worker');
   // Customer-only: registration is not offered to workers.
@@ -75,8 +75,15 @@ const LoginScreen = () => {
     try {
       if (isWorker) {
         await signIn(identifier.trim(), password);
+      } else if (isRegister) {
+        await signUpCustomer({
+          name: fullName.trim(),
+          phone: identifier.trim(),
+          email: email.trim() || null,
+          password,
+        });
       } else {
-        await signInCustomer();
+        await signInCustomer(identifier.trim(), password);
       }
       // Nothing to navigate: the auth gate swaps the whole stack out.
     } catch (caught) {
@@ -264,7 +271,7 @@ const LoginScreen = () => {
             <Text style={styles.noteText}>
               {isWorker
                 ? 'Worker accounts are created by your society. Contact your society office if you don’t have a worker ID.'
-                : 'Customer accounts are not connected to the server yet — signing in opens the customer app with sample data.'}
+                : 'Create a new account with your phone number or sign in with your credentials.'}
             </Text>
           </View>
         </ScrollView>

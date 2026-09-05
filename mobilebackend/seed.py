@@ -148,22 +148,65 @@ def seed(db) -> None:
     ramesh, suresh, _anil = workers
 
     # -- customers ---------------------------------------------------------
+    customer_password_hash = hash_password("customer123")
     customers = [
         Customer(
             name="Priya Sharma",
             phone="+919811111111",
+            email="priya@example.com",
+            password_hash=customer_password_hash,
             city="Noida",
             rating_avg=4.8,
             rating_count=23,
+            saved_addresses=[
+                {
+                    "id": "addr_1",
+                    "title": "Home",
+                    "address": "Flat 402, Lotus Boulevard, Sector 100, Noida",
+                    "landmark": "Near Clubhouse",
+                    "lat": 28.5355,
+                    "lng": 77.3910,
+                }
+            ],
         ),
         Customer(
-            name="Amit Verma", phone="+919822222222", city="Noida", rating_avg=4.5, rating_count=11
+            name="Amit Verma",
+            phone="+919822222222",
+            email="amit@example.com",
+            password_hash=customer_password_hash,
+            city="Noida",
+            rating_avg=4.5,
+            rating_count=11,
+            saved_addresses=[
+                {
+                    "id": "addr_2",
+                    "title": "Home",
+                    "address": "House 12, Sector 62, Noida",
+                    "landmark": "Opposite Tech Park",
+                    "lat": 28.6270,
+                    "lng": 77.3720,
+                }
+            ],
         ),
         Customer(
-            name="Neha Gupta", phone="+919833333333", city="Noida", rating_avg=4.9, rating_count=34
+            name="Neha Gupta",
+            phone="+919833333333",
+            email="neha@example.com",
+            password_hash=customer_password_hash,
+            city="Noida",
+            rating_avg=4.9,
+            rating_count=34,
+            saved_addresses=[],
         ),
         Customer(
-            name="Rahul Mehta", phone="+919844444444", city="Noida", rating_avg=4.2, rating_count=7
+            name="Rahul Mehta",
+            phone="+919844444444",
+            email="rahul@example.com",
+            password_hash=customer_password_hash,
+            city="Noida",
+            rating_avg=4.2,
+            rating_count=7,
+            saved_addresses=[],
         ),
     ]
     db.add_all(customers)

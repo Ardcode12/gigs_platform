@@ -25,10 +25,16 @@ def verify_password(plain: str, hashed: str) -> bool:
         return False
 
 
-def _create_token(subject: str, token_type: TokenType, expires_delta: timedelta) -> str:
+UserRole = Literal["worker", "customer"]
+
+
+def _create_token(
+    subject: str, token_type: TokenType, expires_delta: timedelta, role: UserRole = "worker"
+) -> str:
     now = datetime.now(timezone.utc)
     payload: dict[str, Any] = {
         "sub": subject,
+        "role": role,
         "type": token_type,
         "iat": now,
         "exp": now + expires_delta,
@@ -41,6 +47,7 @@ def create_access_token(worker_id: int) -> str:
         str(worker_id),
         "access",
         timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES),
+        role="worker",
     )
 
 
@@ -49,11 +56,32 @@ def create_refresh_token(worker_id: int) -> str:
         str(worker_id),
         "refresh",
         timedelta(days=settings.REFRESH_TOKEN_EXPIRE_DAYS),
+        role="worker",
     )
 
 
-def decode_token(token: str, expected_type: TokenType) -> int | None:
-    """Return the worker id, or None if the token is invalid/expired/wrong type."""
+def create_customer_access_token(customer_id: int) -> str:
+    return _create_token(
+        str(customer_id),
+        "access",
+        timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES),
+        role="customer",
+    )
+
+
+def create_customer_refresh_token(customer_id: int) -> str:
+    return _create_token(
+        str(customer_id),
+        "refresh",
+        timedelta(days=settings.REFRESH_TOKEN_EXPIRE_DAYS),
+        role="customer",
+    )
+
+
+def decode_token(
+    token: str, expected_type: TokenType, expected_role: UserRole = "worker"
+) -> int | None:
+    """Return the user id, or None if the token is invalid/expired/wrong type/wrong role."""
     try:
         payload = jwt.decode(
             token,
@@ -64,6 +92,10 @@ def decode_token(token: str, expected_type: TokenType) -> int | None:
         return None
 
     if payload.get("type") != expected_type:
+        return None
+
+    token_role = payload.get("role", "worker")
+    if token_role != expected_role:
         return None
 
     sub = payload.get("sub")

@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 from app.core.config import settings
 from app.core.security import decode_token
 from app.db.session import get_db
-from app.models import Worker
+from app.models import Customer, Worker
 
 bearer_scheme = HTTPBearer(auto_error=False)
 
@@ -28,7 +28,7 @@ def get_current_worker(
     if credentials is None:
         raise unauthorized
 
-    worker_id = decode_token(credentials.credentials, "access")
+    worker_id = decode_token(credentials.credentials, "access", expected_role="worker")
     if worker_id is None:
         raise unauthorized
 
@@ -39,6 +39,31 @@ def get_current_worker(
 
 
 CurrentWorker = Annotated[Worker, Depends(get_current_worker)]
+
+
+def get_current_customer(
+    db: DbSession,
+    credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(bearer_scheme)],
+) -> Customer:
+    unauthorized = HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Not authenticated",
+        headers={"WWW-Authenticate": "Bearer"},
+    )
+    if credentials is None:
+        raise unauthorized
+
+    customer_id = decode_token(credentials.credentials, "access", expected_role="customer")
+    if customer_id is None:
+        raise unauthorized
+
+    customer = db.get(Customer, customer_id)
+    if customer is None or not customer.is_active:
+        raise unauthorized
+    return customer
+
+
+CurrentCustomer = Annotated[Customer, Depends(get_current_customer)]
 
 
 def require_admin_key(x_admin_key: Annotated[str | None, Header()] = None) -> None:

@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { useNavigation } from '@react-navigation/native';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { useNavigation, useRoute, useFocusEffect } from '@react-navigation/native';
 import {
   View,
   Text,
@@ -8,40 +8,130 @@ import {
   ScrollView,
   Image,
   Alert,
+  ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { COLORS, SPACING, RADIUS, FONT_SIZE, FONT_WEIGHT, SHADOWS } from '../../theme';
+import { getJobDetail, getActiveJob, cancelJob } from '../../api/jobs';
 import { ONGOING_BOOKING } from '../data/customerMockData';
 
-const TRACKING_STEPS = [
-  { id: 1, title: 'Booking Confirmed', sub: 'Assigned to Ramesh Kumar', icon: 'check-circle' },
-  { id: 2, title: 'Worker On The Way', sub: '1.4 km away • Arriving in 15 mins', icon: 'motorbike' },
-  { id: 3, title: 'Worker Arrived', sub: 'Share OTP 4829 to start service', icon: 'map-marker-check' },
-  { id: 4, title: 'Work Started', sub: 'Inspection, repair & wiring in progress', icon: 'tools' },
-  { id: 5, title: 'Work Completed', sub: 'Review, payment & digital receipt', icon: 'star-check' },
-];
+/**
+ * Map a backend status string to a human label for the stepper subtitles.
+ */
+const STATUS_LABELS = {
+  requested: 'Waiting for a worker to accept…',
+  accepted: 'A worker has accepted your booking',
+  on_the_way: 'Worker is heading to your location',
+  arrived: 'Worker arrived — share OTP to begin',
+  work_started: 'Service is in progress',
+  completed: 'Work finished — review & pay',
+  cancelled: 'This booking was cancelled',
+  rejected: 'No worker available right now',
+};
+
+/**
+ * Backend current_step (0-indexed over JOB_PROGRESS_STEPS which starts at
+ * ACCEPTED) maps to our 5-step UI as follows:
+ *   backend null/0 → UI 1  (Confirmed / Accepted)
+ *   backend 1      → UI 2  (On The Way)
+ *   backend 2      → UI 3  (Arrived)
+ *   backend 3      → UI 4  (Work Started)
+ *   backend 4      → UI 5  (Completed)
+ */
+const toUiStep = (backendStep) => {
+  if (backendStep == null || backendStep <= 0) return 1;
+  return backendStep + 1; // 1→2, 2→3, 3→4, 4→5
+};
+
+const POLL_INTERVAL_MS = 10_000;
 
 const TrackBookingScreen = () => {
   const navigation = useNavigation();
-  const [currentStep, setCurrentStep] = useState(2); // 2: Worker On The Way
-  const booking = ONGOING_BOOKING;
+  const route = useRoute();
+  const { jobId: routeJobId, otp: routeOtp, workerData: routeWorker } = route.params ?? {};
 
-  const handleNextSimulationStep = () => {
-    if (currentStep < 5) {
-      setCurrentStep(currentStep + 1);
-    } else {
-      navigation.navigate('Payment', { amount: booking.pricing.baseAmount });
+  const [job, setJob] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const pollRef = useRef(null);
+
+  // Derive UI values from the real job, with sensible fallbacks
+  const currentStep = job ? toUiStep(job.current_step) : 1;
+  const otpCode = job?.otp_code || routeOtp || ONGOING_BOOKING.otpCode;
+  const workerInfo = job?.worker
+    ? {
+        name: job.worker.name,
+        photo: job.worker.photo_url || ONGOING_BOOKING.worker.photo,
+        trade: 'Cooperative Technician',
+        coopBranch: 'WORKMAT Cooperative',
+        phone: job.worker.phone,
+      }
+    : routeWorker
+      ? { name: routeWorker.name, photo: routeWorker.photo, trade: routeWorker.trade, coopBranch: routeWorker.coopBranch || 'WORKMAT Cooperative' }
+      : ONGOING_BOOKING.worker;
+  const serviceType = job?.service_type || ONGOING_BOOKING.serviceType;
+  const jobStatus = job?.status || 'requested';
+  const totalAmount = job?.amounts?.total_amount || ONGOING_BOOKING.pricing.baseAmount;
+  const jobIdDisplay = job?.id ? `WM-${job.id}` : ONGOING_BOOKING.bookingId;
+
+  // Build dynamic step descriptions from the live job
+  const trackingSteps = [
+    { id: 1, title: 'Booking Confirmed', sub: workerInfo.name ? `Assigned to ${workerInfo.name}` : 'Waiting for worker…', icon: 'check-circle' },
+    { id: 2, title: 'Worker On The Way', sub: STATUS_LABELS.on_the_way, icon: 'motorbike' },
+    { id: 3, title: 'Worker Arrived', sub: `Share OTP ${otpCode} to start service`, icon: 'map-marker-check' },
+    { id: 4, title: 'Work Started', sub: 'Inspection, repair & service in progress', icon: 'tools' },
+    { id: 5, title: 'Work Completed', sub: 'Review, payment & digital receipt', icon: 'star-check' },
+  ];
+
+  /** Fetch job detail — either by explicit ID or via the active-job endpoint. */
+  const fetchJob = useCallback(async () => {
+    try {
+      let data;
+      if (routeJobId) {
+        data = await getJobDetail(routeJobId);
+      } else {
+        data = await getActiveJob();
+      }
+      if (data) setJob(data);
+    } catch {
+      // Network blip — keep last known state
+    } finally {
+      setLoading(false);
     }
-  };
+  }, [routeJobId]);
+
+  // Initial fetch + poll every 10 s while screen is focused
+  useFocusEffect(
+    useCallback(() => {
+      fetchJob();
+      pollRef.current = setInterval(fetchJob, POLL_INTERVAL_MS);
+      return () => clearInterval(pollRef.current);
+    }, [fetchJob]),
+  );
+
+  // Stop polling when job reaches a terminal state
+  useEffect(() => {
+    if (job && ['completed', 'cancelled', 'rejected'].includes(job.status)) {
+      clearInterval(pollRef.current);
+    }
+  }, [job?.status]);
 
   const handleCallWorker = () => {
     Alert.alert(
       'Masked Call',
-      `Calling ${booking.worker.name} through WORKMAT protected line.`,
+      `Calling ${workerInfo.name} through WORKMAT protected line.`,
       [{ text: 'Start Call' }, { text: 'Cancel', style: 'cancel' }]
     );
   };
+
+  if (loading && !job) {
+    return (
+      <SafeAreaView style={[styles.safeArea, { justifyContent: 'center', alignItems: 'center' }]}>
+        <ActivityIndicator size="large" color={COLORS.primary} />
+        <Text style={{ color: COLORS.textSecondary, marginTop: SPACING.md }}>Loading booking…</Text>
+      </SafeAreaView>
+    );
+  }
 
   return (
     <SafeAreaView style={styles.safeArea}>
@@ -83,7 +173,7 @@ const TrackBookingScreen = () => {
                 <MaterialCommunityIcons name="motorbike" size={18} color={COLORS.white} />
               </View>
               <View style={styles.workerPulseCircle} />
-              <Text style={styles.workerMarkerText}>Ramesh (1.4 km)</Text>
+              <Text style={styles.workerMarkerText}>{workerInfo.name ? `${workerInfo.name.split(' ')[0]}` : 'Worker'}</Text>
             </View>
 
             {/* Floating Live Badge */}
@@ -96,7 +186,7 @@ const TrackBookingScreen = () => {
             <View style={styles.etaFloatingCard}>
               <View>
                 <Text style={styles.etaTitle}>Estimated Arrival</Text>
-                <Text style={styles.etaTimeText}>3:45 PM (in 15 mins)</Text>
+                <Text style={styles.etaTimeText}>{STATUS_LABELS[jobStatus] || 'Tracking…'}</Text>
               </View>
               <View style={styles.speedPill}>
                 <Text style={styles.speedText}>Normal Traffic</Text>
@@ -114,26 +204,26 @@ const TrackBookingScreen = () => {
             </Text>
           </View>
           <View style={styles.otpCodeContainer}>
-            <Text style={styles.otpCodeText}>{booking.otpCode}</Text>
+            <Text style={styles.otpCodeText}>{otpCode}</Text>
           </View>
         </View>
 
         {/* Worker Quick Contact Card */}
         <View style={styles.workerCard}>
-          <Image source={{ uri: booking.worker.photo }} style={styles.workerAvatar} />
+          <Image source={{ uri: workerInfo.photo }} style={styles.workerAvatar} />
           <View style={styles.workerMeta}>
             <View style={styles.workerNameRow}>
-              <Text style={styles.workerName}>{booking.worker.name}</Text>
+              <Text style={styles.workerName}>{workerInfo.name}</Text>
               <MaterialCommunityIcons name="check-decagram" size={16} color={COLORS.primary} />
             </View>
-            <Text style={styles.workerTrade}>{booking.worker.trade}</Text>
-            <Text style={styles.coopBranch}>{booking.worker.coopBranch}</Text>
+            <Text style={styles.workerTrade}>{workerInfo.trade}</Text>
+            <Text style={styles.coopBranch}>{workerInfo.coopBranch}</Text>
           </View>
 
           <View style={styles.contactButtonsRow}>
             <TouchableOpacity
               style={styles.circleIconButton}
-              onPress={() => navigation.navigate('CustomerChat', { worker: booking.worker })}
+              onPress={() => navigation.navigate('CustomerChat', { worker: workerInfo })}
             >
               <MaterialCommunityIcons name="chat-outline" size={20} color={COLORS.primary} />
             </TouchableOpacity>
@@ -147,38 +237,36 @@ const TrackBookingScreen = () => {
           </View>
         </View>
 
-        {/* Extra Amount Alert Trigger Link (if pending) */}
-        <TouchableOpacity
-          style={styles.extraAmountTriggerBanner}
-          onPress={() => navigation.navigate('ExtraAmount')}
-          activeOpacity={0.85}
-        >
-          <View style={styles.extraBannerIcon}>
-            <MaterialCommunityIcons name="cash-plus" size={20} color="#B45309" />
-          </View>
-          <View style={styles.extraBannerTextWrap}>
-            <Text style={styles.extraBannerTitle}>Extra Amount Requested (₹100)</Text>
-            <Text style={styles.extraBannerSub}>Worker requested for additional wiring. Tap to review.</Text>
-          </View>
-          <MaterialCommunityIcons name="chevron-right" size={22} color="#B45309" />
-        </TouchableOpacity>
+        {/* Extra Amount Alert — only shown when there are pending extras */}
+        {job?.amounts?.pending_extra_amount > 0 && (
+          <TouchableOpacity
+            style={styles.extraAmountTriggerBanner}
+            onPress={() => navigation.navigate('ExtraAmount', { jobId: job.id })}
+            activeOpacity={0.85}
+          >
+            <View style={styles.extraBannerIcon}>
+              <MaterialCommunityIcons name="cash-plus" size={20} color="#B45309" />
+            </View>
+            <View style={styles.extraBannerTextWrap}>
+              <Text style={styles.extraBannerTitle}>Extra Amount Requested (₹{job.amounts.pending_extra_amount})</Text>
+              <Text style={styles.extraBannerSub}>Worker requested additional work. Tap to review.</Text>
+            </View>
+            <MaterialCommunityIcons name="chevron-right" size={22} color="#B45309" />
+          </TouchableOpacity>
+        )}
 
         {/* 5-Step Progress Stepper */}
         <View style={styles.progressCard}>
           <View style={styles.progressHeaderRow}>
             <Text style={styles.progressCardTitle}>Booking Progress</Text>
-            <TouchableOpacity onPress={handleNextSimulationStep}>
-              <Text style={styles.simLink}>
-                {currentStep < 5 ? 'Advance Step (Simulate)' : 'Proceed to Payment →'}
-              </Text>
-            </TouchableOpacity>
+            <Text style={styles.simLink}>#{jobIdDisplay}</Text>
           </View>
 
           <View style={styles.stepperContainer}>
-            {TRACKING_STEPS.map((step, idx) => {
+            {trackingSteps.map((step, idx) => {
               const isCompleted = step.id < currentStep;
               const isCurrent = step.id === currentStep;
-              const isLast = idx === TRACKING_STEPS.length - 1;
+              const isLast = idx === trackingSteps.length - 1;
 
               return (
                 <View key={step.id} style={styles.stepItemRow}>
@@ -238,9 +326,9 @@ const TrackBookingScreen = () => {
         <View style={styles.bottomBar}>
           <TouchableOpacity
             style={styles.paymentCTAButton}
-            onPress={() => navigation.navigate('Payment', { amount: 650 })}
+            onPress={() => navigation.navigate('Payment', { amount: totalAmount, jobId: job?.id })}
           >
-            <Text style={styles.paymentCTAText}>Work Completed • Pay ₹650</Text>
+            <Text style={styles.paymentCTAText}>Work Completed • Pay ₹{totalAmount}</Text>
             <MaterialCommunityIcons name="arrow-right" size={20} color={COLORS.white} />
           </TouchableOpacity>
         </View>

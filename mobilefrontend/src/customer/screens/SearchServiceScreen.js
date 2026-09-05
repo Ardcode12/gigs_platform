@@ -124,7 +124,7 @@ const SearchServiceScreen = () => {
             onPress={handleProceedToAi}
             activeOpacity={0.85}
           >
-            <MaterialCommunityIcons name="sparkles" size={20} color={COLORS.white} />
+            <MaterialCommunityIcons name="creation" size={20} color={COLORS.white} />
             <Text style={styles.aiAnalyseButtonText}>Analyze & Detect Services</Text>
             <MaterialCommunityIcons name="arrow-right" size={20} color={COLORS.white} />
           </TouchableOpacity>

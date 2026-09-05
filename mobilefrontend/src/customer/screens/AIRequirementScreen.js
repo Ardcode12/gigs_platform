@@ -81,7 +81,7 @@ const AIRequirementScreen = () => {
         {/* AI Detection Banner */}
         <View style={styles.detectionBanner}>
           <View style={styles.sparkleIconBox}>
-            <MaterialCommunityIcons name="sparkles" size={24} color={COLORS.white} />
+            <MaterialCommunityIcons name="creation" size={24} color={COLORS.white} />
           </View>
           <View style={styles.bannerTextWrap}>
             <Text style={styles.bannerTitle}>Identified Trade Category</Text>

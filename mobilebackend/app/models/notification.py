@@ -29,8 +29,11 @@ class Notification(Base):
     __tablename__ = "notifications"
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    worker_id: Mapped[int] = mapped_column(
-        ForeignKey("workers.id", ondelete="CASCADE"), nullable=False, index=True
+    worker_id: Mapped[int | None] = mapped_column(
+        ForeignKey("workers.id", ondelete="CASCADE"), nullable=True, index=True
+    )
+    customer_id: Mapped[int | None] = mapped_column(
+        ForeignKey("customers.id", ondelete="CASCADE"), nullable=True, index=True
     )
     type: Mapped[NotificationType] = mapped_column(notification_type_enum, nullable=False)
     title: Mapped[str] = mapped_column(String(200), nullable=False)

@@ -30,7 +30,7 @@ export const SERVICE_CATEGORIES = [
 export const POPULAR_SERVICES = [
   { id: 'pop_1', name: 'Ceiling Fan Repair', price: 'From ₹250', category: 'Electrician', rating: 4.8, icon: 'fan' },
   { id: 'pop_2', name: 'Tap & Leak Repair', price: 'From ₹199', category: 'Plumber', rating: 4.9, icon: 'pipe-leak' },
-  { id: 'pop_3', name: 'Deep Home Cleaning', price: 'From ₹899', category: 'Cleaner', rating: 4.7, icon: 'sparkles' },
+  { id: 'pop_3', name: 'Deep Home Cleaning', price: 'From ₹899', category: 'Cleaner', rating: 4.7, icon: 'creation' },
   { id: 'pop_4', name: 'Door Lock Repair', price: 'From ₹299', category: 'Carpenter', rating: 4.8, icon: 'lock-reset' },
 ];
 

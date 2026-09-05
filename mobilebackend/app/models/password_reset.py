@@ -16,8 +16,11 @@ class PasswordReset(Base):
     __tablename__ = "password_resets"
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    worker_id: Mapped[int] = mapped_column(
-        ForeignKey("workers.id", ondelete="CASCADE"), nullable=False, index=True
+    worker_id: Mapped[int | None] = mapped_column(
+        ForeignKey("workers.id", ondelete="CASCADE"), nullable=True, index=True
+    )
+    customer_id: Mapped[int | None] = mapped_column(
+        ForeignKey("customers.id", ondelete="CASCADE"), nullable=True, index=True
     )
     code_hash: Mapped[str] = mapped_column(String(255), nullable=False)
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
