@@ -36,10 +36,11 @@ from app.schemas.customer import (
     SendSignupOtpResponse,
 )
 from app.services.otp import (
+    OtpProviderError,
     create_customer_reset_code,
     create_signup_otp,
-    expose_code,
     mask_phone,
+    normalize_phone,
     verify_customer_reset_code,
     verify_signup_otp,
 )
@@ -74,7 +75,15 @@ def _find_customer(db: DbSession, identifier: str) -> Customer | None:
 
 @router.post("/send-signup-otp", response_model=SendSignupOtpResponse)
 def send_signup_otp(payload: SendSignupOtpRequest, db: DbSession) -> SendSignupOtpResponse:
-    existing_phone = db.scalars(select(Customer).where(Customer.phone == payload.phone)).first()
+    try:
+        normalized_phone = normalize_phone(payload.phone)
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(exc),
+        ) from exc
+
+    existing_phone = db.scalars(select(Customer).where(Customer.phone == normalized_phone)).first()
     if existing_phone is not None:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
@@ -91,19 +100,31 @@ def send_signup_otp(payload: SendSignupOtpRequest, db: DbSession) -> SendSignupO
                 detail="A customer with this email address already exists",
             )
 
-    code = create_signup_otp(db, payload.phone)
+    try:
+        create_signup_otp(db, normalized_phone)
+    except HTTPException:
+        raise
+    except OtpProviderError as exc:
+        raise HTTPException(status_code=exc.http_status, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=str(exc),
+        ) from exc
+
     db.commit()
 
     return SendSignupOtpResponse(
-        message=f"Verification code sent to {mask_phone(payload.phone)}",
-        masked_phone=mask_phone(payload.phone),
-        dev_code=expose_code(code),
+        message=f"Verification code sent to {mask_phone(normalized_phone)}",
+        masked_phone=mask_phone(normalized_phone),
     )
 
 
 @router.post("/signup", response_model=CustomerLoginResponse, status_code=status.HTTP_201_CREATED)
 def signup(payload: CustomerSignupRequest, db: DbSession) -> CustomerLoginResponse:
-    existing_phone = db.scalars(select(Customer).where(Customer.phone == payload.phone)).first()
+    normalized_phone = normalize_phone(payload.phone)
+
+    existing_phone = db.scalars(select(Customer).where(Customer.phone == normalized_phone)).first()
     if existing_phone is not None:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
@@ -120,7 +141,7 @@ def signup(payload: CustomerSignupRequest, db: DbSession) -> CustomerLoginRespon
                 detail="A customer with this email address already exists",
             )
 
-    ok, reason = verify_signup_otp(db, payload.phone, payload.otp)
+    ok, reason = verify_signup_otp(db, normalized_phone, payload.otp)
     if not ok:
         db.commit()
         raise HTTPException(
@@ -130,7 +151,7 @@ def signup(payload: CustomerSignupRequest, db: DbSession) -> CustomerLoginRespon
 
     customer = Customer(
         name=payload.name,
-        phone=payload.phone,
+        phone=normalized_phone,
         email=payload.email,
         password_hash=hash_password(payload.password),
         city=payload.city,
@@ -260,13 +281,15 @@ def forgot_password(payload: ForgotPasswordRequest, db: DbSession) -> ForgotPass
             message="If that account is registered, a reset code has been sent to the phone number on file."
         )
 
-    code = create_customer_reset_code(db, customer)
+    try:
+        create_customer_reset_code(db, customer)
+    except OtpProviderError as exc:
+        raise HTTPException(status_code=exc.http_status, detail=str(exc)) from exc
     db.commit()
 
     return ForgotPasswordResponse(
         message="If that account is registered, a reset code has been sent to the phone number on file.",
         masked_phone=mask_phone(customer.phone),
-        dev_code=expose_code(code),
     )
 
 

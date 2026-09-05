@@ -33,11 +33,9 @@ const SignupOtpScreen = () => {
     password = '',
     city = null,
     maskedPhone = '',
-    devCode: initialDevCode = null,
   } = route.params ?? {};
 
-  const [devCode, setDevCode] = useState(initialDevCode);
-  const [code, setCode] = useState(initialDevCode ?? '');
+  const [code, setCode] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [resending, setResending] = useState(false);
   const [error, setError] = useState(null);
@@ -80,11 +78,7 @@ const SignupOtpScreen = () => {
     setResending(true);
     setError(null);
     try {
-      const data = await sendSignupOtp({ phone, email });
-      if (data?.dev_code) {
-        setDevCode(data.dev_code);
-        setCode(data.dev_code);
-      }
+      await sendSignupOtp({ phone, email });
       setCountdown(30);
     } catch (caught) {
       setError(caught.message || 'Failed to resend code.');
@@ -125,15 +119,6 @@ const SignupOtpScreen = () => {
               Please enter the 6-digit verification code sent to your mobile number to complete your
               account setup.
             </Text>
-
-            {!!devCode && (
-              <View style={styles.devBox}>
-                <MaterialCommunityIcons name="flask-outline" size={18} color="#B45309" />
-                <Text style={styles.devText}>
-                  Dev mode: code {devCode} was automatically filled for testing.
-                </Text>
-              </View>
-            )}
 
             <Input
               label="6-Digit Verification Code"

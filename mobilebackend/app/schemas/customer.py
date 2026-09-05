@@ -50,7 +50,6 @@ class SendSignupOtpRequest(BaseModel):
 class SendSignupOtpResponse(BaseModel):
     message: str
     masked_phone: str
-    dev_code: str | None = None
 
 
 class CustomerSignupRequest(BaseModel):

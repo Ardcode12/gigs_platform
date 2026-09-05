@@ -35,8 +35,6 @@ class ForgotPasswordResponse(BaseModel):
 
     message: str
     masked_phone: str | None = None
-    #: Populated only when DEV_MODE is on, so the flow is testable without SMS.
-    dev_code: str | None = None
 
 
 class ResetPasswordRequest(BaseModel):
