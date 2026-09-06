@@ -1,91 +1,142 @@
-import React, { useState } from 'react';
-import { Zap } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
+import { AuthLayout } from '../components/AuthLayout.jsx';
+import { Field } from '../components/Field.jsx';
+import { Button } from '../components/Button.jsx';
+import { Alert } from '../components/Alert.jsx';
+import { MailIcon, LockIcon } from '../components/icons.jsx';
+import { useAuth } from '../context/AuthContext.jsx';
+import { readErrorMessage, readFieldErrors } from '../api/client.js';
 
-const LoginPage = ({ onLogin }) => {
-  const [societyId, setSocietyId] = useState('SOC-TN-CHE-01');
-  const [password, setPassword] = useState('society123');
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState('');
+const REMEMBERED_EMAIL_KEY = 'authority.rememberedEmail';
 
-  const handleLogin = async (e) => {
-    e.preventDefault();
-    setError('');
-    setLoading(true);
-    await new Promise(r => setTimeout(r, 1200));
-    if (societyId === 'SOC-TN-CHE-01' && password === 'society123') {
-      localStorage.setItem('society_token', 'demo_token_abc123');
-      localStorage.setItem('society_info', JSON.stringify({ id: societyId, name: 'Chennai Central Gig Society' }));
-      onLogin();
-    } else {
-      setError('Invalid Society ID or password. Use SOC-TN-CHE-01 / society123');
-    }
-    setLoading(false);
-  };
-
-  return (
-    <div className="login-page">
-      <div className="login-card slide-in">
-        <div className="login-logo">
-          <div className="login-logo-icon">G</div>
-          <div>
-            <div style={{ fontSize: 22, fontWeight: 800, color: 'var(--text-primary)' }}>GigMat</div>
-            <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>Society Dashboard</div>
-          </div>
-        </div>
-
-        <div style={{ marginBottom: 24 }}>
-          <h2 style={{ fontSize: 20, fontWeight: 700, marginBottom: 4 }}>Society Login</h2>
-          <p style={{ fontSize: 13, color: 'var(--text-muted)' }}>Use your Federation-issued Society ID to sign in</p>
-        </div>
-
-        {error && (
-          <div className="alert alert-danger" style={{ marginBottom: 16 }}>
-            <Zap size={14} /> {error}
-          </div>
-        )}
-
-        <form onSubmit={handleLogin}>
-          <div className="form-group">
-            <label className="form-label">Society ID</label>
-            <input
-              className="form-input"
-              placeholder="e.g. SOC-TN-CHE-01"
-              value={societyId}
-              onChange={e => setSocietyId(e.target.value)}
-              required
-            />
-          </div>
-          <div className="form-group">
-            <label className="form-label">Password</label>
-            <input
-              className="form-input"
-              type="password"
-              placeholder="Enter your password"
-              value={password}
-              onChange={e => setPassword(e.target.value)}
-              required
-            />
-          </div>
-          <button
-            type="submit"
-            className="btn btn-primary w-full"
-            style={{ width: '100%', justifyContent: 'center', padding: '12px', fontSize: 15, borderRadius: 12, marginTop: 8 }}
-            disabled={loading}
-          >
-            {loading ? <><span className="spinner" style={{ width: 16, height: 16, borderWidth: 2 }} /> Verifying...</> : 'Sign In to Dashboard'}
-          </button>
-        </form>
-
-        <p className="login-footer-text">
-          🔒 Secured by GigMat Federation Platform · SIH 2026
-        </p>
-
-        <div className="alert alert-info" style={{ marginTop: 16, fontSize: 12 }}>
-          <strong>Demo:</strong> ID: SOC-TN-CHE-01 &nbsp;|&nbsp; Password: society123
-        </div>
-      </div>
-    </div>
-  );
+/** Explains why the officer was returned to this screen. */
+const REDIRECT_NOTICES = {
+  timeout: 'You were signed out after a period of inactivity. Please sign in again.',
+  expired: 'Your session has expired. Please sign in again.',
 };
 
-export default LoginPage;
+export default function LoginPage() {
+  const { signIn } = useAuth();
+  const navigate = useNavigate();
+  const location = useLocation();
+  const [searchParams] = useSearchParams();
+
+  const rememberedEmail = localStorage.getItem(REMEMBERED_EMAIL_KEY) ?? '';
+
+  const [form, setForm] = useState({ email: rememberedEmail, password: '' });
+  const [remember, setRemember] = useState(Boolean(rememberedEmail));
+  const [fieldErrors, setFieldErrors] = useState({});
+  const [error, setError] = useState('');
+  const [notice, setNotice] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+
+  useEffect(() => {
+    setNotice(REDIRECT_NOTICES[searchParams.get('reason')] ?? '');
+  }, [searchParams]);
+
+  const update = (key) => (event) => {
+    setForm((prev) => ({ ...prev, [key]: event.target.value }));
+    setFieldErrors((prev) => ({ ...prev, [key]: undefined }));
+    setError('');
+  };
+
+  function validate() {
+    const errors = {};
+    if (!form.email.trim()) errors.email = 'Email is required.';
+    else if (!/^\S+@\S+\.\S+$/.test(form.email.trim())) errors.email = 'Enter a valid email address.';
+    if (!form.password) errors.password = 'Password is required.';
+    return errors;
+  }
+
+  async function handleSubmit(event) {
+    event.preventDefault();
+    setError('');
+    setNotice('');
+
+    const errors = validate();
+    if (Object.keys(errors).length > 0) {
+      setFieldErrors(errors);
+      return;
+    }
+
+    setSubmitting(true);
+    try {
+      await signIn(form.email.trim(), form.password);
+
+      if (remember) localStorage.setItem(REMEMBERED_EMAIL_KEY, form.email.trim());
+      else localStorage.removeItem(REMEMBERED_EMAIL_KEY);
+
+      // Return them to whatever they were trying to reach before the redirect.
+      navigate(location.state?.from?.pathname ?? '/dashboard', { replace: true });
+    } catch (err) {
+      setFieldErrors(readFieldErrors(err));
+      setError(readErrorMessage(err, 'Unable to sign in. Please try again.'));
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <AuthLayout
+      eyebrow="Government Access"
+      title="Sign in to the Authority Portal"
+      description="Use the official credentials issued to you by the department."
+    >
+      <form className="auth__form" onSubmit={handleSubmit} noValidate>
+        <Alert variant="warning">{notice}</Alert>
+        <Alert variant="error">{error}</Alert>
+
+        <Field
+          label="Official email"
+          type="email"
+          name="email"
+          icon={MailIcon}
+          placeholder="officer@cooperative.gov.in"
+          autoComplete="username"
+          autoFocus
+          value={form.email}
+          onChange={update('email')}
+          error={fieldErrors.email}
+          disabled={submitting}
+        />
+
+        <Field
+          label="Password"
+          type="password"
+          name="password"
+          icon={LockIcon}
+          placeholder="Enter your password"
+          autoComplete="current-password"
+          value={form.password}
+          onChange={update('password')}
+          error={fieldErrors.password}
+          disabled={submitting}
+        />
+
+        <div className="auth__row">
+          <label className="checkbox">
+            <input
+              type="checkbox"
+              checked={remember}
+              onChange={(event) => setRemember(event.target.checked)}
+              disabled={submitting}
+            />
+            Remember my email
+          </label>
+
+          <Link to="/forgot-password">Forgot password?</Link>
+        </div>
+
+        <Button type="submit" block loading={submitting}>
+          {submitting ? 'Signing in…' : 'Sign in'}
+        </Button>
+
+        <p className="auth__meta">
+          Authority accounts are provisioned by the department. Contact your administrator if you
+          need access.
+        </p>
+      </form>
+    </AuthLayout>
+  );
+}

@@ -1,80 +1,50 @@
-import React, { useState, useEffect } from 'react';
-import PortalSelector from './pages/PortalSelector';
-import SocietyApp from './pages/society/SocietyApp';
+import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { AuthProvider } from './context/AuthContext.jsx';
+import { ProtectedRoute, PublicOnlyRoute } from './components/RouteGuards.jsx';
+import LoginPage from './pages/LoginPage.jsx';
+import ForgotPasswordPage from './pages/ForgotPasswordPage.jsx';
+import ResetPasswordPage from './pages/ResetPasswordPage.jsx';
+import DashboardPage from './pages/DashboardPage.jsx';
 
-import { authAPI } from './services/api';
+export default function App() {
+  return (
+    <BrowserRouter>
+      <AuthProvider>
+        <Routes>
+          <Route
+            path="/login"
+            element={
+              <PublicOnlyRoute>
+                <LoginPage />
+              </PublicOnlyRoute>
+            }
+          />
+          <Route
+            path="/forgot-password"
+            element={
+              <PublicOnlyRoute>
+                <ForgotPasswordPage />
+              </PublicOnlyRoute>
+            }
+          />
 
-// Worker & Customer portals are built separately by other team members
-const ComingSoon = ({ role, onLogout }) => (
-  <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', background: 'var(--bg-primary)', gap: 16 }}>
-    <div style={{ fontSize: 64 }}>{role === 'worker' ? '🔧' : '📱'}</div>
-    <h2 style={{ color: 'var(--text-primary)', margin: 0 }}>{role === 'worker' ? 'Worker' : 'Customer'} Portal</h2>
-    <p style={{ color: 'var(--text-muted)', margin: 0 }}>This portal is being built by another team. Coming soon.</p>
-    <button className="btn btn-primary" onClick={onLogout} style={{ marginTop: 8 }}>← Back to Portal Selector</button>
-  </div>
-);
+          {/* Reachable while signed in: an officer may follow a reset link
+              from a session that is still active. */}
+          <Route path="/reset-password" element={<ResetPasswordPage />} />
 
-const App = () => {
-  const [session, setSession] = useState(null);
-  const [initializing, setInitializing] = useState(true);
+          <Route
+            path="/dashboard"
+            element={
+              <ProtectedRoute>
+                <DashboardPage />
+              </ProtectedRoute>
+            }
+          />
 
-  // Validate session against server on startup
-  useEffect(() => {
-    const verifyAuth = async () => {
-      const savedToken = localStorage.getItem('gm_token');
-      const savedSession = localStorage.getItem('gm_session');
-      if (!savedToken || !savedSession) {
-        setSession(null);
-        setInitializing(false);
-        return;
-      }
-
-      try {
-        const parsed = JSON.parse(savedSession);
-        const res = await authAPI.getMe();
-        if (res.data?.success) {
-          setSession(parsed);
-        } else {
-          handleLogout();
-        }
-      } catch (err) {
-        // Token is invalid, expired, or server rejected
-        handleLogout();
-      } finally {
-        setInitializing(false);
-      }
-    };
-
-    verifyAuth();
-  }, []);
-
-  const handleLogin = (role, token, data) => {
-    const sess = { role, token, data };
-    localStorage.setItem('gm_token', token);
-    localStorage.setItem('gm_session', JSON.stringify(sess));
-    setSession(sess);
-  };
-
-  const handleLogout = () => {
-    localStorage.removeItem('gm_token');
-    localStorage.removeItem('gm_session');
-    setSession(null);
-  };
-
-  if (initializing) {
-    return (
-      <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--bg-primary)' }}>
-        <div style={{ textAlign: 'center' }}>
-          <div className="spinner" style={{ width: 36, height: 36, margin: '0 auto 12px' }} />
-          <p style={{ color: 'var(--text-muted)', fontSize: 14 }}>Authenticating...</p>
-        </div>
-      </div>
-    );
-  }
-
-  if (!session) return <PortalSelector onLogin={handleLogin} />;
-  if (session.role === 'society') return <SocietyApp session={session} onLogout={handleLogout} />;
-  return <ComingSoon role={session.role} onLogout={handleLogout} />;
-};
-
-export default App;
+          <Route path="/" element={<Navigate to="/dashboard" replace />} />
+          <Route path="*" element={<Navigate to="/dashboard" replace />} />
+        </Routes>
+      </AuthProvider>
+    </BrowserRouter>
+  );
+}

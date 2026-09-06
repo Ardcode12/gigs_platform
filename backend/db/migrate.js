@@ -1,45 +1,53 @@
-// Direct schema runner — uses single transaction
-require('dotenv').config();
-const { Pool } = require('pg');
-const fs = require('fs');
-const path = require('path');
+/**
+ * Applies db/migrations/*.sql to the Supabase project in .env.
+ *
+ * Supabase's JS client cannot execute arbitrary DDL, so this connects over the
+ * Postgres wire protocol instead. It needs DATABASE_URL to be set; without it,
+ * run the SQL by hand in the Supabase SQL editor.
+ *
+ *   node db/migrate.js
+ */
+import { readdir, readFile } from 'node:fs/promises';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import dotenv from 'dotenv';
 
-const pool = new Pool({
-  connectionString: process.env.DATABASE_URL,
-  ssl: { rejectUnauthorized: false },
-});
+const here = path.dirname(fileURLToPath(import.meta.url));
+dotenv.config({ path: path.resolve(here, '../.env') });
 
-async function runSchema() {
-  const client = await pool.connect();
-  try {
-    console.log('🔗 Connected to Supabase...\n');
-    const sql = fs.readFileSync(path.join(__dirname, 'schema_v2.sql'), 'utf8');
-    console.log('📦 Applying schema_v2.sql...');
-    await client.query(sql);
-    console.log('✅ Schema V2 applied successfully!\n');
+const connectionString = process.env.DATABASE_URL;
 
-    // Verify new tables
-    const res = await client.query(`
-      SELECT tablename FROM pg_tables WHERE schemaname = 'public' ORDER BY tablename
-    `);
-    console.log('Tables in DB:');
-    res.rows.forEach(r => console.log(' •', r.tablename));
-
-    // Verify new columns on workers
-    const wcols = await client.query(`
-      SELECT column_name FROM information_schema.columns
-      WHERE table_name = 'workers' AND column_name IN
-      ('worker_unique_id','kyc_status','category','kyc_method','availability')
-    `);
-    console.log('\nNew worker columns:', wcols.rows.map(r => r.column_name).join(', '));
-
-  } catch (err) {
-    console.error('❌ Error:', err.message);
-    if (err.detail) console.error('   Detail:', err.detail);
-  } finally {
-    client.release();
-    await pool.end();
-  }
+if (!connectionString) {
+  console.error(
+    '\n  DATABASE_URL is not set in backend/.env.\n' +
+      '  Either add it, or paste db/migrations/001_authority_auth.sql into the\n' +
+      '  Supabase dashboard SQL editor and run it there.\n'
+  );
+  process.exit(1);
 }
 
-runSchema();
+const { default: pg } = await import('pg').catch(() => {
+  console.error('\n  The "pg" package is required for this script: npm i pg\n');
+  process.exit(1);
+});
+
+const client = new pg.Client({ connectionString, ssl: { rejectUnauthorized: false } });
+
+const dir = path.join(here, 'migrations');
+const files = (await readdir(dir)).filter((f) => f.endsWith('.sql')).sort();
+
+await client.connect();
+
+try {
+  for (const file of files) {
+    process.stdout.write(`  applying ${file} ... `);
+    await client.query(await readFile(path.join(dir, file), 'utf8'));
+    console.log('done');
+  }
+  console.log('\n  Migrations applied.\n');
+} catch (error) {
+  console.error(`\n  Migration failed: ${error.message}\n`);
+  process.exitCode = 1;
+} finally {
+  await client.end();
+}
