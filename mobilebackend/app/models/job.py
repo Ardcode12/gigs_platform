@@ -79,6 +79,7 @@ class Job(Base):
     completion_otp_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     completion_otp_attempts: Mapped[int] = mapped_column(default=0, nullable=False)
     completion_verified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    completion_otp_code: Mapped[str | None] = mapped_column(String(10), nullable=True)
 
     customer: Mapped["Customer"] = relationship(lazy="joined")  # noqa: F821
     worker: Mapped["Worker | None"] = relationship(lazy="joined")  # noqa: F821

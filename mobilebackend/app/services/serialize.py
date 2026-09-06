@@ -254,6 +254,7 @@ def serialize_customer_job_detail(db: Session, job: Job) -> CustomerJobDetail:
         status=job.status,
         current_step=current_step(job.status),
         otp_code=job.otp_code,
+        completion_otp_code=job.completion_otp_code,
         worker=assigned_worker,
         address=job.address,
         landmark=job.landmark,

@@ -409,9 +409,16 @@ def update_status(
 
 
 def _issue_job_otp(job: Job, kind: str) -> str:
-    code = generate_code()
+    if kind == "arrival":
+        # Arrival OTP = the original booking otp_code so customer already has it
+        code = job.otp_code if job.otp_code else generate_code()
+        job.otp_code = code
+    else:
+        # Completion OTP = fresh random code; stored separately so it differs from arrival
+        code = generate_code()
+        job.completion_otp_code = code
     setattr(job, f"{kind}_otp_hash", hash_password(code))
-    setattr(job, f"{kind}_otp_expires_at", datetime.now(timezone.utc) + timedelta(minutes=30))
+    setattr(job, f"{kind}_otp_expires_at", datetime.now(timezone.utc) + timedelta(hours=24))
     setattr(job, f"{kind}_otp_attempts", 0)
     return code
 

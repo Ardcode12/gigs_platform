@@ -63,7 +63,8 @@ const TrackBookingScreen = () => {
 
   // Derive UI values only from the API response.
   const currentStep = job ? toUiStep(job.current_step) : 0;
-  const otpCode = job?.otp_code || routeOtp;
+  const otpCode = job?.otp_code || routeOtp;               // arrival OTP
+  const completionOtpCode = job?.completion_otp_code;      // completion OTP (available after arrival)
   const hasWorker = Boolean(job?.worker);
   const DEFAULT_WORKER_AVATAR = 'https://images.unsplash.com/photo-1540569014015-19a7be504e3a?w=150&auto=format&fit=crop&q=80';
   const workerInfo = job?.worker
@@ -100,9 +101,25 @@ const TrackBookingScreen = () => {
       sub: hasWorker ? `Assigned to ${workerInfo.name}` : 'Broadcasting to nearby workers…',
       icon: 'check-circle',
     },
-    { id: 2, title: 'Worker On The Way', sub: STATUS_LABELS.on_the_way, icon: 'motorbike' },
-    { id: 3, title: 'Worker Arrived', sub: `Share OTP ${otpCode} to start service`, icon: 'map-marker-check' },
-    { id: 4, title: 'Work Started', sub: 'Inspection, repair & service in progress', icon: 'tools' },
+    {
+      id: 2,
+      title: 'Worker On The Way',
+      sub: workerInfo.distance_km != null
+        ? `${workerInfo.distance_km} km away • Arriving in ${workerInfo.eta_minutes || '?'} mins`
+        : 'Worker is heading to your location',
+      icon: 'motorbike',
+    },
+    {
+      id: 3,
+      title: 'Worker Arrived',
+      sub: currentStep >= 3
+        ? completionOtpCode
+          ? `Share Completion OTP ${completionOtpCode} with worker`
+          : `Arrival verified — work is starting`
+        : `Share Arrival OTP ${otpCode} to confirm worker arrival`,
+      icon: 'map-marker-check',
+    },
+    { id: 4, title: 'Work In Progress', sub: 'Inspection, repair & service in progress', icon: 'tools' },
     { id: 5, title: 'Work Completed', sub: 'Review, payment & digital receipt', icon: 'star-check' },
   ];
 
@@ -267,7 +284,7 @@ const TrackBookingScreen = () => {
         </TouchableOpacity>
          <View style={styles.headerCenter}>
            <Text style={styles.headerTitle}>{t('customer.liveTrackingTitle')}</Text>
-           <Text style={styles.headerSubtitle}>{t('customer.bookingNumber', { number: jobIdDisplay })}</Text>
+           <Text style={styles.headerSubtitle}>{t('customer.bookingNumber', { id: jobIdDisplay })}</Text>
          </View>
         <TouchableOpacity
           style={styles.helpButton}
@@ -372,18 +389,29 @@ const TrackBookingScreen = () => {
           </View>
         </View>
 
-        {/* Start OTP Code Card */}
-        <View style={styles.otpCard}>
-          <View style={styles.otpLeft}>
-             <Text style={styles.otpTitle}>{t('customer.shareOtp')}</Text>
-            <Text style={styles.otpDesc}>
-                {t('customer.otpWarning')}
-            </Text>
+        {/* OTP Code Card */}
+        {/* Show arrival OTP until worker has arrived, then show completion OTP */}
+        {jobStatus !== 'completed' && (
+          <View style={styles.otpCard}>
+            <View style={styles.otpLeft}>
+              <Text style={styles.otpTitle}>
+                {currentStep >= 3 && completionOtpCode
+                  ? 'Share Work Completion OTP'
+                  : 'Share Arrival OTP with Worker'}
+              </Text>
+              <Text style={styles.otpDesc}>
+                {currentStep >= 3 && completionOtpCode
+                  ? 'Share this OTP with the worker once the job is done.'
+                  : 'Do not share OTP until the worker arrives at your doorstep.'}
+              </Text>
+            </View>
+            <View style={styles.otpCodeContainer}>
+              <Text style={styles.otpCodeText}>
+                {currentStep >= 3 && completionOtpCode ? completionOtpCode : otpCode}
+              </Text>
+            </View>
           </View>
-          <View style={styles.otpCodeContainer}>
-            <Text style={styles.otpCodeText}>{otpCode}</Text>
-          </View>
-        </View>
+        )}
 
         {/* Worker Quick Contact Card or Awaiting Match Banner */}
         {hasWorker ? (
@@ -569,7 +597,7 @@ const TrackBookingScreen = () => {
                           (isCompleted || isCurrent) && styles.stepTitleActive,
                         ]}
                       >
-                         {t(step.titleKey)}
+                         {step.title}
                       </Text>
                       {isCurrent && (
                         <View style={styles.currentActivePill}>
@@ -577,11 +605,7 @@ const TrackBookingScreen = () => {
                         </View>
                       )}
                     </View>
-                     <Text style={styles.stepSubtitle}>{
-                       step.id === 1 ? t('customer.assignedTo', { name: workerInfo.name }) :
-                       step.id === 2 ? t('customer.distanceArriving', { distance: '1.4 km', minutes: 15 }) :
-                       step.id === 3 ? t('customer.shareOtpStep', { otp: otpCode }) : t(step.subKey)
-                     }</Text>
+                     <Text style={styles.stepSubtitle}>{step.sub}</Text>
                   </View>
                 </View>
               );

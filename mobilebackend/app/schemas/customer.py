@@ -176,7 +176,10 @@ class CustomerJobDetail(BaseModel):
     status: JobStatus
     current_step: int | None = None
     otp_code: str | None = Field(
-        default=None, description="Completion OTP code given to worker upon arrival"
+        default=None, description="Arrival OTP code — customer shows this to worker on arrival"
+    )
+    completion_otp_code: str | None = Field(
+        default=None, description="Completion OTP code — shown to customer only after worker has arrived"
     )
     worker: AssignedWorkerOut | None = None
     address: str
