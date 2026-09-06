@@ -108,8 +108,35 @@ class AssignedWorkerOut(BaseModel):
     photo_url: str | None = None
     rating_avg: float
     rating_count: int
+    skills: list[str] = Field(default_factory=list)
+    completed_jobs: int = 0
     last_lat: float | None = None
     last_lng: float | None = None
+    distance_km: float | None = None
+    eta_minutes: int | None = None
+    location_updated_at: datetime | None = None
+
+    class Config:
+        from_attributes = True
+
+
+class RecommendedWorkerOut(BaseModel):
+    id: int
+    worker_code: str
+    name: str
+    phone: str
+    city: str | None = None
+    photo_url: str | None = None
+    skills: list[str] = Field(default_factory=list)
+    rating_avg: float
+    rating_count: int
+    completed_jobs: int = 0
+    is_available: bool = True
+    distance_km: float | None = None
+    eta_minutes: int | None = None
+    last_lat: float | None = None
+    last_lng: float | None = None
+    location_updated_at: datetime | None = None
 
     class Config:
         from_attributes = True
@@ -122,6 +149,9 @@ class CustomerJobListItem(BaseModel):
     status: JobStatus
     worker: AssignedWorkerOut | None = None
     address: str
+    landmark: str | None = None
+    lat: float | None = None
+    lng: float | None = None
     total_amount: float
     requested_at: datetime
     accepted_at: datetime | None = None
@@ -185,3 +215,39 @@ class CustomerPaymentOut(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+# ---------------------------------------------------------------------------
+# Service discovery schemas
+# ---------------------------------------------------------------------------
+
+class ServiceCategoryOut(BaseModel):
+    """One service category with live worker availability counts from the DB."""
+    key: str
+    name: str
+    description: str
+    icon: str          # MaterialCommunityIcons glyph name
+    color: str         # foreground hex
+    bg: str            # background hex
+    total_workers: int
+    available_workers: int
+
+
+class WorkerSearchItem(BaseModel):
+    """Slim worker record returned by the service search endpoint."""
+    id: int
+    name: str
+    skills: list[str]
+    rating_avg: float
+    rating_count: int
+    completed_jobs: int
+    is_available: bool
+    photo_url: str | None = None
+    distance_km: float | None = None
+    eta_minutes: int | None = None
+
+
+class ServiceSearchResult(BaseModel):
+    query: str
+    categories: list[ServiceCategoryOut]
+    workers: list[WorkerSearchItem]

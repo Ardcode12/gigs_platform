@@ -37,6 +37,8 @@ from app.routers.customer import (
     notifications_router as customer_notifications_router,
     payments_router as customer_payments_router,
     ratings_router as customer_ratings_router,
+    services_router as customer_services_router,
+    workers_router as customer_workers_router,
 )
 from app.ws.manager import manager
 
@@ -98,6 +100,8 @@ def create_app() -> FastAPI:
     app.include_router(customer_chat_router)
     app.include_router(customer_payments_router)
     app.include_router(customer_ratings_router)
+    app.include_router(customer_services_router)
+    app.include_router(customer_workers_router)
     app.include_router(customer_notifications_router)
 
     if settings.DEV_MODE:

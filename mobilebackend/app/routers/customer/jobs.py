@@ -57,23 +57,20 @@ def _get_customer_job(db: Session, customer_id: int, job_id: int) -> Job:
     return job
 
 
+from app.routers.jobs import _matches_skills
+
+
 def _workers_to_alert(db: Session, job: Job) -> list[Worker]:
     """Directed job -> that worker. Broadcast -> every available worker whose skills match."""
     if job.worker_id is not None:
         worker = db.get(Worker, job.worker_id)
-        return [worker] if worker and worker.is_available else []
+        return [worker] if worker else []
 
-    service = job.service_type.lower()
     rejected = set(
         db.scalars(select(JobRejection.worker_id).where(JobRejection.job_id == job.id)).all()
     )
     available = db.scalars(select(Worker).where(Worker.is_available.is_(True))).all()
-    return [
-        w
-        for w in available
-        if w.id not in rejected
-        and (not w.skills or any(service in s.lower() or s.lower() in service for s in w.skills))
-    ]
+    return [w for w in available if w.id not in rejected and _matches_skills(job, w)]
 
 
 @router.post("", response_model=CustomerJobDetail, status_code=http_status.HTTP_201_CREATED)
