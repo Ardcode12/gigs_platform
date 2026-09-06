@@ -54,7 +54,10 @@ api.interceptors.response.use(
   async (error) => {
     const { config, response } = error;
 
-    const isAuthEndpoint = config?.url?.includes('/auth/login') || config?.url?.includes('/auth/refresh');
+    const isAuthEndpoint = config?.url?.includes('/auth/login')
+      || config?.url?.includes('/auth/society/login')
+      || config?.url?.includes('/auth/federation/login')
+      || config?.url?.includes('/auth/refresh');
 
     if (response?.status !== 401 || config?._retried || isAuthEndpoint) {
       return Promise.reject(error);
@@ -72,7 +75,7 @@ api.interceptors.response.use(
       refreshPromise =
         refreshPromise ??
         api
-          .post('/auth/refresh', { refreshToken })
+          .post('/auth/refresh', { refresh_token: refreshToken })
           .then((res) => ({
             accessToken: res.data.access_token,
             refreshToken: res.data.refresh_token,

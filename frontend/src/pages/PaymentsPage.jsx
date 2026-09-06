@@ -303,7 +303,7 @@ const PaymentsPage = () => {
         <CashRecordModal booking={cashModal} workers={workers} onClose={() => setCashModal(null)} onRecord={recordCashPayment} />
       )}
       {splitModal && (
-        <BulkSplitModal payment={splitModal} bookings={bookings} workers={workers} onClose={() => setSplitModal(null)} onConfirm={confirmSplitPayout} />
+             <BulkSplitModal payment={splitModal} bookings={bookings} workers={workers} onClose={() => setSplitModal(null)} onConfirm={() => confirmSplitPayout(splitModal.id)} />
       )}
     </div>
   );

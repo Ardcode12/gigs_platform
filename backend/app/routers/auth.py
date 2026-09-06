@@ -127,15 +127,24 @@ def login(payload: LoginRequest, db: DbSession) -> LoginResponse:
 
 @router.post("/refresh", response_model=TokenPair)
 def refresh(payload: RefreshRequest, db: DbSession) -> TokenPair:
-    worker_id = decode_token(payload.refresh_token, "refresh")
-    if worker_id is None or db.get(Worker, worker_id) is None:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid or expired refresh token",
+    worker_id = decode_token(payload.refresh_token, "refresh", expected_role="worker")
+    if worker_id is not None and db.get(Worker, worker_id) is not None:
+        return TokenPair(
+            access_token=create_access_token(worker_id),
+            refresh_token=create_refresh_token(worker_id),
         )
-    return TokenPair(
-        access_token=create_access_token(worker_id),
-        refresh_token=create_refresh_token(worker_id),
+
+    society_id = decode_token(payload.refresh_token, "refresh", expected_role="authority")
+    society = db.get(Society, society_id) if society_id is not None else None
+    if society is not None and society.is_active:
+        return TokenPair(
+            access_token=create_authority_access_token(society.id),
+            refresh_token=create_authority_refresh_token(society.id),
+        )
+
+    raise HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Invalid or expired refresh token",
     )
 
 

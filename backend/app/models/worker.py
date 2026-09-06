@@ -36,6 +36,9 @@ class Worker(Base):
     kyc_refs: Mapped[list] = mapped_column(JSONB, default=list, nullable=False)
     kyc_reason: Mapped[str | None] = mapped_column(String(300))
     authority_data: Mapped[dict] = mapped_column(JSONB, default=dict, nullable=False)
+    authority_status: Mapped[str] = mapped_column(String(30), default="pending", server_default="pending", nullable=False, index=True)
+    authority_reason: Mapped[str | None] = mapped_column(String(500))
+    authority_verified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
     # Availability (spec #2) and last known position (feeds distance/ETA)
     is_available: Mapped[bool] = mapped_column(

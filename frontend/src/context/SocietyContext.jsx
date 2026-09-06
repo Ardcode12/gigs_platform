@@ -3,8 +3,8 @@ import { workersAPI, bookingsAPI, paymentsAPI, ratesAPI, welfareAPI, complaintsA
 
 const SocietyContext = createContext(null);
 
-export const SocietyProvider = ({ children }) => {
-  const [society, setSociety] = useState({});
+export const SocietyProvider = ({ children, society: initialSociety = {} }) => {
+  const [society] = useState(initialSociety);
   const [workers, setWorkers] = useState([]);
   const [bookings, setBookings] = useState([]);
   const [payments, setPayments] = useState([]);
@@ -12,6 +12,7 @@ export const SocietyProvider = ({ children }) => {
   const [complaints, setComplaints] = useState([]);
   const [welfare, setWelfare] = useState({ enrollments: [], advances: [] });
   const [dashboard, setDashboard] = useState({ todayBookings: 0, todayEarnings: 0, weeklyEarnings: [] });
+  const [settings, setSettings] = useState({ emergencySurcharge: true, nightSurcharge: true });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
@@ -25,27 +26,30 @@ export const SocietyProvider = ({ children }) => {
         dashRes,
         workRes,
         bookRes,
-        /* Uncomment as endpoints are built
         payRes,
         rateRes,
         compRes,
-        welfRes
-        */
+         welfRes,
+         settingsRes
       ] = await Promise.all([
-        dashboardAPI.getStats().catch(() => ({ data: { stats: {} } })),
-        workersAPI.list().catch(() => ({ data: { workers: [] } })),
-        bookingsAPI.list().catch(() => ({ data: { bookings: [] } })),
+        dashboardAPI.getStats(),
+        workersAPI.list(),
+        bookingsAPI.list(),
+        paymentsAPI.list(),
+        ratesAPI.list(),
+        complaintsAPI.list(),
+        welfareAPI.list(),
+        dashboardAPI.getSettings(),
       ]);
 
       setDashboard(dashRes.data?.dashboard || dashRes.data?.stats || { todayBookings: 0, todayEarnings: 0, weeklyEarnings: [] });
       setWorkers(workRes.data.workers || []);
       setBookings(bookRes.data.bookings || []);
-      
-      // Default empty arrays for not-yet-implemented endpoints
-      setPayments([]);
-      setRates([]);
-      setComplaints([]);
-      setWelfare({ enrollments: [], advances: [] });
+      setPayments(payRes.data.payments || []);
+      setRates(rateRes.data.rates || []);
+      setComplaints(compRes.data.complaints || []);
+      setWelfare({ enrollments: welfRes.data.enrollments || [], advances: welfRes.data.advances || [] });
+      setSettings(settingsRes.data.settings || settings);
     } catch (e) {
       setError(e.message);
     } finally {
@@ -69,6 +73,23 @@ export const SocietyProvider = ({ children }) => {
   const refreshBookings = useCallback(async () => {
     try { const res = await bookingsAPI.list(); setBookings(res.data.bookings || []); } catch (e) {}
   }, []);
+
+  const refreshPayments = useCallback(async () => {
+    try { const res = await paymentsAPI.list(); setPayments(res.data.payments || []); } catch (e) {}
+  }, []);
+
+  const refreshWelfare = useCallback(async () => {
+    try { const res = await welfareAPI.list(); setWelfare({ enrollments: res.data.enrollments || [], advances: res.data.advances || [] }); } catch (e) {}
+  }, []);
+
+  const refreshComplaints = useCallback(async () => {
+    try { const res = await complaintsAPI.list(); setComplaints(res.data.complaints || []); } catch (e) {}
+  }, []);
+
+  const updateSettings = async (data) => {
+    const res = await dashboardAPI.updateSettings(data);
+    setSettings(res.data.settings || data);
+  };
 
   // ---- Worker Actions ----
   const registerWorker = async (data) => {
@@ -113,43 +134,61 @@ export const SocietyProvider = ({ children }) => {
   // ---- Payment Actions ----
   const recordCashPayment = async (bookingId, amount, workerId) => {
     await paymentsAPI.record({ bookingId, amount, workerId, mode: 'cash' });
-    // refresh bookings and payments...
+    await refreshPayments();
   };
 
-  const confirmSplitPayout = async (bookingId) => {
-    await paymentsAPI.updateStatus(bookingId, { status: 'split_done' });
+  const confirmSplitPayout = async (paymentId) => {
+    await paymentsAPI.updateStatus(paymentId, { status: 'split_done' });
+    await refreshPayments();
   };
 
   // ---- Rate Actions ----
   const updateRate = async (category, data) => {
     await ratesAPI.update(category, data);
+    const res = await ratesAPI.list();
+    setRates(res.data.rates || []);
   };
 
   // ---- Welfare Actions ----
   const enrollWorker = async (workerId, schemeId) => {
-    // await welfareAPI.enrollWorker(workerId, schemeId);
+    await welfareAPI.enroll(workerId, schemeId);
+    await refreshWelfare();
   };
 
   const approveAdvance = async (advanceId) => {
     await welfareAPI.approveAdvance(advanceId);
+    await refreshWelfare();
+  };
+
+  const rejectAdvance = async (advanceId, reason) => {
+    await welfareAPI.rejectAdvance(advanceId, { reason });
+    await refreshWelfare();
+  };
+
+  const requestAdvance = async (workerId, amount, reason) => {
+    await welfareAPI.requestAdvance({ workerId: Number(workerId), amount, reason });
+    await refreshWelfare();
   };
 
   // ---- Complaint Actions ----
   const resolveComplaint = async (id, resolution) => {
     await complaintsAPI.resolve(id, { resolution });
+    await refreshComplaints();
   };
 
   const escalateComplaint = async (id, reason) => {
-    // await complaintsAPI.escalateToFederation(id, reason);
+    await complaintsAPI.escalate(id, { reason });
+    await refreshComplaints();
   };
 
   const addComplaintResponse = async (id, response) => {
     await complaintsAPI.respond(id, { response });
+    await refreshComplaints();
   };
 
   return (
     <SocietyContext.Provider value={{
-      society, workers, bookings, payments, rates, complaints, welfare, dashboard,
+       society, workers, bookings, payments, rates, complaints, welfare, dashboard, settings,
       loading, error,
       // Worker
       registerWorker, submitKycRefs, approveKyc, rejectKyc,
@@ -160,11 +199,11 @@ export const SocietyProvider = ({ children }) => {
       // Rate
       updateRate,
       // Welfare
-      enrollWorker, approveAdvance,
+       enrollWorker, approveAdvance, rejectAdvance, requestAdvance,
       // Complaint
       resolveComplaint, escalateComplaint, addComplaintResponse,
       // Refresh
-      refreshDashboard, refreshWorkers, refreshBookings, loadData
+       refreshDashboard, refreshWorkers, refreshBookings, refreshPayments, refreshWelfare, refreshComplaints, updateSettings, loadData
     }}>
       {children}
     </SocietyContext.Provider>

@@ -43,6 +43,7 @@ class Payment(Base):
     status: Mapped[PaymentStatus] = mapped_column(
         payment_status_enum, default=PaymentStatus.PENDING, nullable=False, index=True
     )
+    society_status: Mapped[str | None] = mapped_column(String(30))
     payment_method: Mapped[PaymentMethod] = mapped_column(
         SQLEnum(PaymentMethod, name="payment_method", values_callable=lambda e: [m.value for m in e]),
         default=PaymentMethod.DIGITAL,
@@ -58,4 +59,4 @@ class Payment(Base):
     cash_verified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     digital_transaction_id: Mapped[str | None] = mapped_column(String(255))
 
-    job: Mapped["Job"] = relationship(lazy="joined")  # noqa: F821
+    job: Mapped["Job"] = relationship(back_populates="payment", lazy="joined")  # noqa: F821

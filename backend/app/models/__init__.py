@@ -6,7 +6,7 @@ all modules are imported — importing this package is what makes that happen.
 
 from app.models.chat import CallRequest, ChatMessage, ChatMessageTranslation
 from app.models.customer import Customer
-from app.models.authority import FederationUser, GpsRequest, SocietyComplaint, SocietyRate, WelfareEnrollment, WorkerAdvance
+from app.models.authority import AuthorityAuditLog, AuthorityDocument, AuthorityInspection, FederationUser, GpsRequest, SocietyComplaint, SocietyRate, WelfareEnrollment, WorkerAdvance
 from app.models.enums import (
     ALLOWED_TRANSITIONS,
     JOB_PROGRESS_STEPS,
@@ -41,6 +41,9 @@ __all__ = [
     "Customer",
     "GpsRequest",
     "FederationUser",
+    "AuthorityDocument",
+    "AuthorityInspection",
+    "AuthorityAuditLog",
     "SocietyComplaint",
     "SocietyRate",
     "WelfareEnrollment",

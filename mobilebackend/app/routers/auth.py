@@ -32,6 +32,7 @@ from app.schemas.auth import (
 )
 from app.schemas.worker import WorkerOut
 from app.services.otp import (
+    OtpProviderError,
     create_reset_code,
     expose_code,
     mask_phone,
@@ -135,14 +136,16 @@ def forgot_password(payload: ForgotPasswordRequest, db: DbSession) -> ForgotPass
             "phone number on file.",
         )
 
-    code = create_reset_code(db, worker)
+    try:
+        create_reset_code(db, worker)
+    except OtpProviderError as exc:
+        raise HTTPException(status_code=exc.http_status, detail=str(exc)) from exc
     db.commit()
 
     return ForgotPasswordResponse(
         message="If that ID is registered, a reset code has been sent to the "
         "phone number on file.",
         masked_phone=mask_phone(worker.phone),
-        dev_code=expose_code(code),
     )
 
 

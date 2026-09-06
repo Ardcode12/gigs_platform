@@ -1,37 +1,114 @@
-"""Password-reset codes and the single point where SMS sending is plugged in."""
+"""Password-reset codes and SMS delivery for OTP verification."""
 
 import logging
 import secrets
 from datetime import datetime, timedelta, timezone
 
+from twilio.base.exceptions import TwilioException
+from twilio.rest import Client
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
-from app.core.security import hash_password, verify_password
+from app.core.security import verify_password
 from app.models import Customer, OtpVerification, PasswordReset, Worker
 
 logger = logging.getLogger(__name__)
 
 CODE_LENGTH = 6
-CODE_TTL_MINUTES = 10
+CODE_TTL_MINUTES = settings.OTP_EXPIRY_MINUTES
 MAX_ATTEMPTS = 5
+RESEND_COOLDOWN_SECONDS = settings.OTP_RESEND_COOLDOWN_SECONDS
+
+
+class OtpProviderError(RuntimeError):
+    def __init__(self, message: str, http_status: int):
+        super().__init__(message)
+        self.http_status = http_status
+
+
+def normalize_phone(phone: str) -> str:
+    """Accept Indian mobile numbers and normalize them to E.164 format."""
+    digits = "".join(ch for ch in (phone or "").strip() if ch.isdigit())
+    if not digits:
+        raise ValueError("Please enter a valid Indian mobile number.")
+
+    if len(digits) == 10:
+        return f"+91{digits}"
+    if len(digits) == 12 and digits.startswith("91"):
+        return f"+{digits}"
+    if len(digits) > 10 and digits.startswith("0"):
+        return f"+91{digits[1:]}"
+    if (phone or "").strip().startswith("+") and len(digits) >= 10:
+        return f"+{digits}"
+    if len(digits) >= 10:
+        return f"+{digits}"
+    raise ValueError("Please enter a valid Indian mobile number.")
 
 
 def generate_code() -> str:
-    """A cryptographically random 6-digit code (leading zeros allowed)."""
+    """Retained for job-completion OTPs, which are not phone verification codes."""
     return "".join(secrets.choice("0123456789") for _ in range(CODE_LENGTH))
 
 
-def send_sms(phone: str, message: str) -> None:
-    """Deliver an SMS.
+def _get_twilio_client() -> Client:
+    account_sid = settings.TWILIO_ACCOUNT_SID.strip()
+    auth_token = settings.TWILIO_AUTH_TOKEN.strip()
+    service_sid = settings.TWILIO_VERIFY_SERVICE_SID.strip()
 
-    This is the only place that needs to change to go live: drop in MSG91 /
-    Twilio / Gupshup here. Until then the message is logged, and in DEV_MODE the
-    caller also returns the code in the HTTP response so the flow is testable
-    without a provider.
-    """
-    logger.info("[SMS -> %s] %s", phone, message)
+    if not account_sid or not auth_token or not service_sid:
+        raise OtpProviderError("Twilio Verify is not configured.", 500)
+
+    return Client(account_sid, auth_token)
+
+
+def send_otp(phone: str) -> str:
+    normalized_phone = normalize_phone(phone)
+    client = _get_twilio_client()
+
+    try:
+        verification = (
+            client.verify.v2.services(settings.TWILIO_VERIFY_SERVICE_SID.strip())
+            .verifications.create(to=normalized_phone, channel="sms")
+        )
+    except TwilioException as exc:
+        logger.warning("Twilio Verify send failed for %s: %s (%s)", normalized_phone, exc.msg, exc.code)
+        if getattr(exc, "code", None) == 21608:
+            raise OtpProviderError(
+                "This phone number must be verified in the Twilio Console before a Trial account can send OTPs.",
+                400,
+            ) from exc
+        if getattr(exc, "status", 0) == 429:
+            raise OtpProviderError("Too many OTP requests. Please try again later.", 429) from exc
+        if getattr(exc, "code", None) in {20001, 20003, 20404}:
+            raise OtpProviderError("Twilio Verify is not configured correctly.", 500) from exc
+        raise OtpProviderError("OTP service is temporarily unavailable. Please try again.", 503) from exc
+
+    verification_id = getattr(verification, "sid", None)
+    if not verification_id:
+        raise OtpProviderError("OTP service did not return a verification ID.", 503)
+    return str(verification_id)
+
+
+def verify_otp(phone: str, code: str) -> None:
+    normalized_phone = normalize_phone(phone)
+    client = _get_twilio_client()
+
+    try:
+        verification_check = (
+            client.verify.v2.services(settings.TWILIO_VERIFY_SERVICE_SID.strip())
+            .verification_checks.create(to=normalized_phone, code=code)
+        )
+    except TwilioException as exc:
+        logger.warning("Twilio Verify check failed for %s: %s (%s)", normalized_phone, exc.msg, exc.code)
+        if getattr(exc, "code", None) == 20404:
+            raise OtpProviderError("Twilio Verify is not configured correctly.", 500) from exc
+        if getattr(exc, "status", 0) == 429:
+            raise OtpProviderError("Too many OTP attempts. Please try again later.", 429) from exc
+        raise OtpProviderError("The OTP is incorrect or has expired.", 400) from exc
+
+    if str(getattr(verification_check, "status", "")).lower() != "approved":
+        raise OtpProviderError("The OTP is incorrect or has expired.", 400)
 
 
 def mask_phone(phone: str) -> str:
@@ -62,22 +139,16 @@ def create_reset_code(db: Session, worker: Worker) -> str:
     for row in outstanding:
         row.used_at = now
 
-    code = generate_code()
+    verification_id = send_otp(worker.phone)
     db.add(
         PasswordReset(
             worker_id=worker.id,
-            code_hash=hash_password(code),
+            verification_id=verification_id,
             expires_at=now + timedelta(minutes=CODE_TTL_MINUTES),
         )
     )
     db.flush()
-
-    send_sms(
-        worker.phone,
-        f"WORKMAT: your password reset code is {code}. "
-        f"It expires in {CODE_TTL_MINUTES} minutes.",
-    )
-    return code
+    return ""
 
 
 def verify_reset_code(db: Session, worker: Worker, code: str) -> tuple[bool, str]:
@@ -110,7 +181,14 @@ def verify_reset_code(db: Session, worker: Worker, code: str) -> tuple[bool, str
         db.flush()
         return False, "Too many incorrect attempts. Please request a new code."
 
-    if not verify_password(code, reset.code_hash):
+    if not reset.verification_id:
+        return False, "No reset verification is available. Please start again."
+
+    try:
+        verify_otp(worker.phone, code)
+    except OtpProviderError as exc:
+        if exc.http_status == 503:
+            return False, "OTP service is temporarily unavailable. Please try again."
         reset.attempts += 1
         db.flush()
         remaining = MAX_ATTEMPTS - reset.attempts
@@ -118,7 +196,7 @@ def verify_reset_code(db: Session, worker: Worker, code: str) -> tuple[bool, str
             reset.used_at = now
             db.flush()
             return False, "Too many incorrect attempts. Please request a new code."
-        return False, f"Incorrect code. {remaining} attempt(s) remaining."
+        return False, str(exc)
 
     # Correct — burn it so it can't be replayed.
     reset.used_at = now
@@ -142,22 +220,16 @@ def create_customer_reset_code(db: Session, customer: Customer) -> str:
     for row in outstanding:
         row.used_at = now
 
-    code = generate_code()
+    verification_id = send_otp(customer.phone)
     db.add(
         PasswordReset(
             customer_id=customer.id,
-            code_hash=hash_password(code),
+            verification_id=verification_id,
             expires_at=now + timedelta(minutes=CODE_TTL_MINUTES),
         )
     )
     db.flush()
-
-    send_sms(
-        customer.phone,
-        f"WORKMAT: your password reset code is {code}. "
-        f"It expires in {CODE_TTL_MINUTES} minutes.",
-    )
-    return code
+    return ""
 
 
 def verify_customer_reset_code(db: Session, customer: Customer, code: str) -> tuple[bool, str]:
@@ -187,7 +259,14 @@ def verify_customer_reset_code(db: Session, customer: Customer, code: str) -> tu
         db.flush()
         return False, "Too many incorrect attempts. Please request a new code."
 
-    if not verify_password(code, reset.code_hash):
+    if not reset.verification_id:
+        return False, "No reset verification is available. Please start again."
+
+    try:
+        verify_otp(customer.phone, code)
+    except OtpProviderError as exc:
+        if exc.http_status == 503:
+            return False, "OTP service is temporarily unavailable. Please try again."
         reset.attempts += 1
         db.flush()
         remaining = MAX_ATTEMPTS - reset.attempts
@@ -195,7 +274,7 @@ def verify_customer_reset_code(db: Session, customer: Customer, code: str) -> tu
             reset.used_at = now
             db.flush()
             return False, "Too many incorrect attempts. Please request a new code."
-        return False, f"Incorrect code. {remaining} attempt(s) remaining."
+        return False, str(exc)
 
     reset.used_at = now
     db.flush()
@@ -203,8 +282,8 @@ def verify_customer_reset_code(db: Session, customer: Customer, code: str) -> tu
 
 
 def expose_code(code: str) -> str | None:
-    """The code to echo back in the response — only ever in DEV_MODE."""
-    return code if settings.DEV_MODE else None
+    """Never expose OTPs to the client; this remains a no-op even in DEV_MODE."""
+    return None
 
 
 # ---------------------------------------------------------------------------
@@ -214,6 +293,21 @@ def expose_code(code: str) -> str | None:
 def create_signup_otp(db: Session, phone: str) -> str:
     """Invalidate any outstanding signup codes for this phone and issue a fresh one."""
     now = datetime.now(timezone.utc)
+
+    recent_otp = db.scalars(
+        select(OtpVerification)
+        .where(
+            OtpVerification.phone == phone,
+            OtpVerification.purpose == "signup",
+            OtpVerification.used_at.is_(None),
+        )
+        .order_by(OtpVerification.id.desc())
+        .limit(1)
+    ).first()
+    if recent_otp is not None and recent_otp.created_at > now - timedelta(seconds=RESEND_COOLDOWN_SECONDS):
+        raise RuntimeError(
+            f"Please wait {RESEND_COOLDOWN_SECONDS} seconds before requesting a new verification code."
+        )
 
     outstanding = db.scalars(
         select(OtpVerification).where(
@@ -225,23 +319,18 @@ def create_signup_otp(db: Session, phone: str) -> str:
     for row in outstanding:
         row.used_at = now
 
-    code = generate_code()
+    verification_id = send_otp(phone)
     db.add(
         OtpVerification(
             phone=phone,
-            code_hash=hash_password(code),
+            verification_id=verification_id,
             purpose="signup",
             expires_at=now + timedelta(minutes=CODE_TTL_MINUTES),
         )
     )
     db.flush()
 
-    send_sms(
-        phone,
-        f"WORKMAT: your verification code for signup is {code}. "
-        f"It expires in {CODE_TTL_MINUTES} minutes.",
-    )
-    return code
+    return verification_id
 
 
 def verify_signup_otp(db: Session, phone: str, code: str) -> tuple[bool, str]:
@@ -275,7 +364,14 @@ def verify_signup_otp(db: Session, phone: str, code: str) -> tuple[bool, str]:
         db.flush()
         return False, "Too many incorrect attempts. Please request a new verification code."
 
-    if not verify_password(code, otp_row.code_hash):
+    if not otp_row.verification_id:
+        return False, "No verification session is available. Please request a new code."
+
+    try:
+        verify_otp(phone, code)
+    except OtpProviderError as exc:
+        if exc.http_status == 503:
+            return False, "OTP service is temporarily unavailable. Please try again."
         otp_row.attempts += 1
         db.flush()
         remaining = MAX_ATTEMPTS - otp_row.attempts
@@ -283,7 +379,7 @@ def verify_signup_otp(db: Session, phone: str, code: str) -> tuple[bool, str]:
             otp_row.used_at = now
             db.flush()
             return False, "Too many incorrect attempts. Please request a new verification code."
-        return False, f"Incorrect verification code. {remaining} attempt(s) remaining."
+        return False, str(exc)
 
     otp_row.used_at = now
     db.flush()

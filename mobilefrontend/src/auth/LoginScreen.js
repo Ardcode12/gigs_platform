@@ -89,7 +89,6 @@ const LoginScreen = () => {
           email: email.trim() || null,
           password,
           maskedPhone: data?.masked_phone,
-          devCode: data?.dev_code ?? null,
         });
       } else {
         await signInCustomer(identifier.trim(), password);

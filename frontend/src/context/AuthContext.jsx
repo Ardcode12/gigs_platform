@@ -33,16 +33,9 @@ export function AuthProvider({ children }) {
   }, []);
 
   const signOut = useCallback(
-    async ({ notifyServer = true } = {}) => {
-      if (notifyServer) {
-        // Best effort -- a failed logout call must not trap the officer in a
-        // session they have asked to end.
-        try {
-          await authApi.logout();
-        } catch {
-          /* ignore */
-        }
-      }
+    async () => {
+      // Society tokens are stateless and the worker logout endpoint does not
+      // accept authority tokens. Clearing the local session is sufficient.
       tokenStore.clear();
       setUser(null);
     },

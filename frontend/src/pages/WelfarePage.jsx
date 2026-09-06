@@ -69,7 +69,7 @@ const EnrollModal = ({ onClose, workers, enrollments, onEnroll }) => {
 };
 
 // ============== Advance Modal ==============
-const AdvanceModal = ({ onClose, workers }) => {
+const AdvanceModal = ({ onClose, workers, onRequest }) => {
   const [workerId, setWorkerId] = useState('');
   const [amount, setAmount] = useState(2000);
   const [reason, setReason] = useState('');
@@ -107,7 +107,7 @@ const AdvanceModal = ({ onClose, workers }) => {
         </div>
         <div className="modal-footer">
           <button className="btn btn-secondary" onClick={onClose}>Cancel</button>
-          <button className="btn btn-warning" disabled={!workerId || !reason || amount < 500}>
+          <button className="btn btn-warning" disabled={!workerId || !reason || amount < 500} onClick={() => { onRequest(workerId, amount, reason); onClose(); }}>
             <DollarSign size={16} /> Submit Advance Request
           </button>
         </div>
@@ -118,7 +118,7 @@ const AdvanceModal = ({ onClose, workers }) => {
 
 // ============== Main Welfare Page ==============
 const WelfarePage = () => {
-  const { workers, welfare, enrollWorker, approveAdvance } = useSociety();
+  const { workers, welfare, enrollWorker, approveAdvance, rejectAdvance, requestAdvance } = useSociety();
   const [showEnroll, setShowEnroll] = useState(false);
   const [showAdvance, setShowAdvance] = useState(false);
   const [activeTab, setActiveTab] = useState('schemes');
@@ -248,7 +248,7 @@ const WelfarePage = () => {
                     <button className="btn btn-success btn-sm" onClick={() => approveAdvance(a.id)}>
                       <CheckCircle size={12} /> Approve
                     </button>
-                    <button className="btn btn-danger btn-sm">Reject</button>
+                     <button className="btn btn-danger btn-sm" onClick={() => rejectAdvance(a.id, 'Rejected by society administrator')}>Reject</button>
                   </div>
                 )}
               </div>
@@ -261,7 +261,7 @@ const WelfarePage = () => {
         <EnrollModal workers={workers} enrollments={welfare.enrollments} onClose={() => setShowEnroll(false)} onEnroll={enrollWorker} />
       )}
       {showAdvance && (
-        <AdvanceModal workers={workers} onClose={() => setShowAdvance(false)} />
+        <AdvanceModal workers={workers} onClose={() => setShowAdvance(false)} onRequest={requestAdvance} />
       )}
     </div>
   );

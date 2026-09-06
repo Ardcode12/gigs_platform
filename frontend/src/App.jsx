@@ -12,10 +12,11 @@ import FederationDashboardPage from './pages/FederationDashboardPage.jsx';
 import ForgotPasswordPage from './pages/ForgotPasswordPage.jsx';
 import ResetPasswordPage from './pages/ResetPasswordPage.jsx';
 import DashboardPage from './pages/DashboardPage.jsx';
+import SocietyApp from './pages/society/SocietyApp.jsx';
 
 export default function App() {
   return (
-    <BrowserRouter>
+    <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
       <AuthProvider>
         <FederationAuthProvider>
           <Routes>
@@ -41,10 +42,10 @@ export default function App() {
             <Route path="/reset-password" element={<ResetPasswordPage />} />
 
             <Route
-              path="/dashboard"
+              path="/dashboard/*"
               element={
                 <ProtectedRoute>
-                  <DashboardPage />
+                  <SocietyApp />
                 </ProtectedRoute>
               }
             />
@@ -59,7 +60,7 @@ export default function App() {
               }
             />
             <Route
-              path="/federation/dashboard"
+              path="/federation/*"
               element={
                 <FederationProtectedRoute>
                   <FederationDashboardPage />

@@ -1,15 +1,4 @@
-import axios from 'axios';
-
-const BASE = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
-
-const api = axios.create({ baseURL: BASE });
-
-// Auto-attach token from localStorage
-api.interceptors.request.use((config) => {
-  const token = localStorage.getItem('gm_token');
-  if (token) config.headers.Authorization = `Bearer ${token}`;
-  return config;
-});
+import { api } from '../api/client.js';
 
 // ── AUTH ────────────────────────────────────────────────
 export const authAPI = {
@@ -24,6 +13,8 @@ export const authAPI = {
 // ── SOCIETY — DASHBOARD ─────────────────────────────────
 export const dashboardAPI = {
   getStats: () => api.get('/society/dashboard'),
+  getSettings: () => api.get('/society/settings'),
+  updateSettings: (data) => api.put('/society/settings', data),
 };
 
 // ── SOCIETY — WORKERS ───────────────────────────────────
@@ -63,8 +54,11 @@ export const ratesAPI = {
 // ── SOCIETY — WELFARE ───────────────────────────────────
 export const welfareAPI = {
   list:           () => api.get('/society/welfare'),
+  enroll:         (workerId, schemeId) => api.post('/society/welfare/enroll', { workerId, schemeId }),
+  requestAdvance: (data) => api.post('/society/welfare/advances', data),
   getAdvances:    () => api.get('/society/welfare/advances'),
   approveAdvance: (id) => api.patch(`/society/welfare/advances/${id}/approve`),
+  rejectAdvance: (id, data) => api.patch(`/society/welfare/advances/${id}/reject`, data),
 };
 
 // ── SOCIETY — COMPLAINTS ────────────────────────────────
@@ -74,6 +68,7 @@ export const complaintsAPI = {
   create: (data)   => api.post('/society/complaints', data),
   respond:(id, data) => api.post(`/society/complaints/${id}/respond`, data),
   resolve:(id, data) => api.patch(`/society/complaints/${id}/resolve`, data),
+  escalate:(id, data) => api.patch(`/society/complaints/${id}/escalate`, data),
 };
 
 // ── WORKER PORTAL ───────────────────────────────────────

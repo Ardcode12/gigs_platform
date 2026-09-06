@@ -1,228 +1,97 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Button } from '../components/Button.jsx';
-import { Field } from '../components/Field.jsx';
-import { Alert } from '../components/Alert.jsx';
-import { ShieldIcon, LogOutIcon } from '../components/icons.jsx';
+import { NavLink, Route, Routes, useLocation, Navigate } from 'react-router-dom';
+import {
+  Activity, AlertTriangle, BarChart3, Building2, ClipboardCheck, FileCheck2,
+  LayoutDashboard, LogOut, Map, Menu, Search, Settings2, ShieldCheck, Users,
+} from 'lucide-react';
 import { useFederationAuth } from '../context/FederationAuthContext.jsx';
 import { federationApi, readFederationError } from '../api/federationApi.js';
-import '../styles/dashboard.css';
+import '../styles/federation.css';
 
-const EMPTY_FORM = { name: '', city: '', societyCode: '', password: '' };
+const nav = [
+  { path: '/federation/dashboard', label: 'Overview', icon: LayoutDashboard },
+  { path: '/federation/societies', label: 'Societies', icon: Building2 },
+  { path: '/federation/workers', label: 'Workforce', icon: Users },
+  { path: '/federation/compliance', label: 'Compliance', icon: FileCheck2 },
+  { path: '/federation/bookings', label: 'Bookings', icon: ClipboardCheck },
+  { path: '/federation/complaints', label: 'Complaints', icon: AlertTriangle },
+  { path: '/federation/analytics', label: 'Geo & insights', icon: Map },
+  { path: '/federation/financials', label: 'Financials', icon: BarChart3 },
+  { path: '/federation/welfare', label: 'Welfare', icon: ShieldCheck },
+  { path: '/federation/quality', label: 'Quality', icon: Activity },
+  { path: '/federation/inspections', label: 'Inspections', icon: ClipboardCheck },
+  { path: '/federation/audit-logs', label: 'Audit logs', icon: FileCheck2 },
+];
 
-/**
- * Federation admin console.
- *
- * Scoped to what a federation token is actually allowed to do -- list and
- * register societies. Every /api/society/* route belongs to the society portal
- * and rejects this token, so none of it appears here.
- */
-export default function FederationDashboardPage() {
-  const { user, signOut } = useFederationAuth();
+function StatCard({ label, value, icon: Icon, accent }) {
+  return <div className="authority-stat"><div className={`authority-stat__icon ${accent}`}><Icon size={19} /></div><div><strong>{value}</strong><span>{label}</span></div></div>;
+}
 
-  const [societies, setSocieties] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [loadError, setLoadError] = useState('');
+function Overview() {
+  const [stats, setStats] = useState(null);
+  const [error, setError] = useState('');
+  useEffect(() => { federationApi.dashboard().then(setStats).catch((err) => setError(readFederationError(err, 'Could not load authority metrics.'))); }, []);
+  if (error) return <div className="authority-error">{error}</div>;
+  if (!stats) return <div className="authority-empty">Loading authority metrics...</div>;
+  const cards = [
+    ['Total societies', stats.totalSocieties, Building2, 'blue'], ['Active societies', stats.activeSocieties, ShieldCheck, 'green'],
+    ['Pending approvals', stats.pendingApprovals, ClipboardCheck, 'amber'], ['Total workers', stats.totalWorkers, Users, 'violet'],
+    ['Verified workers', stats.verifiedWorkers, FileCheck2, 'green'], ['Total bookings', stats.totalBookings, Activity, 'blue'],
+    ['Transaction value', `₹${Number(stats.transactionValue || 0).toLocaleString()}`, BarChart3, 'teal'], ['Open complaints', stats.openComplaints, AlertTriangle, 'red'],
+  ];
+  return <div className="authority-page"><div className="authority-eyebrow">Governance pulse</div><h1>Cooperative ecosystem</h1><p className="authority-lead">A clear view of societies, verified workforce, marketplace activity and risk signals.</p><div className="authority-stats">{cards.map(([label, value, icon, accent]) => <StatCard key={label} label={label} value={value} icon={icon} accent={accent} />)}</div><section className="authority-panel authority-panel--signal"><div><span className="authority-panel__eyebrow">Operating principle</span><h2>Society-led operations, authority-led trust.</h2><p>Societies manage their workers and daily dispatch. The authority verifies, monitors and acts on evidence across the network.</p></div><ShieldCheck size={42} /></section></div>;
+}
 
-  const [form, setForm] = useState(EMPTY_FORM);
-  const [fieldErrors, setFieldErrors] = useState({});
-  const [formError, setFormError] = useState('');
-  const [success, setSuccess] = useState('');
-  const [submitting, setSubmitting] = useState(false);
+function Societies() {
+  const [rows, setRows] = useState([]); const [query, setQuery] = useState(''); const [error, setError] = useState('');
+  const load = useCallback(() => federationApi.listSocieties().then(setRows).catch((err) => setError(readFederationError(err, 'Could not load societies.'))), []);
+  useEffect(() => { load(); }, [load]);
+  const filtered = rows.filter((item) => `${item.name} ${item.societyCode} ${item.city || ''}`.toLowerCase().includes(query.toLowerCase()));
+  return <div className="authority-page"><div className="authority-eyebrow">Directory</div><h1>Societies</h1><p className="authority-lead">Review every cooperative connected to the federation.</p><section className="authority-panel"><div className="authority-toolbar"><div className="authority-search"><Search size={17} /><input placeholder="Search name, code or city" value={query} onChange={(event) => setQuery(event.target.value)} /></div><button className="authority-refresh" onClick={load}>Refresh</button></div>{error && <div className="authority-error">{error}</div>}<div className="authority-table-wrap"><table className="authority-table"><thead><tr><th>Society</th><th>Registration code</th><th>Location</th><th>Status</th></tr></thead><tbody>{filtered.map((item) => <tr key={item.id}><td><strong>{item.name}</strong></td><td className="authority-mono">{item.societyCode || '--'}</td><td>{item.city || '--'}</td><td><span className={`authority-badge ${item.isActive ? 'is-active' : ''}`}>{item.isActive ? 'Active' : 'Inactive'}</span></td></tr>)}</tbody></table>{!filtered.length && <div className="authority-empty">No societies match this search.</div>}</div></section></div>;
+}
 
-  const loadSocieties = useCallback(async () => {
-    setLoading(true);
-    try {
-      setSocieties(await federationApi.listSocieties());
-      setLoadError('');
-    } catch (err) {
-      setLoadError(readFederationError(err, 'Could not load societies.'));
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+function Workers() {
+  const [rows, setRows] = useState([]); const [query, setQuery] = useState('');
+  const [selected, setSelected] = useState(null); const [reason, setReason] = useState('');
+  useEffect(() => { federationApi.listWorkers().then(setRows).catch(() => setRows([])); }, []);
+  const filtered = rows.filter((item) => `${item.name} ${item.uniqueId} ${item.societyName || ''}`.toLowerCase().includes(query.toLowerCase()));
+  const refresh = () => federationApi.listWorkers().then(setRows).catch(() => setRows([]));
+  const verify = () => federationApi.verifyWorker(selected.id).then(() => { setSelected(null); refresh(); });
+  const reject = () => federationApi.rejectWorker(selected.id, reason || 'Certificate could not be verified').then(() => { setSelected(null); setReason(''); refresh(); });
+  return <div className="authority-page"><div className="authority-eyebrow">Verification queue</div><h1>Workforce</h1><p className="authority-lead">Workers submitted by societies appear here for authority verification.</p><section className="authority-panel"><div className="authority-toolbar"><div className="authority-search"><Search size={17} /><input placeholder="Search worker or society" value={query} onChange={(event) => setQuery(event.target.value)} /></div></div><div className="authority-table-wrap"><table className="authority-table"><thead><tr><th>Worker</th><th>Society</th><th>Certificate</th><th>Verification</th><th>Actions</th></tr></thead><tbody>{filtered.map((item) => <tr key={item.id}><td><strong>{item.name}</strong><small>{item.uniqueId}</small></td><td>{item.societyName || '--'}</td><td><strong>{item.certificateId || 'Not submitted'}</strong><small>{item.certificateAuthority || 'Certificate authority unavailable'}</small></td><td><span className={`authority-badge ${item.authorityStatus === 'verified' ? 'is-active' : ''}`}>{item.authorityStatus || 'pending'}</span></td><td className="authority-actions"><button className="authority-refresh" onClick={() => setSelected(item)}>Review</button></td></tr>)}</tbody></table>{!filtered.length && <div className="authority-empty">No workers found.</div>}</div></section>{selected && <div className="authority-modal-backdrop" onClick={() => setSelected(null)}><div className="authority-modal" onClick={(event) => event.stopPropagation()}><div className="authority-modal__header"><div><span className="authority-eyebrow">Certificate review</span><h2>{selected.name}</h2></div><button onClick={() => setSelected(null)}>×</button></div><dl className="authority-review-grid"><div><dt>Worker ID</dt><dd>{selected.uniqueId}</dd></div><div><dt>Society</dt><dd>{selected.societyName}</dd></div><div><dt>Certificate ID</dt><dd>{selected.certificateId || 'Not submitted'}</dd></div><div><dt>Issuing authority</dt><dd>{selected.certificateAuthority || '--'}</dd></div><div><dt>Expiry</dt><dd>{selected.certificateExpiry || '--'}</dd></div><div><dt>Society KYC</dt><dd>{selected.kycStatus || 'pending'}</dd></div></dl><label className="authority-field"><span>Decision note</span><textarea value={reason} onChange={(event) => setReason(event.target.value)} placeholder="Required for rejection or additional review notes" /></label><div className="authority-modal__actions"><button className="authority-refresh" onClick={() => setSelected(null)}>Cancel</button><button className="authority-refresh authority-danger" onClick={reject}>Reject certificate</button><button className="authority-refresh authority-approve" onClick={verify}>Verify certificate</button></div></div></div>}</div>;
+}
 
-  useEffect(() => {
-    loadSocieties();
-  }, [loadSocieties]);
+function DataModule({ title, icon: Icon, load, columns, actions }) {
+  const [rows, setRows] = useState([]); const [error, setError] = useState(''); const [loading, setLoading] = useState(true);
+  const refresh = useCallback(() => { setLoading(true); load().then(setRows).catch((err) => setError(readFederationError(err, `Could not load ${title.toLowerCase()}.`))).finally(() => setLoading(false)); }, [load, title]);
+  useEffect(() => { refresh(); }, [refresh]);
+  return <div className="authority-page"><div className="authority-eyebrow">Governance module</div><h1>{title}</h1><p className="authority-lead">Persistent authority records from the FastAPI governance layer.</p><section className="authority-panel"><div className="authority-toolbar"><button className="authority-refresh" onClick={refresh}>Refresh</button></div>{error && <div className="authority-error">{error}</div>}{loading ? <div className="authority-empty">Loading...</div> : <div className="authority-table-wrap"><table className="authority-table"><thead><tr>{columns.map(([key, label]) => <th key={key}>{label}</th>)}{actions && <th>Actions</th>}</tr></thead><tbody>{rows.map((row) => <tr key={row.id}>{columns.map(([key]) => <td key={key}>{String(row[key] ?? '--')}</td>)}{actions && <td className="authority-actions">{actions(row, refresh)}</td>}</tr>)}</tbody></table>{!rows.length && <div className="authority-empty"><Icon size={28} />No records found.</div>}</div>}</section></div>;
+}
 
-  const update = (key) => (event) => {
-    setForm((prev) => ({ ...prev, [key]: event.target.value }));
-    setFieldErrors((prev) => ({ ...prev, [key]: undefined }));
-    setFormError('');
+function Placeholder({ title, icon: Icon }) {
+  const loaders = {
+    'Booking monitoring': () => federationApi.listBookings(),
+    'Geo & insights': () => federationApi.getAnalytics(),
+    'Financial analytics': () => federationApi.getFinancials(),
+    'Welfare monitoring': () => federationApi.getWelfare(),
+    'Quality & ratings': () => federationApi.getQuality(),
+    'Inspections': () => federationApi.listInspections(),
+    'Audit logs': () => federationApi.listAuditLogs(),
   };
+  const [data, setData] = useState(null); const [error, setError] = useState('');
+  useEffect(() => { loaders[title]?.().then(setData).catch((err) => setError(readFederationError(err, `Could not load ${title.toLowerCase()}.`))); }, [title]);
+  if (error) return <div className="authority-page"><div className="authority-error">{error}</div></div>;
+  return <div className="authority-page"><div className="authority-eyebrow">Governance module</div><h1>{title}</h1><p className="authority-lead">Live records from the FastAPI authority service.</p><section className="authority-panel authority-data-preview"><Icon size={30} /><strong>{data ? `${Array.isArray(data) ? data.length : Object.keys(data).length} data groups loaded` : 'Loading authority data...'}</strong><pre>{data ? JSON.stringify(data, null, 2) : ''}</pre></section></div>;
+}
 
-  function validate() {
-    const errors = {};
-    if (!form.name.trim()) errors.name = 'Society name is required.';
-    if (!form.societyCode.trim()) errors.societyCode = 'Society code is required.';
-    if (!form.password) errors.password = 'A first password is required.';
-    return errors;
-  }
+function AggregateModule({ title, icon: Icon, load, fields }) {
+  const [data, setData] = useState(null); const [error, setError] = useState('');
+  useEffect(() => { load().then(setData).catch((err) => setError(readFederationError(err, `Could not load ${title.toLowerCase()}.`))); }, [load, title]);
+  return <div className="authority-page"><div className="authority-eyebrow">Authority intelligence</div><h1>{title}</h1><p className="authority-lead">Aggregated directly from marketplace records.</p>{error ? <div className="authority-error">{error}</div> : !data ? <div className="authority-empty">Loading...</div> : <div className="authority-stats">{fields.map(([key, label]) => <StatCard key={key} label={label} value={Array.isArray(data[key]) ? data[key].length : data[key] ?? 0} icon={Icon} accent="blue" />)}</div>}</div>;
+}
 
-  async function handleCreate(event) {
-    event.preventDefault();
-    setFormError('');
-    setSuccess('');
-
-    const errors = validate();
-    if (Object.keys(errors).length > 0) {
-      setFieldErrors(errors);
-      return;
-    }
-
-    setSubmitting(true);
-    try {
-      const created = await federationApi.createSociety({
-        name: form.name.trim(),
-        city: form.city.trim() || null,
-        societyCode: form.societyCode.trim(),
-        password: form.password,
-      });
-      setSuccess(
-        `${created.name} registered. It can now sign in at /login with code "${created.societyCode}".`
-      );
-      setForm(EMPTY_FORM);
-      await loadSocieties();
-    } catch (err) {
-      setFormError(readFederationError(err, 'Could not register the society.'));
-    } finally {
-      setSubmitting(false);
-    }
-  }
-
-  return (
-    <div className="shell">
-      <header className="shell__header">
-        <div className="shell__brand">
-          <span className="shell__mark">
-            <ShieldIcon width={20} height={20} />
-          </span>
-          <span>
-            <strong>Federation Console</strong>
-            <small>Cooperative Service Marketplace</small>
-          </span>
-        </div>
-
-        <div className="shell__user">
-          <span className="shell__avatar" aria-hidden="true">
-            {user?.name?.charAt(0).toUpperCase() ?? 'F'}
-          </span>
-          <span className="shell__identity">
-            <strong>{user?.name}</strong>
-            <small>{user?.email}</small>
-          </span>
-          <Button variant="ghost" onClick={signOut}>
-            <LogOutIcon width={16} height={16} />
-            Sign out
-          </Button>
-        </div>
-      </header>
-
-      <main className="shell__main">
-        <section className="panel">
-          <h1 className="panel__title">Registered societies</h1>
-          <p className="panel__subtitle">
-            Societies you register here sign in to the Society Portal with their own code.
-          </p>
-
-          <Alert variant="error">{loadError}</Alert>
-
-          {loading ? (
-            <p className="panel__empty">Loading societies…</p>
-          ) : societies.length === 0 ? (
-            <p className="panel__empty">
-              No societies registered yet. Use the form below to add the first one.
-            </p>
-          ) : (
-            <table className="table">
-              <thead>
-                <tr>
-                  <th scope="col">Society</th>
-                  <th scope="col">Code</th>
-                  <th scope="col">City</th>
-                  <th scope="col">Status</th>
-                </tr>
-              </thead>
-              <tbody>
-                {societies.map((society) => (
-                  <tr key={society.id}>
-                    <td>{society.name}</td>
-                    <td className="table__mono">{society.societyCode}</td>
-                    <td>{society.city ?? '--'}</td>
-                    <td>
-                      <span
-                        className={`badge ${society.isActive ? 'badge--success' : 'badge--muted'}`}
-                      >
-                        {society.isActive ? 'Active' : 'Inactive'}
-                      </span>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
-        </section>
-
-        <section className="panel">
-          <h2 className="panel__heading">Register a society</h2>
-          <p className="panel__note">
-            The code and password you set here are the society&apos;s first sign-in credentials.
-          </p>
-
-          <form className="auth__form" onSubmit={handleCreate} noValidate>
-            <Alert variant="success">{success}</Alert>
-            <Alert variant="error">{formError}</Alert>
-
-            <Field
-              label="Society name"
-              name="name"
-              placeholder="Sunrise Workers Cooperative"
-              value={form.name}
-              onChange={update('name')}
-              error={fieldErrors.name}
-              disabled={submitting}
-            />
-
-            <Field
-              label="City"
-              name="city"
-              placeholder="Noida"
-              hint="Optional."
-              value={form.city}
-              onChange={update('city')}
-              error={fieldErrors.city}
-              disabled={submitting}
-            />
-
-            <Field
-              label="Society code"
-              name="societyCode"
-              placeholder="SUNRISE01"
-              hint="What the society types to sign in. Must be unique."
-              value={form.societyCode}
-              onChange={update('societyCode')}
-              error={fieldErrors.societyCode}
-              disabled={submitting}
-            />
-
-            <Field
-              label="First password"
-              type="password"
-              name="password"
-              placeholder="Set an initial password"
-              autoComplete="new-password"
-              value={form.password}
-              onChange={update('password')}
-              error={fieldErrors.password}
-              disabled={submitting}
-            />
-
-            <Button type="submit" loading={submitting}>
-              {submitting ? 'Registering…' : 'Register society'}
-            </Button>
-          </form>
-        </section>
-      </main>
-    </div>
-  );
+export default function FederationDashboardPage() {
+  const { user, signOut } = useFederationAuth(); const location = useLocation(); const [menuOpen, setMenuOpen] = useState(false);
+  const active = nav.find((item) => location.pathname === item.path) || nav.find((item) => location.pathname.startsWith(`${item.path}/`)) || nav[0];
+  return <div className="authority-layout"><aside className={`authority-sidebar ${menuOpen ? 'is-open' : ''}`}><div className="authority-brand"><span className="authority-brand__mark"><ShieldCheck size={21} /></span><div><strong>Coop<span>Ledger</span></strong><small>Federation authority</small></div></div><div className="authority-context"><span>GOVERNANCE NETWORK</span><strong>National cooperative service layer</strong></div><nav><span className="authority-nav-label">Workspace</span>{nav.map(({ path, label, icon: Icon }) => <NavLink key={path} to={path} end={path === '/federation/dashboard'} onClick={() => setMenuOpen(false)} className={({ isActive }) => `authority-nav-item ${isActive ? 'active' : ''}`}><Icon size={18} />{label}</NavLink>)}</nav><div className="authority-sidebar__bottom"><NavLink to="/federation/settings" className="authority-nav-item"><Settings2 size={18} />Settings</NavLink><button className="authority-nav-item authority-signout" onClick={signOut}><LogOut size={18} />Sign out</button></div></aside><main className="authority-main"><header className="authority-topbar"><button className="authority-menu" onClick={() => setMenuOpen(!menuOpen)} aria-label="Open navigation"><Menu size={21} /></button><div><span className="authority-topbar__label">{active.label}</span><span className="authority-topbar__path">/ federation / {active.label.toLowerCase()}</span></div><div className="authority-user"><span>{user?.name?.charAt(0).toUpperCase() || 'F'}</span><div><strong>{user?.name}</strong><small>{user?.email}</small></div></div></header><Routes><Route index element={<Navigate to="/federation/dashboard" replace />} /><Route path="dashboard" element={<Overview />} /><Route path="societies" element={<Societies />} /><Route path="workers" element={<Workers />} /><Route path="compliance" element={<DataModule title="Compliance documents" icon={FileCheck2} load={federationApi.listDocuments} columns={[["name","Document"],["category","Category"],["status","Status"],["expiresAt","Expiry"]]} actions={(row, refresh) => <button className="authority-refresh" onClick={() => federationApi.updateDocumentStatus(row.id, { status: row.status === 'verified' ? 'pending' : 'verified' }).then(refresh)}>Toggle status</button>} />} /><Route path="bookings" element={<DataModule title="Booking monitoring" icon={ClipboardCheck} load={federationApi.listBookings} columns={[["id","ID"],["customer","Customer"],["society","Society"],["service","Service"],["status","Status"],["amount","Amount"]]} />} /><Route path="complaints" element={<DataModule title="Complaints & grievances" icon={AlertTriangle} load={federationApi.listComplaints} columns={[["id","ID"],["title","Complaint"],["status","Status"],["raisedAt","Raised"]]} actions={(row, refresh) => <button className="authority-refresh" onClick={() => federationApi.updateComplaintStatus(row.id, { status: row.status === 'closed' ? 'open' : 'closed' }).then(refresh)}>Close / reopen</button>} />} /><Route path="analytics" element={<AggregateModule title="Geo & insights" icon={Map} load={federationApi.getAnalytics} fields={[["skills","Skill groups"],["services","Service groups"],["locations","Locations"]]} />} /><Route path="financials" element={<AggregateModule title="Financial analytics" icon={BarChart3} load={federationApi.getFinancials} fields={[["transactionValue","Transaction value"],["completedTransactions","Completed transactions"],["pendingPayments","Pending payments"]]} />} /><Route path="welfare" element={<AggregateModule title="Welfare monitoring" icon={ShieldCheck} load={federationApi.getWelfare} fields={[["totalWorkers","Workers"],["covered","Covered"],["notCovered","Not covered"]]} />} /><Route path="quality" element={<AggregateModule title="Quality & ratings" icon={Activity} load={federationApi.getQuality} fields={[["averageRating","Average rating"],["completedBookings","Completed"],["cancelledBookings","Cancelled"],["openComplaints","Open complaints"]]} />} /><Route path="inspections" element={<DataModule title="Inspections" icon={ClipboardCheck} load={federationApi.listInspections} columns={[["id","ID"],["societyId","Society"],["type","Type"],["purpose","Purpose"],["result","Result"]]} />} /><Route path="audit-logs" element={<DataModule title="Audit logs" icon={FileCheck2} load={federationApi.listAuditLogs} columns={[["action","Action"],["module","Module"],["entityType","Entity"],["reason","Reason"],["createdAt","Created"]]} />} /><Route path="settings" element={<Placeholder title="Authority settings" icon={Settings2} />} /><Route path="*" element={<Navigate to="/federation/dashboard" replace />} /></Routes></main></div>;
 }

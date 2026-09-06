@@ -17,7 +17,8 @@ class OtpVerification(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     phone: Mapped[str] = mapped_column(String(20), nullable=False, index=True)
-    code_hash: Mapped[str] = mapped_column(String(255), nullable=False)
+    code_hash: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    verification_id: Mapped[str | None] = mapped_column(String(255), nullable=True, index=True)
     purpose: Mapped[str] = mapped_column(
         String(50), default="signup", server_default="signup", nullable=False
     )

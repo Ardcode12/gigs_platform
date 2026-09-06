@@ -17,6 +17,16 @@ const StatusBadge = ({ status }) => {
   return <span className={`badge ${cls}`}>{label}</span>;
 };
 
+function distanceKm(fromLat, fromLng, toLat, toLng) {
+  if (![fromLat, fromLng, toLat, toLng].every(Number.isFinite)) return null;
+  const radians = (value) => (value * Math.PI) / 180;
+  const dLat = radians(toLat - fromLat);
+  const dLng = radians(toLng - fromLng);
+  const a = Math.sin(dLat / 2) ** 2
+    + Math.cos(radians(fromLat)) * Math.cos(radians(toLat)) * Math.sin(dLng / 2) ** 2;
+  return 6371 * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
 // ============== Single Assign Modal ==============
 const AssignSingleModal = ({ booking, availableWorkers, onClose, onAssign }) => {
   const [selected, setSelected] = useState(null);
@@ -37,7 +47,8 @@ const AssignSingleModal = ({ booking, availableWorkers, onClose, onAssign }) => 
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
             {availableWorkers.map((w, i) => {
-              const distance = (Math.random() * 5 + 0.5).toFixed(1);
+              const distanceValue = distanceKm(booking.lat, booking.lng, w.lastLat, w.lastLng);
+              const distance = distanceValue == null ? null : distanceValue.toFixed(1);
               return (
                 <div key={w.id}
                   onClick={() => setSelected(w.id)}
@@ -54,8 +65,8 @@ const AssignSingleModal = ({ booking, availableWorkers, onClose, onAssign }) => 
                       <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>{w.city} · ⭐ {w.rating || 'New'} · {w.completedJobs} jobs</div>
                     </div>
                     <div style={{ textAlign: 'right' }}>
-                      <div style={{ fontWeight: 700, color: 'var(--primary)', fontSize: 14 }}>📍 {distance} km</div>
-                      <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>~{Math.round(distance * 4)} min ETA</div>
+                       <div style={{ fontWeight: 700, color: 'var(--primary)', fontSize: 14 }}>📍 {distance ? `${distance} km` : 'Location unavailable'}</div>
+                       {distance && <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>~{Math.round(Number(distance) * 4)} min ETA</div>}
                     </div>
                     {selected === w.id && <CheckCircle size={20} color="var(--primary)" />}
                   </div>

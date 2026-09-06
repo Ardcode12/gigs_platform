@@ -75,6 +75,28 @@ export const federationApi = {
 
   listSocieties: () => federationClient.get('/federation/societies').then((r) => r.data.societies),
 
+  dashboard: () => federationClient.get('/federation/dashboard').then((r) => r.data.dashboard),
+
+  listWorkers: (params) => federationClient.get('/federation/workers', { params }).then((r) => r.data.workers),
+
+  updateSocietyStatus: (id, data) => federationClient.patch(`/federation/societies/${id}/status`, data).then((r) => r.data.society),
+  listDocuments: (params) => federationClient.get('/federation/documents', { params }).then((r) => r.data.documents),
+  updateDocumentStatus: (id, data) => federationClient.patch(`/federation/documents/${id}/status`, data).then((r) => r.data.document),
+  verifyWorker: (id) => federationClient.post(`/federation/workers/${id}/verify`).then((r) => r.data.worker),
+  rejectWorker: (id, reason) => federationClient.post(`/federation/workers/${id}/reject`, { reason }).then((r) => r.data.worker),
+  listComplaints: (params) => federationClient.get('/federation/complaints', { params }).then((r) => r.data.complaints),
+  updateComplaintStatus: (id, data) => federationClient.patch(`/federation/complaints/${id}/status`, data).then((r) => r.data.complaint),
+  listInspections: () => federationClient.get('/federation/inspections').then((r) => r.data.inspections),
+  createInspection: (data) => federationClient.post('/federation/inspections', data).then((r) => r.data.inspection),
+  listAuditLogs: () => federationClient.get('/federation/audit-logs').then((r) => r.data.logs),
+  listBookings: () => federationClient.get('/federation/bookings').then((r) => r.data.bookings),
+  getFinancials: () => federationClient.get('/federation/financials').then((r) => r.data.financials),
+  getWelfare: () => federationClient.get('/federation/welfare').then((r) => r.data.welfare),
+  getQuality: () => federationClient.get('/federation/quality').then((r) => r.data.quality),
+  getAnalytics: () => federationClient.get('/federation/analytics').then((r) => r.data.analytics),
+  search: (query) => federationClient.get('/federation/search', { params: { q: query } }).then((r) => r.data.results),
+  getReport: (type) => federationClient.get(`/federation/reports/${type}`).then((r) => r.data),
+
   createSociety: (payload) =>
     federationClient.post('/federation/societies', payload).then((r) => r.data.society),
 };

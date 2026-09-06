@@ -28,6 +28,13 @@ class Settings(BaseSettings):
     # Dev behaviour
     DEV_MODE: bool = False
 
+    # Twilio Verify V2 OTP
+    TWILIO_ACCOUNT_SID: str = ""
+    TWILIO_AUTH_TOKEN: str = ""
+    TWILIO_VERIFY_SERVICE_SID: str = ""
+    OTP_EXPIRY_MINUTES: int = 10
+    OTP_RESEND_COOLDOWN_SECONDS: int = 30
+
     # CORS
     CORS_ORIGINS: str = "*"
 

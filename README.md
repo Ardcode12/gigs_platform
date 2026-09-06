@@ -2,13 +2,13 @@
 
 ## Tech Stack
 - **Frontend**: React 18 + Vite + Recharts + Lucide
-- **Backend**: Node.js + Express.js
-- **Database**: PostgreSQL
+- **Backend**: FastAPI + Uvicorn
+- **Database**: PostgreSQL / Supabase
 
 ---
 
 ## Prerequisites
-- Node.js v18+
+- Python 3.12+
 - PostgreSQL 14+ installed and running
 
 ---
@@ -22,12 +22,11 @@ CREATE DATABASE gigmat_society;
 \q
 ```
 
-### Run schema + seed
+### Run migrations + seed
 ```bash
 cd backend
-# Update .env with your DB password first!
-npm run db:migrate
-npm run db:seed
+./venv/bin/alembic upgrade head
+./venv/bin/python seed.py
 ```
 
 ---
@@ -37,12 +36,11 @@ npm run db:seed
 ```bash
 cd backend
 cp .env.example .env
-# Edit .env — set DB_PASSWORD to your PostgreSQL password
-npm install
-npm run dev      # Starts on http://localhost:5000
+# Edit .env with the Supabase DATABASE_URL
+./venv/bin/uvicorn app.main:app --host 0.0.0.0 --port 8001 --reload
 ```
 
-Test it: http://localhost:5000/health
+Test it: http://localhost:8001/health
 
 ---
 
@@ -61,8 +59,8 @@ npm run dev      # Starts on http://localhost:5173
 
 | Field      | Value           |
 |------------|-----------------|
-| Society ID | SOC-TN-CHE-01   |
-| Password   | society123      |
+| Society code | SOC-TEST-1   |
+| Password     | pass         |
 
 ---
 
@@ -78,19 +76,17 @@ gigs_platform/
 │   │   └── data/       # Mock data (fallback)
 │   └── .env            # VITE_USE_BACKEND=true
 │
-└── backend/            # Express.js API
-    ├── controllers/    # Business logic
-    ├── routes/         # Express routers
-    ├── middleware/     # auth.js, errorHandler.js
-    ├── config/         # db.js (pg pool)
-    ├── db/             # schema.sql, seed.sql
-    └── server.js       # Entry point (port 5000)
+└── backend/            # FastAPI API
+    ├── app/             # Routers, models, schemas and services
+    ├── alembic/         # Database migrations
+    ├── seed.py          # Development data
+    └── app/main.py      # Entry point (port 8001)
 ```
 
 ---
 
 ## API Base URL
-`http://localhost:5000/api/society/`
+`http://localhost:8001/api/society/`
 
 ## Society Dashboard Modules
 1. **Workers & KYC** — 2-tier verification (Gov cert → Physical inspection)

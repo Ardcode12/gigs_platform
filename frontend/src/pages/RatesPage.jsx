@@ -1,15 +1,20 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useSociety } from '../context/SocietyContext';
 import { WORKER_CATEGORIES, getCategoryInfo, formatCurrency } from '../constants';
 import { Save, Zap, Moon, Info } from 'lucide-react';
 
 const RatesPage = () => {
-  const { rates, updateRate } = useSociety();
+  const { rates, settings, updateSettings, updateRate } = useSociety();
   const [editing, setEditing] = useState(null);
   const [editValues, setEditValues] = useState({});
-  const [emergency, setEmergency] = useState(true);
-  const [nightSurcharge, setNightSurcharge] = useState(true);
+  const [emergency, setEmergency] = useState(settings.emergencySurcharge);
+  const [nightSurcharge, setNightSurcharge] = useState(settings.nightSurcharge);
   const [saved, setSaved] = useState(false);
+
+  useEffect(() => {
+    setEmergency(settings.emergencySurcharge);
+    setNightSurcharge(settings.nightSurcharge);
+  }, [settings.emergencySurcharge, settings.nightSurcharge]);
 
   const startEdit = (cat) => {
     const r = rates.find(r => r.category === cat.id) || {};
@@ -22,6 +27,12 @@ const RatesPage = () => {
     setEditing(null);
     setSaved(true);
     setTimeout(() => setSaved(false), 2000);
+  };
+
+  const saveSettings = async (key, value) => {
+    if (key === 'emergencySurcharge') setEmergency(value);
+    if (key === 'nightSurcharge') setNightSurcharge(value);
+    await updateSettings({ [key]: value });
   };
 
   return (
@@ -45,7 +56,7 @@ const RatesPage = () => {
               <div className="toggle-desc">+25% extra charge for urgent bookings (response within 30 min)</div>
             </div>
             <label className="toggle">
-              <input type="checkbox" checked={emergency} onChange={e => setEmergency(e.target.checked)} />
+               <input type="checkbox" checked={emergency} onChange={e => saveSettings('emergencySurcharge', e.target.checked)} />
               <span className="toggle-slider" />
             </label>
           </div>
@@ -56,7 +67,7 @@ const RatesPage = () => {
               <div className="toggle-desc">+35% extra for bookings between 8 PM – 6 AM</div>
             </div>
             <label className="toggle">
-              <input type="checkbox" checked={nightSurcharge} onChange={e => setNightSurcharge(e.target.checked)} />
+               <input type="checkbox" checked={nightSurcharge} onChange={e => saveSettings('nightSurcharge', e.target.checked)} />
               <span className="toggle-slider" />
             </label>
           </div>

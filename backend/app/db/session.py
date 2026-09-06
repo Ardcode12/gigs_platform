@@ -4,14 +4,17 @@ from collections.abc import Iterator
 
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
+from sqlalchemy.pool import NullPool
 
 from app.core.config import settings
 
 engine = create_engine(
     settings.DATABASE_URL,
     pool_pre_ping=True,  # Supabase closes idle connections; re-check before handing one out
-    pool_size=5,
-    max_overflow=10,
+    # Supabase is already pooling connections. NullPool prevents each reload
+    # process from holding idle session-pooler connections indefinitely.
+    poolclass=NullPool,
+    connect_args={"prepare_threshold": None},
 )
 
 # If you move DATABASE_URL to Supabase's TRANSACTION pooler (port 6543), prepared

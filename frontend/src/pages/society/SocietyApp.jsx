@@ -1,6 +1,8 @@
-import React, { useState } from 'react';
-import { SocietyProvider } from '../../context/SocietyContext';
+import React from 'react';
+import { NavLink, Route, Routes, useLocation, Navigate } from 'react-router-dom';
+import { SocietyProvider, useSociety } from '../../context/SocietyContext';
 import { LayoutDashboard, Users, Briefcase, IndianRupee, Settings, AlertCircle, HeartHandshake, LogOut } from 'lucide-react';
+import { useAuth } from '../../context/AuthContext.jsx';
 import DashboardPage from '../DashboardPage';
 import WorkersPage from '../WorkersPage';
 import BookingsPage from '../BookingsPage';
@@ -10,27 +12,28 @@ import ComplaintsPage from '../ComplaintsPage';
 import WelfarePage from '../WelfarePage';
 
 // Simple wrapper to provide context to the dashboard
-const SocietyApp = ({ session, onLogout }) => {
+const SocietyApp = () => {
+  const { user, signOut } = useAuth();
   return (
-    <SocietyProvider>
-      <SocietyDashboard session={session} onLogout={onLogout} />
+    <SocietyProvider society={user}>
+      <SocietyDashboard society={user} onLogout={() => signOut()} />
     </SocietyProvider>
   );
 };
 
-const SocietyDashboard = ({ session, onLogout }) => {
-  const [activeTab, setActiveTab] = useState('dashboard');
-  const society = session.data;
-
+const SocietyDashboard = ({ society, onLogout }) => {
+  const { error } = useSociety();
   const tabs = [
-    { id: 'dashboard', label: 'Dashboard', icon: <LayoutDashboard size={20} /> },
-    { id: 'workers', label: 'Workers', icon: <Users size={20} /> },
-    { id: 'bookings', label: 'Bookings', icon: <Briefcase size={20} /> },
-    { id: 'payments', label: 'Payments', icon: <IndianRupee size={20} /> },
-    { id: 'rates', label: 'Rate Cards', icon: <Settings size={20} /> },
-    { id: 'complaints', label: 'Complaints', icon: <AlertCircle size={20} /> },
-    { id: 'welfare', label: 'Welfare', icon: <HeartHandshake size={20} /> },
+    { path: '/dashboard', label: 'Dashboard', icon: <LayoutDashboard size={20} /> },
+    { path: '/dashboard/workers', label: 'Workers', icon: <Users size={20} /> },
+    { path: '/dashboard/bookings', label: 'Bookings', icon: <Briefcase size={20} /> },
+    { path: '/dashboard/payments', label: 'Payments', icon: <IndianRupee size={20} /> },
+    { path: '/dashboard/rates', label: 'Rate Cards', icon: <Settings size={20} /> },
+    { path: '/dashboard/complaints', label: 'Complaints', icon: <AlertCircle size={20} /> },
+    { path: '/dashboard/welfare', label: 'Welfare', icon: <HeartHandshake size={20} /> },
   ];
+  const location = useLocation();
+  const activeTab = tabs.find((tab) => tab.path === location.pathname) ?? tabs.find((tab) => location.pathname.startsWith(`${tab.path}/`)) ?? tabs[0];
 
   return (
     <div className="app-layout">
@@ -53,14 +56,10 @@ const SocietyDashboard = ({ session, onLogout }) => {
         <nav className="sidebar-nav">
           <div className="nav-section-label">Main Menu</div>
           {tabs.map(tab => (
-            <button
-              key={tab.id}
-              className={`nav-item ${activeTab === tab.id ? 'active' : ''}`}
-              onClick={() => setActiveTab(tab.id)}
-            >
+            <NavLink key={tab.path} to={tab.path} className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`} end={tab.path === '/dashboard'}>
               <div className="nav-icon">{tab.icon}</div>
               {tab.label}
-            </button>
+            </NavLink>
           ))}
         </nav>
 
@@ -76,7 +75,7 @@ const SocietyDashboard = ({ session, onLogout }) => {
       <main className="main-content">
         <header className="topbar">
           <div className="topbar-title">
-            {tabs.find(t => t.id === activeTab)?.label}
+            {activeTab.label}
           </div>
           <div className="topbar-actions">
             <div className="user-avatar">{society?.name?.charAt(0) || 'S'}</div>
@@ -84,13 +83,17 @@ const SocietyDashboard = ({ session, onLogout }) => {
         </header>
 
         <div className="page-content">
-          {activeTab === 'dashboard' && <DashboardPage />}
-          {activeTab === 'workers' && <WorkersPage />}
-          {activeTab === 'bookings' && <BookingsPage />}
-          {activeTab === 'payments' && <PaymentsPage />}
-          {activeTab === 'rates' && <RatesPage />}
-          {activeTab === 'complaints' && <ComplaintsPage />}
-          {activeTab === 'welfare' && <WelfarePage />}
+          {error && <div className="alert alert-danger" role="alert">Unable to load all Society data: {error}</div>}
+          <Routes>
+            <Route index element={<DashboardPage />} />
+            <Route path="workers" element={<WorkersPage />} />
+            <Route path="bookings" element={<BookingsPage />} />
+            <Route path="payments" element={<PaymentsPage />} />
+            <Route path="rates" element={<RatesPage />} />
+            <Route path="complaints" element={<ComplaintsPage />} />
+            <Route path="welfare" element={<WelfarePage />} />
+            <Route path="*" element={<Navigate to="/dashboard" replace />} />
+          </Routes>
         </div>
       </main>
     </div>

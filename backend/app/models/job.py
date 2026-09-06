@@ -14,6 +14,7 @@ from sqlalchemy import (
     func,
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
+from sqlalchemy.dialects.postgresql import JSONB
 
 from app.db.base import Base
 from app.models.enums import JobStatus
@@ -46,6 +47,8 @@ class Job(Base):
     worker_id: Mapped[int | None] = mapped_column(
         ForeignKey("workers.id", ondelete="SET NULL"), index=True
     )
+    team_worker_ids: Mapped[list[int]] = mapped_column(JSONB, default=list, nullable=False)
+    team_lead_id: Mapped[int | None] = mapped_column(ForeignKey("workers.id", ondelete="SET NULL"))
 
     service_type: Mapped[str] = mapped_column(String(100), nullable=False)
     # MaterialCommunityIcons glyph name the app already renders, e.g. "water-pump".
@@ -81,7 +84,15 @@ class Job(Base):
     completion_verified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
     customer: Mapped["Customer"] = relationship(lazy="joined")  # noqa: F821
-    worker: Mapped["Worker | None"] = relationship(lazy="joined")  # noqa: F821
+    worker: Mapped["Worker | None"] = relationship(
+        foreign_keys=[worker_id], lazy="joined"
+    )  # noqa: F821
+    team_lead: Mapped["Worker | None"] = relationship(
+        foreign_keys=[team_lead_id], lazy="joined"
+    )  # noqa: F821
+    payment: Mapped["Payment | None"] = relationship(
+        back_populates="job", lazy="joined", uselist=False
+    )  # noqa: F821
     services: Mapped[list["JobService"]] = relationship(
         back_populates="job", cascade="all, delete-orphan", order_by="JobService.id"
     )

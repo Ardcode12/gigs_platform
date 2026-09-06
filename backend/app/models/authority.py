@@ -54,3 +54,41 @@ class FederationUser(Base):
     password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
     is_active: Mapped[bool] = mapped_column(default=True, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+class AuthorityDocument(Base):
+    __tablename__ = "authority_documents"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    society_id: Mapped[int | None] = mapped_column(ForeignKey("societies.id", ondelete="CASCADE"), index=True)
+    worker_id: Mapped[int | None] = mapped_column(ForeignKey("workers.id", ondelete="CASCADE"), index=True)
+    name: Mapped[str] = mapped_column(String(200), nullable=False)
+    category: Mapped[str] = mapped_column(String(50), nullable=False)
+    status: Mapped[str] = mapped_column(String(30), default="pending", nullable=False)
+    expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    reason: Mapped[str | None] = mapped_column(Text)
+    data: Mapped[dict] = mapped_column(JSONB, default=dict, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+class AuthorityInspection(Base):
+    __tablename__ = "authority_inspections"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    society_id: Mapped[int] = mapped_column(ForeignKey("societies.id", ondelete="CASCADE"), index=True)
+    officer_id: Mapped[int | None] = mapped_column(ForeignKey("federation_users.id", ondelete="SET NULL"))
+    inspection_type: Mapped[str] = mapped_column(String(50), nullable=False)
+    purpose: Mapped[str] = mapped_column(Text, nullable=False)
+    scheduled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    result: Mapped[str] = mapped_column(String(30), default="scheduled", nullable=False)
+    notes: Mapped[str | None] = mapped_column(Text)
+    data: Mapped[dict] = mapped_column(JSONB, default=dict, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+class AuthorityAuditLog(Base):
+    __tablename__ = "authority_audit_logs"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    actor_id: Mapped[int | None] = mapped_column(ForeignKey("federation_users.id", ondelete="SET NULL"))
+    action: Mapped[str] = mapped_column(String(100), nullable=False)
+    module: Mapped[str] = mapped_column(String(80), nullable=False)
+    entity_type: Mapped[str] = mapped_column(String(80), nullable=False)
+    entity_id: Mapped[int | None] = mapped_column()
+    reason: Mapped[str | None] = mapped_column(Text)
+    data: Mapped[dict] = mapped_column(JSONB, default=dict, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)

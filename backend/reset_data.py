@@ -82,10 +82,21 @@ def main() -> None:
                 password_hash=hash_password("Federation@123"),
             )
         )
+        db.add(
+            Society(
+                name="Sunrise Workers Cooperative",
+                city="Noida",
+                society_code="SOC-TEST-1",
+                password_hash=hash_password("pass"),
+                is_active=True,
+            )
+        )
         db.commit()
         print("Application data cleared.")
         print("Federation email: federation@workmat.local")
         print("Federation password: Federation@123")
+        print("Society code: SOC-TEST-1")
+        print("Society password: pass")
     finally:
         db.close()
 

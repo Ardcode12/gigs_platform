@@ -27,6 +27,7 @@ from app.models import (
     CallRequest,
     ChatMessage,
     Customer,
+    FederationUser,
     ExtraAmountRequest,
     ExtraAmountStatus,
     Job,
@@ -53,6 +54,10 @@ NOW = datetime.now(TZ)
 # Every worker's shared password in the seed. The society hands this out and
 # `must_change_password` forces it to be replaced at first login.
 INITIAL_PASSWORD = "worker123"
+SOCIETY_CODE = "SOC-TEST-1"
+SOCIETY_PASSWORD = "pass"
+FEDERATION_EMAIL = "federation@workmat.local"
+FEDERATION_PASSWORD = "Federation@123"
 
 #: Noida Sector 62 area — jobs are placed a few km away so distance/ETA are non-zero.
 WORKER_HOME = (28.6270, 77.3720)
@@ -74,6 +79,7 @@ _WIPE_ORDER = (
     Worker,
     Customer,
     Society,
+    FederationUser,
 )
 
 
@@ -90,8 +96,21 @@ def wipe(db) -> None:
 
 def seed(db) -> None:
     # -- society -----------------------------------------------------------
-    society = Society(name="Sunrise Workers Cooperative", city="Noida")
+    society = Society(
+        name="Sunrise Workers Cooperative",
+        city="Noida",
+        society_code=SOCIETY_CODE,
+        password_hash=hash_password(SOCIETY_PASSWORD),
+        is_active=True,
+    )
     db.add(society)
+    db.flush()
+    db.add(FederationUser(
+        email=FEDERATION_EMAIL,
+        name="WORKMAT Federation Admin",
+        password_hash=hash_password(FEDERATION_PASSWORD),
+        is_active=True,
+    ))
     db.flush()
 
     # -- workers -----------------------------------------------------------
@@ -670,6 +689,8 @@ def seed(db) -> None:
     print(f"· 1 society, {len(workers)} workers, {len(customers)} customers")
     print(f"· {completed_count} completed jobs with payments and ratings")
     print("· 3 open requests (2 broadcast, 1 directed at WM1042), 1 job in progress")
+    print(f"Society login: {SOCIETY_CODE} / {SOCIETY_PASSWORD}")
+    print(f"Federation login: {FEDERATION_EMAIL} / {FEDERATION_PASSWORD}")
     print("\nLogin with the worker code OR the phone number:\n")
     for worker in workers:
         forced = " (will be asked to change it)" if worker.must_change_password else ""
