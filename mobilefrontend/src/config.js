@@ -21,7 +21,6 @@ const getApiHost = () => {
     }
   }
 
-  // Fallback - CHANGE THIS to your laptop IPv4
   return '10.71.25.35';
 };
 

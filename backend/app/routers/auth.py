@@ -68,6 +68,8 @@ def society_login(payload: SocietyLoginRequest, db: DbSession) -> SocietyLoginRe
     society = db.scalar(select(Society).where(func.lower(Society.society_code) == payload.societyCode.strip().lower()))
     if society is None or not society.password_hash or not verify_password(payload.password, society.password_hash):
         raise HTTPException(status_code=401, detail="Incorrect society code or password")
+    if not society.is_active:
+        raise HTTPException(status_code=403, detail=f"Society account is {society.status or 'inactive'}. Please contact Federation Authority.")
     return SocietyLoginResponse(
         access_token=create_authority_access_token(society.id),
         refresh_token=create_authority_refresh_token(society.id),

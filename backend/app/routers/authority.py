@@ -18,23 +18,31 @@ def create_society(payload: SocietyCreatePayload, federation: CurrentFederation,
     exists = db.scalar(select(Society).where(func.lower(Society.society_code) == payload.societyCode.lower()))
     if exists:
         raise HTTPException(409, "Society code already exists")
+    status = payload.status or "active"
+    is_active = payload.isActive if payload.isActive is not None else (status in {"active", "approved"})
     society = Society(
         name=payload.name,
         city=payload.city,
         society_code=payload.societyCode,
         password_hash=hash_password(payload.password),
-        is_active=True,
+        is_active=is_active,
+        status=status,
+        registration_number=payload.registrationNumber,
+        registration_expiry=datetime.fromisoformat(payload.registrationExpiry) if payload.registrationExpiry else None,
+        settings={key: value for key, value in payload.model_dump().items() if key not in {"name", "city", "societyCode", "password", "registrationNumber", "registrationExpiry", "status", "isActive"} and value is not None},
     )
     db.add(society)
     db.commit()
     db.refresh(society)
-    return {"society": {"id": society.id, "societyCode": society.society_code, "name": society.name, "city": society.city}}
+    _audit(db, federation, "society_created", "societies", "society", society.id)
+    db.commit()
+    return {"society": {"id": society.id, "societyCode": society.society_code, "name": society.name, "city": society.city, "status": society.status, "isActive": society.is_active}}
 
 
 @router.get("/federation/societies")
 def list_societies(federation: CurrentFederation, db: DbSession):
     rows = db.scalars(select(Society).order_by(Society.name)).all()
-    return {"societies": [{"id": s.id, "societyCode": s.society_code, "name": s.name, "city": s.city, "isActive": s.is_active} for s in rows]}
+    return {"societies": [{"id": s.id, "societyCode": s.society_code, "name": s.name, "city": s.city, "isActive": s.is_active, "status": s.status, "registrationNumber": s.registration_number, "registrationExpiry": s.registration_expiry, **(s.settings or {})} for s in rows]}
 
 
 @router.get("/federation/me")
@@ -56,32 +64,48 @@ def federation_me(federation: CurrentFederation):
 
 @router.get("/federation/dashboard")
 def federation_dashboard(federation: CurrentFederation, db: DbSession):
-    societies = db.scalars(select(Society)).all()
-    workers = db.scalars(select(Worker)).all()
-    jobs = db.scalars(select(Job)).all()
-    complaints = db.scalars(select(SocietyComplaint)).all()
+    total_societies = db.scalar(select(func.count()).select_from(Society)) or 0
+    active_societies = db.scalar(select(func.count()).select_from(Society).where(Society.is_active.is_(True))) or 0
+    pending_societies = db.scalar(select(func.count()).select_from(Society).where(Society.status.in_(["submitted", "under_review"]))) or 0
+
+    total_workers = db.scalar(select(func.count()).select_from(Worker)) or 0
+    verified_workers = db.scalar(select(func.count()).select_from(Worker).where(Worker.kyc_status == "active")) or 0
+    pending_workers = db.scalar(select(func.count()).select_from(Worker).where(Worker.kyc_status.in_(["pending", "verifying"]))) or 0
+
+    total_bookings = db.scalar(select(func.count()).select_from(Job)) or 0
+    transaction_value = db.scalar(select(func.sum(Job.base_amount))) or 0
+
+    open_complaints = db.scalar(select(func.count()).select_from(SocietyComplaint).where(SocietyComplaint.status.not_in(["resolved", "closed"]))) or 0
+    
+    pending_welfare = db.scalar(select(func.count()).select_from(WelfareEnrollment).where(WelfareEnrollment.status.in_(["submitted", "under_review"]))) or 0
+    pending_documents = db.scalar(select(func.count()).select_from(AuthorityDocument).where(AuthorityDocument.status.in_(["pending", "correction_required"]))) or 0
+
     return {"dashboard": {
-        "totalSocieties": len(societies),
-        "activeSocieties": sum(bool(item.is_active) for item in societies),
-        "pendingApprovals": sum(item.status in {"submitted", "under_review"} for item in societies),
-        "totalWorkers": len(workers),
-        "verifiedWorkers": sum(item.kyc_status == "active" for item in workers),
-        "pendingWorkers": sum(item.kyc_status in {"pending", "verifying"} for item in workers),
-        "totalBookings": len(jobs),
-        "transactionValue": sum(float(item.base_amount) for item in jobs),
-        "openComplaints": sum(item.status not in {"resolved", "closed"} for item in complaints),
+        "totalSocieties": total_societies,
+        "activeSocieties": active_societies,
+        "pendingApprovals": pending_societies,
+        "totalWorkers": total_workers,
+        "verifiedWorkers": verified_workers,
+        "pendingWorkers": pending_workers,
+        "totalBookings": total_bookings,
+        "transactionValue": float(transaction_value),
+        "openComplaints": open_complaints,
+        "pendingWelfare": pending_welfare,
+        "pendingDocuments": pending_documents,
     }}
 
 @router.get("/federation/workers")
 def federation_workers(federation: CurrentFederation, db: DbSession, search: str | None = None, status: str | None = None):
-    rows = db.scalars(select(Worker).order_by(Worker.name)).all()
+    stmt = select(Worker, Society.name.label("society_name"), Society.society_code.label("society_code")).outerjoin(Society, Worker.society_id == Society.id).order_by(Worker.name)
     if search:
-        needle = search.lower()
-        rows = [worker for worker in rows if needle in worker.name.lower() or needle in worker.worker_code.lower()]
+        needle = f"%{search.lower()}%"
+        stmt = stmt.where(func.lower(Worker.name).like(needle) | func.lower(Worker.worker_code).like(needle))
     if status:
-        rows = [worker for worker in rows if worker.kyc_status == status]
-    societies = {item.id: item for item in db.scalars(select(Society)).all()}
-    return {"workers": [{**_worker_json(worker), "societyName": societies.get(worker.society_id).name if societies.get(worker.society_id) else None, "societyCode": societies.get(worker.society_id).society_code if societies.get(worker.society_id) else None} for worker in rows]}
+        stmt = stmt.where(Worker.kyc_status == status)
+    
+    rows = db.execute(stmt).all()
+    
+    return {"workers": [{"id": worker.id, "uniqueId": worker.worker_code, "name": worker.name, "city": worker.city, "skills": worker.skills or [], "category": _worker_json(worker).get("category"), "rating": float(worker.rating_avg or 0), "completedJobs": worker.completed_jobs, "kycStatus": worker.kyc_status, "authorityStatus": worker.authority_status, "authorityReason": worker.authority_reason, "authorityVerifiedAt": worker.authority_verified_at, "certificateId": (worker.authority_data or {}).get("certId") or (worker.authority_data or {}).get("certificateId"), "certificateAuthority": (worker.authority_data or {}).get("certAuthority") or (worker.authority_data or {}).get("certificateAuthority"), "certificateExpiry": (worker.authority_data or {}).get("certificateExpiry"), "societyName": s_name, "societyCode": s_code} for worker, s_name, s_code in rows]}
 
 def _audit(db, federation, action, module, entity_type, entity_id=None, reason=None, data=None):
     db.add(AuthorityAuditLog(actor_id=federation.id, action=action, module=module, entity_type=entity_type, entity_id=entity_id, reason=reason, data=data or {}))
@@ -141,6 +165,28 @@ def federation_complaints(federation: CurrentFederation, db: DbSession, status: 
     if status: rows = [row for row in rows if row.status == status]
     return {"complaints": [{**_complaint_json(row, db), "societyId": row.society_id} for row in rows]}
 
+@router.get("/federation/societies/{society_id}")
+def federation_society_detail(society_id: int, federation: CurrentFederation, db: DbSession):
+    society = db.get(Society, society_id)
+    if society is None: raise HTTPException(404, "Society not found")
+    workers = db.scalars(select(Worker).where(Worker.society_id == society.id)).all()
+    jobs = db.scalars(select(Job).where(Job.society_id == society.id)).all()
+    return {"society": {"id": society.id, "name": society.name, "city": society.city, "societyCode": society.society_code, "status": society.status, "isActive": society.is_active, "registrationNumber": society.registration_number, "registrationExpiry": society.registration_expiry, "details": society.settings or {}, "workerCount": len(workers), "bookingCount": len(jobs)}}
+
+@router.get("/federation/notifications")
+def federation_notifications(federation: CurrentFederation, db: DbSession):
+    logs = db.scalars(select(AuthorityAuditLog).order_by(AuthorityAuditLog.created_at.desc()).limit(20)).all()
+    return {"notifications": [{"id": row.id, "title": row.action.replace("_", " ").title(), "body": row.reason or f"{row.entity_type} #{row.entity_id}", "createdAt": row.created_at, "read": False} for row in logs]}
+
+@router.post("/federation/welfare/{enrollment_id}/review")
+def review_welfare(enrollment_id: int, payload: StatusPayload, federation: CurrentFederation, db: DbSession):
+    enrollment = db.get(WelfareEnrollment, enrollment_id)
+    if enrollment is None: raise HTTPException(404, "Welfare application not found")
+    if payload.status not in {"under_review", "approved", "rejected", "correction_required"}: raise HTTPException(422, "Unsupported welfare status")
+    enrollment.status = payload.status; enrollment.federation_reason = payload.get("reason"); enrollment.reviewed_by = federation.id; enrollment.reviewed_at = datetime.now(timezone.utc)
+    _audit(db, federation, f"welfare_{payload.status}", "welfare", "enrollment", enrollment.id, enrollment.federation_reason)
+    db.commit(); return {"enrollment": {"id": enrollment.id, "status": enrollment.status, "reason": enrollment.federation_reason}}
+
 @router.patch("/federation/complaints/{complaint_id}/status")
 def federation_complaint_status(complaint_id: int, payload: StatusPayload, federation: CurrentFederation, db: DbSession):
     complaint = db.get(SocietyComplaint, complaint_id)
@@ -171,10 +217,22 @@ def federation_audit_logs(federation: CurrentFederation, db: DbSession):
 
 @router.get("/federation/bookings")
 def federation_bookings(federation: CurrentFederation, db: DbSession, status: str | None = None):
-    rows = db.scalars(select(Job).order_by(Job.requested_at.desc())).all()
-    if status: rows = [row for row in rows if row.status.value == status or (status == "pending" and row.status == JobStatus.REQUESTED)]
-    societies = {row.id: row for row in db.scalars(select(Society)).all()}
-    return {"bookings": [{"id": row.id, "customer": row.customer.name if row.customer else None, "society": societies.get(row.society_id).name if societies.get(row.society_id) else None, "worker": row.worker.name if row.worker else None, "service": row.service_type, "location": row.address, "amount": float(row.base_amount), "status": row.status.value, "requestedAt": row.requested_at} for row in rows]}
+    stmt = select(Job, Society.name.label("society_name")).outerjoin(Society, Job.society_id == Society.id).order_by(Job.requested_at.desc())
+    rows = db.execute(stmt).all()
+    
+    result = []
+    for job, s_name in rows:
+        if status and not (job.status.value == status or (status == "pending" and job.status == JobStatus.REQUESTED)):
+            continue
+        # Enforce Privacy: Do not return customer personal info, worker name, or exact amount
+        result.append({
+            "id": job.id, 
+            "society": s_name, 
+            "service": job.service_type, 
+            "status": job.status.value, 
+            "requestedAt": job.requested_at
+        })
+    return {"bookings": result}
 
 @router.get("/federation/financials")
 def federation_financials(federation: CurrentFederation, db: DbSession):
@@ -183,14 +241,75 @@ def federation_financials(federation: CurrentFederation, db: DbSession):
 
 @router.get("/federation/welfare")
 def federation_welfare(federation: CurrentFederation, db: DbSession):
-    workers = db.scalars(select(Worker)).all(); enrollments = db.scalars(select(WelfareEnrollment)).all()
-    enrolled = {row.worker_id for row in enrollments}
-    return {"welfare": {"totalWorkers": len(workers), "covered": len(enrolled), "notCovered": len([row for row in workers if row.id not in enrolled]), "enrollments": [{"workerId": row.worker_id, "schemeId": row.scheme_id, "societyId": row.society_id, "createdAt": row.created_at} for row in enrollments]}}
+    total_workers = db.scalar(select(func.count()).select_from(Worker)) or 0
+    enrollments = db.scalars(select(WelfareEnrollment)).all()
+    
+    worker_rows = db.execute(select(Worker.id, Worker.name, Worker.worker_code, Worker.society_id)).all()
+    workers = {w.id: w for w in worker_rows}
+    
+    society_rows = db.execute(select(Society.id, Society.name)).all()
+    societies = {s.id: s for s in society_rows}
+    
+    covered = len({row.worker_id for row in enrollments})
+    not_covered = total_workers - covered
+    
+    enrollment_list = [{
+        "id": row.id, 
+        "workerId": row.worker_id, 
+        "workerName": getattr(workers.get(row.worker_id), 'name', 'Unknown'), 
+        "societyName": getattr(societies.get(row.society_id), 'name', 'Unknown'), 
+        "schemeId": row.scheme_id, 
+        "status": row.status, 
+        "reason": row.federation_reason, 
+        "data": row.data, 
+        "createdAt": row.created_at
+    } for row in enrollments]
+    
+    return {"welfare": {"totalWorkers": total_workers, "covered": covered, "notCovered": not_covered, "enrollments": enrollment_list}}
 
 @router.get("/federation/quality")
 def federation_quality(federation: CurrentFederation, db: DbSession):
-    ratings = db.scalars(select(Rating)).all(); jobs = db.scalars(select(Job)).all(); complaints = db.scalars(select(SocietyComplaint)).all()
-    return {"quality": {"averageRating": round(sum(row.stars for row in ratings) / len(ratings), 2) if ratings else 0, "ratingCount": len(ratings), "completedBookings": sum(row.status == JobStatus.COMPLETED for row in jobs), "cancelledBookings": sum(row.status == JobStatus.CANCELLED for row in jobs), "complaintCount": len(complaints), "openComplaints": sum(row.status not in {"resolved", "closed"} for row in complaints)}}
+    ratings = db.scalars(select(Rating)).all()
+    jobs = db.execute(select(Job.id, Job.status, Job.society_id)).all()
+    complaints = db.execute(select(SocietyComplaint.id, SocietyComplaint.status, SocietyComplaint.society_id)).all()
+    
+    society_rows = db.execute(select(Society.id, Society.name)).all()
+    
+    by_society = {}
+    for s_id, s_name in society_rows:
+        by_society[s_id] = {"societyId": s_id, "societyName": s_name, "averageRating": 0, "ratingCount": 0, "completed": 0, "cancelled": 0, "complaints": 0}
+        
+    job_society_map = {j.id: j.society_id for j in jobs}
+    for r in ratings:
+        soc_id = job_society_map.get(r.job_id)
+        if soc_id in by_society:
+            by_society[soc_id]["ratingCount"] += 1
+            by_society[soc_id]["averageRating"] += r.stars
+            
+    for j in jobs:
+        if j.society_id in by_society:
+            if j.status == JobStatus.COMPLETED: by_society[j.society_id]["completed"] += 1
+            elif j.status == JobStatus.CANCELLED: by_society[j.society_id]["cancelled"] += 1
+            
+    for c in complaints:
+        if c.society_id in by_society:
+            by_society[c.society_id]["complaints"] += 1
+            
+    society_list = []
+    for s_id, data in by_society.items():
+        if data["ratingCount"] > 0:
+            data["averageRating"] = round(data["averageRating"] / data["ratingCount"], 2)
+        society_list.append(data)
+        
+    return {"quality": {
+        "averageRating": round(sum(r.stars for r in ratings) / len(ratings), 2) if ratings else 0,
+        "ratingCount": len(ratings),
+        "completedBookings": sum(j.status == JobStatus.COMPLETED for j in jobs),
+        "cancelledBookings": sum(j.status == JobStatus.CANCELLED for j in jobs),
+        "complaintCount": len(complaints),
+        "openComplaints": sum(c.status not in {"resolved", "closed"} for c in complaints),
+        "bySociety": society_list
+    }}
 
 @router.get("/federation/analytics")
 def federation_analytics(federation: CurrentFederation, db: DbSession):
@@ -329,14 +448,19 @@ def get_worker(worker_id: int, society: CurrentAuthority, db: DbSession): return
 @router.post("/society/workers/register", status_code=201)
 def register_worker(payload: AuthorityPayload, society: CurrentAuthority, db: DbSession):
     code = str(payload.get("workerCode") or payload.get("uniqueId") or f"W{secrets.randbelow(900000) + 100000}")
-    password = str(payload.get("initialPassword") or secrets.token_urlsafe(8))
+    # Always use the standard default password so every worker knows how to first log in.
+    DEFAULT_WORKER_PASSWORD = "worker123"
     w = Worker(society_id=society.id, worker_code=code, name=str(payload.get("name", "Worker")),
-        phone=str(payload.get("phone", "0000000000")), password_hash=hash_password(password), city=payload.get("city") or payload.get("address"),
-        skills=payload.get("skills") or ([payload.get("category")] if payload.get("category") else []), photo_url=payload.get("photoUrl"),
-        kyc_method=payload.get("kycMethod"), kyc_status="active" if payload.get("kycMethod") == "certificate" else "verifying",
-        kyc_refs=payload.get("clientRefs") or [], authority_data=dict(payload))
+        phone=str(payload.get("phone", "0000000000")), password_hash=hash_password(DEFAULT_WORKER_PASSWORD),
+        city=payload.get("city") or payload.get("address"),
+        skills=payload.get("skills") or ([payload.get("category")] if payload.get("category") else []),
+        photo_url=payload.get("photoUrl"), kyc_method=payload.get("kycMethod"),
+        kyc_status="active" if payload.get("kycMethod") == "certificate" else "verifying",
+        kyc_refs=payload.get("clientRefs") or [], authority_data=dict(payload),
+        must_change_password=True)
     db.add(w); db.commit(); db.refresh(w)
-    result = _worker_json(w); result["defaultPassword"] = password
+    result = _worker_json(w)
+    result["defaultPassword"] = DEFAULT_WORKER_PASSWORD
     return {"worker": result}
 
 @router.post("/society/workers/{worker_id}/kyc/refs")
@@ -509,7 +633,7 @@ def enroll_welfare(payload: AuthorityPayload, society: CurrentAuthority, db: DbS
     existing = db.scalar(select(WelfareEnrollment).where(WelfareEnrollment.society_id == society.id, WelfareEnrollment.worker_id == worker.id, WelfareEnrollment.scheme_id == scheme_id))
     if existing:
         raise HTTPException(409, "Worker is already enrolled in this scheme")
-    enrollment = WelfareEnrollment(society_id=society.id, worker_id=worker.id, scheme_id=scheme_id)
+    enrollment = WelfareEnrollment(society_id=society.id, worker_id=worker.id, scheme_id=scheme_id, status="submitted", data={"documents": payload.get("documents") or [], "eligibility": payload.get("eligibility") or {}})
     db.add(enrollment); db.commit(); db.refresh(enrollment)
     return {"enrollment": {"id": enrollment.id, "workerId": worker.id, "workerName": worker.name, "schemeId": scheme_id, "enrolledAt": enrollment.created_at}}
 

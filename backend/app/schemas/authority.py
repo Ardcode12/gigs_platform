@@ -43,3 +43,21 @@ class SocietyCreatePayload(BaseModel):
     city: str | None = None
     societyCode: str
     password: str
+    registrationNumber: str | None = None
+    societyType: str | None = None
+    registrationDate: str | None = None
+    registrationExpiry: str | None = None
+    email: str | None = None
+    phone: str | None = None
+    alternatePhone: str | None = None
+    address: str | None = None
+    district: str | None = None
+    taluk: str | None = None
+    village: str | None = None
+    pinCode: str | None = None
+    contactName: str | None = None
+    contactDesignation: str | None = None
+    contactPhone: str | None = None
+    notes: str | None = None
+    status: str | None = "active"
+    isActive: bool | None = True

@@ -96,6 +96,9 @@ export const federationApi = {
   getAnalytics: () => federationClient.get('/federation/analytics').then((r) => r.data.analytics),
   search: (query) => federationClient.get('/federation/search', { params: { q: query } }).then((r) => r.data.results),
   getReport: (type) => federationClient.get(`/federation/reports/${type}`).then((r) => r.data),
+  listNotifications: () => federationClient.get('/federation/notifications').then((r) => r.data.notifications),
+  getSociety: (id) => federationClient.get(`/federation/societies/${id}`).then((r) => r.data.society),
+  reviewWelfare: (id, data) => federationClient.post(`/federation/welfare/${id}/review`, data).then((r) => r.data.enrollment),
 
   createSociety: (payload) =>
     federationClient.post('/federation/societies', payload).then((r) => r.data.society),

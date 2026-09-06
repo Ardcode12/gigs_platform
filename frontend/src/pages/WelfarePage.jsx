@@ -7,6 +7,8 @@ import { Heart, Plus, CheckCircle, X, Shield, DollarSign, ChevronDown, ChevronUp
 const EnrollModal = ({ onClose, workers, enrollments, onEnroll }) => {
   const [workerId, setWorkerId] = useState('');
   const [schemeId, setSchemeId] = useState('');
+  const [documents, setDocuments] = useState('');
+  const [eligibility, setEligibility] = useState('');
 
   const activeWorkers = workers.filter(w => w.kycStatus === 'active');
   const existingSchemes = (wId) => enrollments.filter(e => e.workerId === wId).map(e => e.schemeId);
@@ -56,10 +58,25 @@ const EnrollModal = ({ onClose, workers, enrollments, onEnroll }) => {
               })}
             </div>
           )}
+          {workerId && schemeId && (
+            <>
+              <div className="form-group">
+                <label className="form-label">Required Documents (comma separated IDs/URLs)</label>
+                <input className="form-input" placeholder="e.g. AADHAAR_123, PASSBOOK_456" value={documents} onChange={e => setDocuments(e.target.value)} />
+              </div>
+              <div className="form-group">
+                <label className="form-label">Eligibility Notes</label>
+                <textarea className="form-textarea" placeholder="Worker meets the age and income criteria..." value={eligibility} onChange={e => setEligibility(e.target.value)} />
+              </div>
+            </>
+          )}
         </div>
         <div className="modal-footer">
           <button className="btn btn-secondary" onClick={onClose}>Cancel</button>
-          <button className="btn btn-success" disabled={!workerId || !schemeId} onClick={() => { onEnroll(workerId, schemeId); onClose(); }}>
+          <button className="btn btn-success" disabled={!workerId || !schemeId} onClick={() => { 
+            onEnroll(workerId, schemeId, { documents: documents.split(',').map(s=>s.trim()).filter(Boolean), eligibility: { notes: eligibility } }); 
+            onClose(); 
+          }}>
             <Heart size={16} /> Enroll Now
           </button>
         </div>

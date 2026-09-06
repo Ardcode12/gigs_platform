@@ -150,8 +150,8 @@ export const SocietyProvider = ({ children, society: initialSociety = {} }) => {
   };
 
   // ---- Welfare Actions ----
-  const enrollWorker = async (workerId, schemeId) => {
-    await welfareAPI.enroll(workerId, schemeId);
+  const enrollWorker = async (workerId, schemeId, data) => {
+    await welfareAPI.enroll(workerId, schemeId, data);
     await refreshWelfare();
   };
 

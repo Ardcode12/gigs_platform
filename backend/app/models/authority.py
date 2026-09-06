@@ -24,6 +24,10 @@ class WelfareEnrollment(AuthorityRecord):
     __tablename__ = "welfare_enrollments"
     worker_id: Mapped[int] = mapped_column(ForeignKey("workers.id", ondelete="CASCADE"), index=True)
     scheme_id: Mapped[str] = mapped_column(String(100), nullable=False)
+    status: Mapped[str] = mapped_column(String(30), default="draft", server_default="draft", nullable=False)
+    federation_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    reviewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    reviewed_by: Mapped[int | None] = mapped_column(ForeignKey("federation_users.id", ondelete="SET NULL"), nullable=True)
 
 class WorkerAdvance(AuthorityRecord):
     __tablename__ = "worker_advances"

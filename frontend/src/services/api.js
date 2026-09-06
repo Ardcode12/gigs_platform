@@ -54,7 +54,7 @@ export const ratesAPI = {
 // ── SOCIETY — WELFARE ───────────────────────────────────
 export const welfareAPI = {
   list:           () => api.get('/society/welfare'),
-  enroll:         (workerId, schemeId) => api.post('/society/welfare/enroll', { workerId, schemeId }),
+  enroll:         (workerId, schemeId, data) => api.post('/society/welfare/enroll', { workerId, schemeId, ...data }),
   requestAdvance: (data) => api.post('/society/welfare/advances', data),
   getAdvances:    () => api.get('/society/welfare/advances'),
   approveAdvance: (id) => api.patch(`/society/welfare/advances/${id}/approve`),
