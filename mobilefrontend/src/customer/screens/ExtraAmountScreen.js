@@ -14,7 +14,6 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { COLORS, SPACING, RADIUS, FONT_SIZE, FONT_WEIGHT, SHADOWS } from '../../theme';
 import { useT } from '../../i18n/LanguageContext';
-import { ONGOING_BOOKING } from '../data/customerMockData';
 import { listExtraRequests, decideExtraAmount, getJobDetail } from '../../api/jobs';
 
 const ExtraAmountScreen = () => {
@@ -60,6 +59,9 @@ const ExtraAmountScreen = () => {
   const extraStatus = activeExtra ? activeExtra.status : 'pending';
   const totalAmount = baseAmount + extraAmount;
 
+  const isPreAccept = (reason || '').includes('[Pre-Accept Quote]');
+  const cleanReason = (reason || '').replace('[Pre-Accept Quote]', '').trim() || 'Scope & material adjustment';
+
   const handleAccept = async () => {
     if (!activeExtra || submitting) return;
     setSubmitting(true);
@@ -67,7 +69,7 @@ const ExtraAmountScreen = () => {
       await decideExtraAmount(activeExtra.id, true);
       Alert.alert(
         'Extra Amount Approved',
-        `You accepted ₹${extraAmount} for ${reason}. The updated total is ₹${totalAmount}.`,
+        `You accepted ₹${extraAmount} for ${cleanReason}. The updated total is ₹${totalAmount}.`,
         [{ text: 'Back to Tracking', onPress: () => navigation.goBack() }],
       );
       fetchData(); // refresh
@@ -107,24 +109,27 @@ const ExtraAmountScreen = () => {
 
   return (
     <SafeAreaView style={styles.safeArea}>
-      {/* Header */}
       <View style={styles.headerRow}>
         <TouchableOpacity style={styles.backButton} onPress={() => navigation.goBack()}>
           <MaterialCommunityIcons name="arrow-left" size={24} color={COLORS.textPrimary} />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>{t('extra.title')}</Text>
+        <Text style={styles.headerTitle}>{t('extra.title') || 'Price Adjustment Request'}</Text>
         <View style={{ width: 40 }} />
       </View>
 
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
-        {/* Worker Request Card */}
+        {/* Banner */}
         <View style={styles.alertHeaderCard}>
           <View style={styles.alertIconCircle}>
             <MaterialCommunityIcons name="alert-decagram-outline" size={28} color="#D97706" />
           </View>
-           <Text style={styles.alertTitle}>{t('extra.approvalRequired')}</Text>
+          <Text style={styles.alertTitle}>
+            {isPreAccept ? 'Pre-Acceptance Price Proposal' : (t('extra.approvalRequired') || 'Price Approval Required')}
+          </Text>
           <Text style={styles.alertSubtitle}>
-             {t('extra.approvalBody')}
+            {isPreAccept
+              ? 'The worker proposed a price adjustment for the requested scope prior to accepting your booking.'
+              : (t('extra.approvalBody') || 'The assigned worker requested an extra amount during service.')}
           </Text>
         </View>
 
@@ -151,14 +156,14 @@ const ExtraAmountScreen = () => {
 
         {/* Breakdown Card */}
         <View style={styles.breakdownCard}>
-           <Text style={styles.breakdownCardHeader}>{t('extra.detailsHeader')}</Text>
+          <Text style={styles.breakdownCardHeader}>{t('extra.detailsHeader') || 'Quotation Details'}</Text>
           <View style={styles.divider} />
 
           {/* Base Amount */}
           <View style={styles.rowItem}>
             <View>
-               <Text style={styles.rowItemTitle}>{t('customer.baseAmount')}</Text>
-               <Text style={styles.rowItemSub}>{t('extra.baseSub')}</Text>
+              <Text style={styles.rowItemTitle}>{t('customer.baseAmount') || 'Base Amount'}</Text>
+              <Text style={styles.rowItemSub}>{t('extra.baseSub') || 'Original estimate'}</Text>
             </View>
             <Text style={styles.rowItemValue}>₹{baseAmount}</Text>
           </View>
@@ -167,14 +172,16 @@ const ExtraAmountScreen = () => {
           <View style={[styles.rowItem, styles.extraRowHighlight]}>
             <View style={{ flex: 1 }}>
               <View style={styles.extraTagRow}>
-                 <Text style={styles.extraTagTitle}>{t('customer.extraAmount')}</Text>
+                <Text style={styles.extraTagTitle}>
+                  {isPreAccept ? 'Proposed Extra Quote' : (t('customer.extraAmount') || 'Extra Amount')}
+                </Text>
                 <View style={styles.pendingPill}>
                   <Text style={styles.pendingPillText}>
-                    {extraStatus === 'pending' ? t('extra.requiresConsent') : extraStatus.toUpperCase()}
+                    {extraStatus === 'pending' ? (isPreAccept ? 'PRE-ACCEPT QUOTE' : 'PENDING APPROVAL') : extraStatus.toUpperCase()}
                   </Text>
                 </View>
               </View>
-               <Text style={styles.extraReasonText}>{t('common.reason', { reason })}</Text>
+              <Text style={styles.extraReasonText}>Reason: {cleanReason}</Text>
             </View>
             <Text style={styles.extraValueText}>+₹{extraAmount}</Text>
           </View>

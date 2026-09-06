@@ -114,7 +114,7 @@ def me(worker: CurrentWorker) -> WorkerOut:
 
 
 @router.post("/logout", response_model=MessageResponse)
-def logout(worker: CurrentWorker) -> MessageResponse:
+def logout() -> MessageResponse:
     """Tokens are stateless, so this is the client's cue to drop them.
 
     Kept as an endpoint so the app has one call to make, and so a future

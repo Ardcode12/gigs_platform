@@ -81,6 +81,9 @@ def serialize_job_list_item(job: Job, worker: Worker) -> JobListItem:
         status=job.status,
         customer_name=job.customer.name,
         address=job.address,
+        landmark=job.landmark,
+        lat=job.lat,
+        lng=job.lng,
         distance_km=distance,
         eta_min=eta,
         total_amount=float(job.base_amount) + approved,
@@ -168,9 +171,29 @@ def serialize_customer(customer: Customer) -> CustomerSchemaOut:
 
 def serialize_customer_job_list_item(job: Job) -> CustomerJobListItem:
     approved, _ = split_extras(job)
-    assigned_worker = (
-        AssignedWorkerOut.model_validate(job.worker) if job.worker is not None else None
-    )
+    assigned_worker = None
+    if job.worker is not None:
+        distance, eta = distance_and_eta(
+            job.worker.last_lat,
+            job.worker.last_lng,
+            job.lat,
+            job.lng,
+        )
+        assigned_worker = AssignedWorkerOut(
+            id=job.worker.id,
+            name=job.worker.name,
+            phone=job.worker.phone,
+            photo_url=job.worker.photo_url,
+            rating_avg=float(job.worker.rating_avg or 0),
+            rating_count=job.worker.rating_count or 0,
+            skills=job.worker.skills or [],
+            completed_jobs=job.worker.completed_jobs or 0,
+            last_lat=job.worker.last_lat,
+            last_lng=job.worker.last_lng,
+            distance_km=distance,
+            eta_minutes=eta,
+            location_updated_at=job.worker.location_updated_at,
+        )
     return CustomerJobListItem(
         id=job.id,
         service_type=job.service_type,
@@ -178,6 +201,9 @@ def serialize_customer_job_list_item(job: Job) -> CustomerJobListItem:
         status=job.status,
         worker=assigned_worker,
         address=job.address,
+        landmark=job.landmark,
+        lat=job.lat,
+        lng=job.lng,
         total_amount=float(job.base_amount) + approved,
         requested_at=job.requested_at,
         accepted_at=job.accepted_at,
@@ -196,9 +222,29 @@ def serialize_customer_job_detail(db: Session, job: Job) -> CustomerJobDetail:
             ChatMessage.read_at.is_(None),
         )
     )
-    assigned_worker = (
-        AssignedWorkerOut.model_validate(job.worker) if job.worker is not None else None
-    )
+    assigned_worker = None
+    if job.worker is not None:
+        distance, eta = distance_and_eta(
+            job.worker.last_lat,
+            job.worker.last_lng,
+            job.lat,
+            job.lng,
+        )
+        assigned_worker = AssignedWorkerOut(
+            id=job.worker.id,
+            name=job.worker.name,
+            phone=job.worker.phone,
+            photo_url=job.worker.photo_url,
+            rating_avg=float(job.worker.rating_avg or 0),
+            rating_count=job.worker.rating_count or 0,
+            skills=job.worker.skills or [],
+            completed_jobs=job.worker.completed_jobs or 0,
+            last_lat=job.worker.last_lat,
+            last_lng=job.worker.last_lng,
+            distance_km=distance,
+            eta_minutes=eta,
+            location_updated_at=job.worker.location_updated_at,
+        )
 
     return CustomerJobDetail(
         id=job.id,

@@ -264,7 +264,7 @@ const RequestExtraAmountScreen = () => {
               .map((item) => {
                 const meta = DECISION_META[item.status] ?? DECISION_META.pending;
                 return (
-                  <Card key={item.id} style={styles.historyCard}>
+                  <Card key={String(item.id)} style={styles.historyCard}>
                     <View style={styles.historyRow}>
                       <MaterialCommunityIcons name={meta.icon} size={20} color={meta.color} />
                       <Text style={styles.historyAmount}>{formatRupees(item.amount)}</Text>

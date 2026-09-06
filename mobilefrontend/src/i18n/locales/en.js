@@ -87,6 +87,13 @@ export default {
   'tabs.bookings': 'Bookings',
   'tabs.messages': 'Messages',
 
+  // -- worker filters & labels ----------------------------------------------
+  'worker.requests': 'Requests',
+  'worker.all': 'All',
+  'worker.active': 'Active',
+  'worker.completed': 'Completed',
+  'customer.bookingNumber': 'Booking #{{id}}',
+
   // -- auth ----------------------------------------------------------------
   'auth.brand': 'WORKMAT',
   'auth.roleWorker': 'Worker',

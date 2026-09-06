@@ -60,5 +60,47 @@ export default function useLocation({ reportToServer = true } = {}) {
     }
   }, [reportToServer]);
 
-  return { coords, permission, loading, error, request };
+  const watchLocation = useCallback((onUpdate) => {
+    let subscription = null;
+    let cancelled = false;
+
+    (async () => {
+      try {
+        const { status } = await Location.requestForegroundPermissionsAsync();
+        if (status !== 'granted' || cancelled || !mountedRef.current) return;
+        setPermission(status);
+
+        subscription = await Location.watchPositionAsync(
+          {
+            accuracy: Location.Accuracy.Balanced,
+            timeInterval: 4000,
+            distanceInterval: 10,
+          },
+          (position) => {
+            if (cancelled || !position?.coords || !mountedRef.current) return;
+            const next = {
+              latitude: position.coords.latitude,
+              longitude: position.coords.longitude,
+            };
+            setCoords(next);
+            if (reportToServer) {
+              updateLocation(next.latitude, next.longitude).catch(() => {});
+            }
+            if (onUpdate) onUpdate(next);
+          }
+        );
+      } catch (caught) {
+        if (mountedRef.current && !cancelled) setError(caught);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+      if (subscription && typeof subscription.remove === 'function') {
+        subscription.remove();
+      }
+    };
+  }, [reportToServer]);
+
+  return { coords, permission, loading, error, request, watchLocation };
 }

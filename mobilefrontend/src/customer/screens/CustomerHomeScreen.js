@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import {
   View,
@@ -13,7 +13,7 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { COLORS, SPACING, RADIUS, FONT_SIZE, FONT_WEIGHT, SHADOWS } from '../../theme';
 import { useT } from '../../i18n/LanguageContext';
 import { useAuth } from '../../context/AuthContext';
-import { getActiveJob } from '../../api/jobs';
+import { getActiveJob, getServiceCategories } from '../../api/jobs';
 
 const STATUS_DISPLAY = {
   requested: { label: 'Booking Requested', icon: 'clock-outline' },
@@ -28,6 +28,7 @@ const CustomerHomeScreen = () => {
   const t = useT();
   const { customer } = useAuth();
   const [activeJob, setActiveJob] = useState(null);
+  const [categories, setCategories] = useState([]);
 
   // Fetch active job every time the screen gains focus
   useFocusEffect(
@@ -44,6 +45,15 @@ const CustomerHomeScreen = () => {
       return () => { cancelled = true; };
     }, []),
   );
+
+  // Load real service categories once
+  useEffect(() => {
+    let cancelled = false;
+    getServiceCategories().then((data) => {
+      if (!cancelled && Array.isArray(data)) setCategories(data);
+    }).catch(() => {/* silently fall back to empty */});
+    return () => { cancelled = true; };
+  }, []);
 
   const addressTitle = customer?.saved_addresses?.[0]?.title || '';
   const addressText =
@@ -162,6 +172,14 @@ const CustomerHomeScreen = () => {
                   <Text style={styles.ongoingServiceType}>
                     {activeJob.service_type}
                   </Text>
+                  {!!activeJob.address && (
+                    <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 3 }}>
+                      <MaterialCommunityIcons name="map-marker" size={13} color={COLORS.textSecondary} />
+                      <Text style={{ fontSize: 11, color: COLORS.textSecondary, marginLeft: 2 }} numberOfLines={1}>
+                        {activeJob.address}
+                      </Text>
+                    </View>
+                  )}
                 </View>
 
                 <View style={styles.etaBox}>
@@ -190,7 +208,7 @@ const CustomerHomeScreen = () => {
           </View>
         )}
 
-        {/* Service Categories Grid */}
+        {/* Service Categories Grid — real data from backend */}
         <View style={styles.sectionContainer}>
           <View style={styles.sectionHeaderRow}>
               <Text style={styles.sectionTitle}>{t('customer.serviceCategories')}</Text>
@@ -200,30 +218,36 @@ const CustomerHomeScreen = () => {
           </View>
 
           <View style={styles.categoriesGrid}>
-            {[].map((cat) => (
+            {categories.slice(0, 8).map((cat) => (
               <TouchableOpacity
-                key={cat.id}
+                key={cat.key}
                 style={styles.categoryCard}
-                onPress={() => navigation.navigate('SearchService', { category: t(cat.nameKey) })}
+                onPress={() => navigation.navigate('WorkerRecommendations', { category: cat.name, service_type: cat.key })}
                 activeOpacity={0.8}
               >
                 <View style={[styles.categoryIconCircle, { backgroundColor: cat.bg }]}>
                   <MaterialCommunityIcons name={cat.icon} size={28} color={cat.color} />
                 </View>
-                <Text style={styles.categoryName}>{t(cat.nameKey)}</Text>
+                <Text style={styles.categoryName}>{cat.name}</Text>
                 <Text style={styles.categoryCount} numberOfLines={1}>
-                  {t('customer.nearbyWorkers', { count: cat.workerCount })}
+                  {cat.available_workers > 0
+                    ? `${cat.available_workers} available`
+                    : cat.total_workers > 0
+                      ? `${cat.total_workers} workers`
+                      : 'No workers'}
                 </Text>
               </TouchableOpacity>
             ))}
           </View>
         </View>
 
-        {/* Popular Services Section */}
+        {/* Quick Services — derived from real category data, no mock prices */}
         <View style={styles.sectionContainer}>
           <View style={styles.sectionHeaderRow}>
-            <Text style={styles.sectionTitle}>{t('customer.popularServices')}</Text>
-            <Text style={styles.subTagline}>{t('customer.transparentRates')}</Text>
+            <Text style={styles.sectionTitle}>{t('customer.popularServices') || 'Quick Services'}</Text>
+            <TouchableOpacity onPress={() => navigation.navigate('SearchService')}>
+              <Text style={styles.seeAllText}>{t('customer.viewAll')}</Text>
+            </TouchableOpacity>
           </View>
 
           <ScrollView
@@ -231,29 +255,30 @@ const CustomerHomeScreen = () => {
             showsHorizontalScrollIndicator={false}
             contentContainerStyle={styles.popularServicesScroll}
           >
-            {[].map((item) => (
+            {categories.slice(0, 6).map((cat) => (
               <TouchableOpacity
-                key={item.id}
+                key={cat.key}
                 style={styles.popularCard}
-                onPress={() => navigation.navigate('AIRequirement')}
+                onPress={() => navigation.navigate('WorkerRecommendations', { category: cat.name, service_type: cat.key })}
                 activeOpacity={0.85}
               >
-                <View style={styles.popularIconBox}>
-                  <MaterialCommunityIcons name={item.icon} size={26} color={COLORS.primary} />
+                <View style={[styles.popularIconBox, { backgroundColor: cat.bg }]}>
+                  <MaterialCommunityIcons name={cat.icon} size={26} color={cat.color} />
                 </View>
-                <Text style={styles.popularName} numberOfLines={2}>
-                  {t(item.nameKey)}
-                </Text>
+                <Text style={styles.popularName} numberOfLines={2}>{cat.name}</Text>
                 <View style={styles.popularRatingRow}>
-                  <MaterialCommunityIcons name="star" size={14} color="#F59E0B" />
-                  <Text style={styles.popularRatingText}>{item.rating}</Text>
-                  <Text style={styles.popularCategoryBadge}>• {t(item.categoryKey)}</Text>
-                </View>
-                <View style={styles.popularPriceRow}>
-                  <Text style={styles.popularPrice}>{t('customer.fromPrice', { amount: `₹${item.price}` })}</Text>
-                  <View style={styles.addPill}>
-                    <MaterialCommunityIcons name="plus" size={16} color={COLORS.primary} />
-                  </View>
+                  <MaterialCommunityIcons
+                    name={cat.available_workers > 0 ? 'check-circle' : 'clock-outline'}
+                    size={12}
+                    color={cat.available_workers > 0 ? COLORS.success : COLORS.textMuted}
+                  />
+                  <Text style={styles.popularCategoryBadge}>
+                    {cat.available_workers > 0
+                      ? `${cat.available_workers} available`
+                      : cat.total_workers > 0
+                        ? `${cat.total_workers} total`
+                        : 'No workers'}
+                  </Text>
                 </View>
               </TouchableOpacity>
             ))}

@@ -86,8 +86,19 @@ def send_chat_message(
             NotificationType.CHAT,
             title=f"Message from {customer.name}",
             body=payload.text[:120],
-            data={"job_id": job.id, "message_id": message.id},
+            data={"job_id": job.id, "message_id": message.id, "sender": MessageSender.CUSTOMER.value},
         )
+    else:
+        from app.routers.customer.jobs import _workers_to_alert
+        for worker in _workers_to_alert(db, job):
+            notify(
+                db,
+                worker.id,
+                NotificationType.CHAT,
+                title=f"Message from {customer.name}",
+                body=payload.text[:120],
+                data={"job_id": job.id, "message_id": message.id, "sender": MessageSender.CUSTOMER.value},
+            )
 
     db.commit()
     db.refresh(message)

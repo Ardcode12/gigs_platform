@@ -31,6 +31,11 @@ class Worker(Base):
     skills: Mapped[list[str]] = mapped_column(JSONB, default=list, nullable=False)
     aadhaar_masked: Mapped[str | None] = mapped_column(String(20))
     photo_url: Mapped[str | None] = mapped_column(String(500))
+    kyc_status: Mapped[str] = mapped_column(String(30), default="pending", server_default="pending", nullable=False)
+    kyc_method: Mapped[str | None] = mapped_column(String(40))
+    kyc_refs: Mapped[list] = mapped_column(JSONB, default=list, nullable=False)
+    kyc_reason: Mapped[str | None] = mapped_column(String(300))
+    authority_data: Mapped[dict] = mapped_column(JSONB, default=dict, nullable=False)
 
     # Availability (spec #2) and last known position (feeds distance/ETA)
     is_available: Mapped[bool] = mapped_column(

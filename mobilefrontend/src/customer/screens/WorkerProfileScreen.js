@@ -13,20 +13,43 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { COLORS, SPACING, RADIUS, FONT_SIZE, FONT_WEIGHT, SHADOWS } from '../../theme';
 import { useT } from '../../i18n/LanguageContext';
-import { RECOMMENDED_WORKERS } from '../data/customerMockData';
 
 const WorkerProfileScreen = () => {
   const navigation = useNavigation();
   const t = useT();
-  const worker = useRoute().params?.worker || RECOMMENDED_WORKERS[0];
+  const routeParams = useRoute().params ?? {};
+  const worker = routeParams.worker || null;
+  const service_type = routeParams.service_type || (worker?.skills && worker.skills[0]) || 'General Repair';
+  const estimatedAmount = routeParams.estimatedAmount || 500;
 
   const handleProtectedCall = () => {
+    if (!worker) return;
     Alert.alert(
        t('customer.protectedCall'),
        t('customer.connectingCall', { name: worker.name }),
        [{ text: t('customer.startCall') }, { text: t('common.cancel'), style: 'cancel' }]
     );
   };
+
+  if (!worker) {
+    return (
+      <SafeAreaView style={styles.safeArea}>
+        <View style={styles.headerRow}>
+          <TouchableOpacity style={styles.backButton} onPress={() => navigation.goBack()}>
+            <MaterialCommunityIcons name="arrow-left" size={24} color={COLORS.textPrimary} />
+          </TouchableOpacity>
+          <Text style={styles.headerTitle}>{t('worker.profile') || 'Worker Profile'}</Text>
+          <View style={{ width: 40 }} />
+        </View>
+        <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', padding: SPACING.xl }}>
+          <MaterialCommunityIcons name="account-search-outline" size={60} color={COLORS.textTertiary} />
+          <Text style={{ fontSize: FONT_SIZE.md, color: COLORS.textSecondary, marginTop: SPACING.md, textAlign: 'center' }}>
+            {t('customer.noWorkerDetails') || 'No worker details available.'}
+          </Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
 
   return (
     <SafeAreaView style={styles.safeArea}>
@@ -102,7 +125,7 @@ const WorkerProfileScreen = () => {
               onPress={handleProtectedCall}
               activeOpacity={0.8}
             >
-              <MaterialCommunityIcons name="phone-shield" size={20} color={COLORS.white} />
+              <MaterialCommunityIcons name="phone-lock" size={20} color={COLORS.white} />
                <Text style={styles.callActionText}>{t('customer.callPlatform')}</Text>
             </TouchableOpacity>
           </View>
@@ -153,7 +176,11 @@ const WorkerProfileScreen = () => {
 
         <TouchableOpacity
           style={styles.bookWorkerButton}
-          onPress={() => navigation.navigate('ConfirmBooking', { worker })}
+          onPress={() => navigation.navigate('ConfirmBooking', {
+            worker,
+            service_type,
+            estimatedAmount,
+          })}
           activeOpacity={0.85}
         >
            <Text style={styles.bookWorkerButtonText}>{t('customer.bookWorker')}</Text>

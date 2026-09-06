@@ -31,10 +31,13 @@
     "react-native-web": "^0.21.2"
   },
   "scripts": {
-    "start": "expo start --host lan",
-    "android": "expo start --android --host lan",
-    "ios": "expo start --ios --host lan",
+    "start": "expo start --go --host lan",
+    "android": "expo start --go --android --host lan",
+    "ios": "expo start --go --ios --host lan",
     "web": "expo start --web"
   },
-  "private": true
+  "private": true,
+  "devDependencies": {
+    "@expo/ngrok": "^4.1.3"
+  }
 }

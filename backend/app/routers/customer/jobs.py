@@ -17,9 +17,6 @@ from app.models import (
     JobStatusEvent,
     NotificationType,
     Worker,
-    Society,
-    ServiceCategory,
-    ServiceSubcategory,
     WsEvent,
 )
 from app.schemas.auth import MessageResponse
@@ -60,28 +57,20 @@ def _get_customer_job(db: Session, customer_id: int, job_id: int) -> Job:
     return job
 
 
+from app.routers.jobs import _matches_skills
+
+
 def _workers_to_alert(db: Session, job: Job) -> list[Worker]:
     """Directed job -> that worker. Broadcast -> every available worker whose skills match."""
     if job.worker_id is not None:
         worker = db.get(Worker, job.worker_id)
-        # Directed requests must be persisted for the worker even when offline;
-        # their request feed and notification history are the delivery mechanism.
         return [worker] if worker else []
 
-    service = job.service_type.lower()
     rejected = set(
         db.scalars(select(JobRejection.worker_id).where(JobRejection.job_id == job.id)).all()
     )
-    worker_stmt = select(Worker).where(Worker.is_available.is_(True))
-    if job.society_id is not None:
-        worker_stmt = worker_stmt.where(Worker.society_id == job.society_id)
-    available = db.scalars(worker_stmt).all()
-    return [
-        w
-        for w in available
-        if w.id not in rejected
-        and (not w.skills or any(service in s.lower() or s.lower() in service for s in w.skills))
-    ]
+    available = db.scalars(select(Worker).where(Worker.is_available.is_(True))).all()
+    return [w for w in available if w.id not in rejected and _matches_skills(job, w)]
 
 
 @router.post("", response_model=CustomerJobDetail, status_code=http_status.HTTP_201_CREATED)
@@ -93,21 +82,11 @@ def create_job(payload: CustomerJobCreate, customer: CurrentCustomer, db: DbSess
             raise HTTPException(
                 status_code=http_status.HTTP_404_NOT_FOUND, detail="Preferred worker not found"
             )
-        if payload.society_id is not None and worker.society_id != payload.society_id:
-            raise HTTPException(status_code=http_status.HTTP_400_BAD_REQUEST, detail="Preferred worker does not belong to selected society")
-        society_id = worker.society_id
-    else:
-        society_id = payload.society_id or db.scalar(select(Society.id).order_by(Society.id))
-    if society_id is None or db.scalar(select(Society.id).where(Society.id == society_id, Society.is_active.is_(True))) is None:
-        raise HTTPException(status_code=http_status.HTTP_404_NOT_FOUND, detail="Society not found")
 
     otp_code = _generate_otp()
 
     job = Job(
         customer_id=customer.id,
-        society_id=society_id,
-        category_id=payload.category_id,
-        subcategory_id=payload.subcategory_id,
         worker_id=payload.preferred_worker_id,
         service_type=payload.service_type,
         service_icon=payload.service_icon or "wrench",

@@ -32,6 +32,15 @@ class Job(Base):
     customer_id: Mapped[int] = mapped_column(
         ForeignKey("customers.id", ondelete="CASCADE"), nullable=False, index=True
     )
+    society_id: Mapped[int | None] = mapped_column(
+        ForeignKey("societies.id", ondelete="SET NULL"), index=True
+    )
+    category_id: Mapped[int | None] = mapped_column(
+        ForeignKey("service_categories.id", ondelete="SET NULL"), index=True
+    )
+    subcategory_id: Mapped[int | None] = mapped_column(
+        ForeignKey("service_subcategories.id", ondelete="SET NULL"), index=True
+    )
     # Null until a worker accepts. A `requested` job is offered to every available
     # worker whose skills match; the first to accept claims it.
     worker_id: Mapped[int | None] = mapped_column(

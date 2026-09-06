@@ -125,7 +125,7 @@ const RatingsScreen = () => {
           </Card>
         ) : (
           list.map((item) => (
-            <Card key={item.id} style={styles.reviewCard}>
+            <Card key={String(item.id)} style={styles.reviewCard}>
               <View style={styles.reviewHead}>
                 <Avatar name={item.customer_name} size={40} />
                 <View style={styles.reviewMeta}>

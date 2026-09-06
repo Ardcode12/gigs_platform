@@ -5,6 +5,11 @@
  *   - the access token is attached to every request;
  *   - a 401 triggers one refresh attempt and one retry, with concurrent 401s
  *     queued behind that single refresh instead of each firing their own.
+ *
+ * IMPORTANT: Workers and customers use different refresh endpoints.
+ *   Worker:   POST /api/auth/refresh           (expects role="worker" token)
+ *   Customer: POST /api/customer/auth/refresh   (expects role="customer" token)
+ * Using the wrong endpoint causes refresh to silently fail and log the user out.
  */
 
 import axios from 'axios';
@@ -13,6 +18,7 @@ import { API_BASE_URL } from '../config';
 
 const ACCESS_KEY = 'workmat.access_token';
 const REFRESH_KEY = 'workmat.refresh_token';
+const ROLE_KEY = 'workmat.role'; // mirrors AuthContext's ROLE_KEY
 
 const client = axios.create({
   baseURL: API_BASE_URL,
@@ -33,14 +39,23 @@ export const setSessionExpiredHandler = (fn) => {
 
 export const getAccessToken = () => accessToken;
 
+// Current user role — used to pick the correct refresh endpoint.
+let userRole = null;
+
+export function setUserRole(role) {
+  userRole = role;
+}
+
 export async function loadTokens() {
-  const [access, refresh] = await Promise.all([
+  const [access, refresh, role] = await Promise.all([
     AsyncStorage.getItem(ACCESS_KEY),
     AsyncStorage.getItem(REFRESH_KEY),
+    AsyncStorage.getItem(ROLE_KEY),
   ]);
   accessToken = access;
   refreshToken = refresh;
-  return { access, refresh };
+  userRole = role;
+  return { access, refresh, role };
 }
 
 export async function saveTokens({ access_token, refresh_token }) {
@@ -70,8 +85,15 @@ let refreshing = null;
 
 async function refreshAccessToken() {
   if (!refreshToken) throw new Error('no refresh token');
+  // Choose the correct refresh endpoint based on the current session role.
+  // Using the worker endpoint for a customer token fails because the JWT
+  // carries role="customer" and the worker endpoint rejects it.
+  const refreshUrl =
+    userRole === 'customer'
+      ? `${API_BASE_URL}/api/customer/auth/refresh`
+      : `${API_BASE_URL}/api/auth/refresh`;
   const { data } = await axios.post(
-    `${API_BASE_URL}/api/auth/refresh`,
+    refreshUrl,
     { refresh_token: refreshToken },
     { timeout: 15000 },
   );

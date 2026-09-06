@@ -11,16 +11,39 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { COLORS, SPACING, RADIUS, FONT_SIZE, FONT_WEIGHT, SHADOWS } from '../../theme';
 import { useT } from '../../i18n/LanguageContext';
-import { AI_DETECTION_SAMPLE } from '../data/customerMockData';
 
 const CostEstimateScreen = () => {
   const navigation = useNavigation();
   const t = useT();
-  const aiData = useRoute().params?.aiData || AI_DETECTION_SAMPLE;
+  const routeParams = useRoute().params ?? {};
+  const aiData = routeParams.aiData || {
+    service_type: 'General Service',
+    category: 'General Repair',
+    baseEstimatedTotal: 450,
+    detectedServices: [
+      { name: 'Standard Inspection & Labor', price: 450, quantity: 1, totalPrice: 450 }
+    ],
+  };
 
   const handleProceedToWorkers = () => {
+    let resolvedCategory = aiData?.category || aiData?.service_type;
+    if (!resolvedCategory && aiData?.detectedCategoryKey) {
+      const key = String(aiData.detectedCategoryKey).toLowerCase();
+      if (key.includes('plumb')) resolvedCategory = 'Plumbing';
+      else if (key.includes('electr')) resolvedCategory = 'Electrical';
+      else if (key.includes('carpent')) resolvedCategory = 'Carpentry';
+      else if (key.includes('clean')) resolvedCategory = 'Cleaning';
+      else if (key.includes('paint')) resolvedCategory = 'Painting';
+      else resolvedCategory = t(aiData.detectedCategoryKey);
+    }
+    const finalCategory = resolvedCategory || 'Plumbing';
+
     navigation.navigate('WorkerRecommendations', {
       serviceBundle: aiData,
+      category: finalCategory,
+      service_type: finalCategory,
+      estimatedAmount: aiData?.baseEstimatedTotal || 650,
+      requirements: aiData?.userInput || 'AI analyzed service requirements',
     });
   };
 

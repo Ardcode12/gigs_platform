@@ -7,6 +7,8 @@ from app.routers.customer.jobs import router as jobs_router
 from app.routers.customer.notifications import router as notifications_router
 from app.routers.customer.payments import router as payments_router
 from app.routers.customer.ratings import router as ratings_router
+from app.routers.customer.services import router as services_router
+from app.routers.customer.workers import router as workers_router
 
 __all__ = [
     "auth_router",
@@ -16,4 +18,6 @@ __all__ = [
     "notifications_router",
     "payments_router",
     "ratings_router",
+    "services_router",
+    "workers_router",
 ]

@@ -11,6 +11,8 @@ import {
   ActivityIndicator,
   Alert,
   RefreshControl,
+  Modal,
+  TextInput,
 } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { COLORS, SPACING, RADIUS, FONT_SIZE, FONT_WEIGHT, SHADOWS } from '../../theme';
@@ -22,7 +24,7 @@ import LoadingState from '../../components/LoadingState';
 import EmptyState from '../../components/EmptyState';
 import useApi from '../../hooks/useApi';
 import { useSocketEvent, WS_EVENTS } from '../../context/SocketContext';
-import { getJob, acceptJob, rejectJob } from '../../api/jobs';
+import { getJob, acceptJob, rejectJob, requestPreAcceptExtraAmount } from '../../api/jobs';
 import { requestCall } from '../../api/chat';
 import { formatRupees, formatDistance, formatEta, timeAgo } from '../../utils/format';
 import { JOB_STATUS, STATUS_LABEL, STATUS_TONE } from '../../constants/jobSteps';
@@ -56,7 +58,39 @@ const NewJobRequestScreen = () => {
   });
 
   const job = request.data;
-  const isOffer = job?.status === JOB_STATUS.REQUESTED;
+  const isOffer = job?.status?.toLowerCase() === JOB_STATUS.REQUESTED;
+
+  const [showPreAcceptModal, setShowPreAcceptModal] = useState(false);
+  const [preAcceptAmount, setPreAcceptAmount] = useState('');
+  const [preAcceptReason, setPreAcceptReason] = useState('');
+  const [submittingPreAccept, setSubmittingPreAccept] = useState(false);
+
+  const handleSendPreAcceptExtra = async () => {
+    const val = Number(preAcceptAmount);
+    if (!preAcceptAmount || isNaN(val) || val <= 0) {
+      Alert.alert(t('common.error') || 'Error', 'Please enter a valid extra amount (e.g. 150).');
+      return;
+    }
+    if (!preAcceptReason.trim()) {
+      Alert.alert(t('common.error') || 'Error', 'Please enter a reason for the extra price proposal.');
+      return;
+    }
+
+    setSubmittingPreAccept(true);
+    try {
+      await requestPreAcceptExtraAmount(jobId, val, preAcceptReason.trim());
+      setShowPreAcceptModal(false);
+      Alert.alert(
+        'Price Proposal Sent',
+        `Your pre-accept quote of +₹${val} has been sent to the customer for approval.`,
+        [{ text: t('common.ok') || 'OK', onPress: () => navigation.goBack() }]
+      );
+    } catch (err) {
+      Alert.alert(t('common.error') || 'Error', err.message || 'Could not send price proposal.');
+    } finally {
+      setSubmittingPreAccept(false);
+    }
+  };
 
   const handleAccept = async () => {
     setActing('accept');
@@ -65,7 +99,8 @@ const NewJobRequestScreen = () => {
       navigation.replace('CurrentJob', { jobId });
     } catch (error) {
       // 409 here means another worker claimed it first — worth saying plainly.
-      Alert.alert(t('worker.couldNotAccept'), error.message, [
+      const msg = error.message || 'This job was already accepted by another worker';
+      Alert.alert(t('worker.couldNotAccept'), msg, [
         { text: t('common.ok'), onPress: () => navigation.goBack() },
       ]);
     } finally {
@@ -205,16 +240,16 @@ const NewJobRequestScreen = () => {
             <Text style={styles.sectionLabelText}>{t('worker.customer')}</Text>
           </View>
           <View style={styles.customerRow}>
-            <Avatar name={job.customer.name} uri={job.customer.photo_url} size={48} />
+            <Avatar name={job?.customer?.name || 'Customer'} uri={job?.customer?.photo_url} size={48} />
             <View style={{ flex: 1, marginLeft: SPACING.md }}>
-              <Text style={styles.customerName}>{job.customer.name}</Text>
+              <Text style={styles.customerName}>{job?.customer?.name || 'Customer'}</Text>
               <View style={styles.ratingRow}>
                 <RatingStars
-                  rating={job.customer.rating_avg}
+                  rating={job?.customer?.rating_avg || 5.0}
                   size={16}
                   showValue
                   showCount
-                  count={job.customer.rating_count}
+                  count={job?.customer?.rating_count || 1}
                 />
               </View>
             </View>
@@ -284,8 +319,8 @@ const NewJobRequestScreen = () => {
             <MaterialCommunityIcons name="wrench" size={18} color={COLORS.textSecondary} />
             <Text style={styles.sectionLabelText}>{t('worker.requiredServices')}</Text>
           </View>
-          {job.services.map((service) => (
-            <View key={service.id} style={styles.serviceRow}>
+          {job.services.map((service, index) => (
+            <View key={service.id ? String(service.id) : `svc-${index}`} style={styles.serviceRow}>
               <View style={styles.serviceDot} />
               <Text style={styles.serviceName}>{service.name}</Text>
               <Text style={styles.servicePrice}>{formatRupees(service.price)}</Text>
@@ -345,9 +380,8 @@ const NewJobRequestScreen = () => {
             </TouchableOpacity>
 
             <TouchableOpacity
-              style={[styles.actionBtn, isOffer && styles.actionDisabled]}
-              disabled={isOffer}
-              onPress={() => navigation.navigate('RequestExtraAmount', { jobId })}
+              style={styles.actionBtn}
+              onPress={() => (isOffer ? setShowPreAcceptModal(true) : navigation.navigate('RequestExtraAmount', { jobId }))}
             >
               <View style={[styles.actionIconWrap, { backgroundColor: COLORS.warningLight }]}>
                 <MaterialCommunityIcons name="cash-plus" size={22} color="#B45309" />
@@ -367,11 +401,11 @@ const NewJobRequestScreen = () => {
         <View style={{ height: SPACING.xxl }} />
       </ScrollView>
 
-      {/* Accept / Reject (spec #7) — only while the job is still an offer */}
+      {/* Accept / Propose Extra / Reject — while the job is still an offer */}
       {isOffer && (
         <View style={[styles.bottomBar, { paddingBottom: Math.max(insets.bottom, SPACING.md) }]}>
           <TouchableOpacity
-            style={[styles.bottomBtn, styles.rejectBtn]}
+            style={[styles.bottomBtn, styles.rejectBtn, { flex: 1 }]}
             onPress={confirmReject}
             disabled={!!acting}
             activeOpacity={0.8}
@@ -380,13 +414,26 @@ const NewJobRequestScreen = () => {
               <ActivityIndicator size="small" color={COLORS.danger} />
             ) : (
               <>
-                <MaterialCommunityIcons name="close" size={22} color={COLORS.danger} />
+                <MaterialCommunityIcons name="close" size={18} color={COLORS.danger} />
                 <Text style={styles.rejectText}>{t('common.reject')}</Text>
               </>
             )}
           </TouchableOpacity>
+
           <TouchableOpacity
-            style={[styles.bottomBtn, styles.acceptBtn]}
+            style={[styles.bottomBtn, { backgroundColor: '#FEF3C7', borderWidth: 1, borderColor: '#F59E0B', flex: 1.3 }]}
+            onPress={() => setShowPreAcceptModal(true)}
+            disabled={!!acting}
+            activeOpacity={0.8}
+          >
+            <MaterialCommunityIcons name="cash-plus" size={18} color="#B45309" />
+            <Text style={{ fontSize: FONT_SIZE.xs, fontWeight: FONT_WEIGHT.bold, color: '#B45309', marginLeft: 4 }}>
+              Propose Extra
+            </Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[styles.bottomBtn, styles.acceptBtn, { flex: 1.2 }]}
             onPress={handleAccept}
             disabled={!!acting}
             activeOpacity={0.8}
@@ -395,13 +442,100 @@ const NewJobRequestScreen = () => {
               <ActivityIndicator size="small" color={COLORS.white} />
             ) : (
               <>
-                <MaterialCommunityIcons name="check" size={22} color={COLORS.white} />
+                <MaterialCommunityIcons name="check" size={18} color={COLORS.white} />
                 <Text style={styles.acceptText}>{t('worker.acceptJob')}</Text>
               </>
             )}
           </TouchableOpacity>
         </View>
       )}
+
+      {/* Pre-Accept Extra Amount Modal */}
+      <Modal
+        visible={showPreAcceptModal}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setShowPreAcceptModal(false)}
+      >
+        <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' }}>
+          <View style={{ backgroundColor: COLORS.white, borderTopLeftRadius: RADIUS.lg, borderTopRightRadius: RADIUS.lg, padding: SPACING.lg }}>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: SPACING.md }}>
+              <Text style={{ fontSize: FONT_SIZE.md, fontWeight: FONT_WEIGHT.bold, color: COLORS.textPrimary }}>
+                Propose Extra Amount (Pre-Accept)
+              </Text>
+              <TouchableOpacity onPress={() => setShowPreAcceptModal(false)}>
+                <MaterialCommunityIcons name="close" size={24} color={COLORS.textSecondary} />
+              </TouchableOpacity>
+            </View>
+
+            <Text style={{ fontSize: FONT_SIZE.xs, color: COLORS.textSecondary, marginBottom: SPACING.md, lineHeight: 18 }}>
+              If the requested work requires additional labor or heavy materials beyond the base rate, propose a price adjustment to the customer before accepting.
+            </Text>
+
+            <Text style={{ fontSize: FONT_SIZE.xs, fontWeight: FONT_WEIGHT.semibold, color: COLORS.textPrimary, marginBottom: SPACING.xs }}>
+              Extra Amount (₹)
+            </Text>
+            <TextInput
+              style={{
+                borderWidth: 1,
+                borderColor: COLORS.border,
+                borderRadius: RADIUS.md,
+                paddingHorizontal: SPACING.md,
+                paddingVertical: SPACING.sm,
+                fontSize: FONT_SIZE.md,
+                marginBottom: SPACING.md,
+                color: COLORS.textPrimary,
+              }}
+              placeholder="e.g. 150"
+              keyboardType="numeric"
+              value={preAcceptAmount}
+              onChangeText={setPreAcceptAmount}
+            />
+
+            <Text style={{ fontSize: FONT_SIZE.xs, fontWeight: FONT_WEIGHT.semibold, color: COLORS.textPrimary, marginBottom: SPACING.xs }}>
+              Reason for Extra Amount
+            </Text>
+            <TextInput
+              style={{
+                borderWidth: 1,
+                borderColor: COLORS.border,
+                borderRadius: RADIUS.md,
+                paddingHorizontal: SPACING.md,
+                paddingVertical: SPACING.sm,
+                fontSize: FONT_SIZE.sm,
+                height: 80,
+                textAlignVertical: 'top',
+                marginBottom: SPACING.lg,
+                color: COLORS.textPrimary,
+              }}
+              placeholder="e.g. Heavy copper piping & wall chasing required"
+              multiline
+              value={preAcceptReason}
+              onChangeText={setPreAcceptReason}
+            />
+
+            <View style={{ flexDirection: 'row', gap: SPACING.md }}>
+              <TouchableOpacity
+                style={{ flex: 1, paddingVertical: SPACING.md, borderRadius: RADIUS.md, backgroundColor: COLORS.background, alignItems: 'center' }}
+                onPress={() => setShowPreAcceptModal(false)}
+              >
+                <Text style={{ fontWeight: FONT_WEIGHT.semibold, color: COLORS.textSecondary }}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={{ flex: 1.5, paddingVertical: SPACING.md, borderRadius: RADIUS.md, backgroundColor: COLORS.primary, alignItems: 'center' }}
+                onPress={handleSendPreAcceptExtra}
+                disabled={submittingPreAccept}
+              >
+                {submittingPreAccept ? (
+                  <ActivityIndicator color={COLORS.white} />
+                ) : (
+                  <Text style={{ fontWeight: FONT_WEIGHT.bold, color: COLORS.white }}>Send Proposal</Text>
+                )}
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 };

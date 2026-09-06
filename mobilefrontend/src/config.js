@@ -1,18 +1,20 @@
-import { Platform } from 'react-native';
+import { Platform, NativeModules } from 'react-native';
 import Constants from 'expo-constants';
 
-const getApiHost = () => {
+/**
+ * Set your machine's local Wi-Fi / Hotspot IP here if auto-detection falls back.
+ * (e.g. '192.168.137.1' or your current LAN IP from `ipconfig`)
+ */
+export const MANUAL_DEV_IP = '10.71.25.35';
+
+const getDevServerHost = () => {
   // Web
   if (Platform.OS === 'web' && typeof window !== 'undefined') {
     return window.location.hostname;
   }
 
-  // Expo Go
-  const hostUri =
-    Constants?.expoConfig?.hostUri ||
-    Constants?.manifest2?.extra?.expoGo?.debuggerHost ||
-    Constants?.manifest?.debuggerHost;
-
+  // Expo Constants hostUri (e.g. "192.168.137.1:8081")
+  const hostUri = Constants?.expoConfig?.hostUri || Constants?.manifest2?.extra?.expoGo?.debuggerHost || Constants?.manifest?.debuggerHost;
   if (hostUri) {
     const host = hostUri.split(':')[0];
 
@@ -21,13 +23,23 @@ const getApiHost = () => {
     }
   }
 
-  return '10.71.25.35';
+  // React Native scriptURL
+  const scriptURL = NativeModules?.SourceCode?.scriptURL;
+  if (scriptURL) {
+    const address = scriptURL.split('://')[1]?.split('/')[0]?.split(':')[0];
+    if (address && address !== 'localhost' && address !== '127.0.0.1') {
+      return address;
+    }
+  }
+
+  return MANUAL_DEV_IP;
 };
 
-export const API_HOST = getApiHost();
+export const API_HOST = getDevServerHost();
 export const API_PORT = 8002;
 
 export const API_BASE_URL = `http://${API_HOST}:${API_PORT}`;
 export const WS_URL = `ws://${API_HOST}:${API_PORT}/api/ws`;
+export const WS_CUSTOMER_URL = `ws://${API_HOST}:${API_PORT}/api/ws/customer`;
 
 export const AVG_SPEED_KMPH = 22;

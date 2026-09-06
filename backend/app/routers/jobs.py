@@ -63,12 +63,89 @@ def _record_status(db: Session, job: Job, new_status: JobStatus, note: str | Non
     db.add(JobStatusEvent(job_id=job.id, status=new_status, note=note))
 
 
+def _stem_trade(text: str) -> str:
+    """Normalize trade/service word to base root."""
+    t = text.lower().strip()
+    aliases = {
+        "electrician": "electr",
+        "electrical": "electr",
+        "electricity": "electr",
+        "plumber": "plumb",
+        "plumbing": "plumb",
+        "carpenter": "carpent",
+        "carpentry": "carpent",
+        "cleaner": "clean",
+        "cleaning": "clean",
+        "painter": "paint",
+        "painting": "paint",
+        "mechanic": "mechan",
+        "mechanical": "mechan",
+        "gardener": "garden",
+        "gardening": "garden",
+        "appliance": "applianc",
+        "appliances": "applianc",
+        "beautician": "beaut",
+        "salon": "beaut",
+        "pest": "pest",
+        "disinfection": "disinfect",
+        "sanitization": "sanit",
+    }
+    if t in aliases:
+        return aliases[t]
+    for suffix in ("ician", "ical", "ers", "er", "ing", "ic", "or", "ry", "y", "s"):
+        if t.endswith(suffix) and len(t) - len(suffix) >= 4:
+            return t[:-len(suffix)]
+    return t
+
+
 def _matches_skills(job: Job, worker: Worker) -> bool:
-    """Loose service-to-skill match; a worker with no skills listed sees everything."""
+    """Loose service-to-skill match; direct requests and empty skill profiles see everything."""
+    # 1. If the booking was specifically assigned to this worker, always match!
+    if job.worker_id == worker.id:
+        return True
     if not worker.skills:
         return True
-    service = job.service_type.lower()
-    return any(service in s.lower() or s.lower() in service for s in worker.skills)
+    service = (job.service_type or "").lower().strip()
+    if not service or service in ("general", "other", "all"):
+        return True
+
+    svc_words = [w for w in service.replace("-", " ").replace("_", " ").split() if len(w) >= 3]
+    svc_stems = [_stem_trade(w) for w in svc_words]
+    svc_full_stem = _stem_trade(service)
+
+    for skill in worker.skills:
+        s_lower = skill.lower().strip()
+        if not s_lower:
+            continue
+        # Direct substring match
+        if service in s_lower or s_lower in service:
+            return True
+
+        skill_words = [w for w in s_lower.replace("-", " ").replace("_", " ").split() if len(w) >= 3]
+        skill_stems = [_stem_trade(w) for w in skill_words]
+        skill_full_stem = _stem_trade(s_lower)
+
+        # Full stem match
+        if svc_full_stem and (svc_full_stem == skill_full_stem or svc_full_stem in s_lower or skill_full_stem in service):
+            return True
+
+        # Word-level matches & stem matches
+        for sw in svc_words:
+            if sw in s_lower or any(sw in skw or skw in sw for skw in skill_words):
+                return True
+        for ss in svc_stems:
+            if any(ss == sks or (len(ss) >= 4 and ss[:4] == sks[:4]) for sks in skill_stems):
+                return True
+
+    # Also check work_details if available
+    if job.work_details:
+        details_lower = job.work_details.lower()
+        for skill in worker.skills:
+            s_lower = skill.lower().strip()
+            if s_lower and s_lower in details_lower:
+                return True
+
+    return False
 
 
 # -- reads -----------------------------------------------------------------
@@ -80,29 +157,27 @@ def _matches_skills(job: Job, worker: Worker) -> bool:
 def list_requests(worker: CurrentWorker, db: DbSession) -> list[JobListItem]:
     """Open requests for this worker, nearest first (spec #3).
 
-    Broadcast requests are gated by availability, while a society-directed request
-    remains visible to its assigned worker until it is accepted.
+    Directly assigned requests are always shown. Broadcast requests are shown when worker is available.
     """
-    # A society-directed job remains visible to its worker even when they are
-    # offline. Availability only gates new broadcast requests.
-
     rejected_ids = select(JobRejection.job_id).where(JobRejection.worker_id == worker.id)
+
+    if worker.is_available:
+        where_condition = or_(Job.worker_id.is_(None), Job.worker_id == worker.id)
+    else:
+        # If offline, still deliver directed requests specifically sent to this worker
+        where_condition = (Job.worker_id == worker.id)
 
     jobs = db.scalars(
         select(Job)
         .where(
-            or_(
-                (Job.status == JobStatus.REQUESTED)
-                & Job.worker_id.is_(None)
-                & worker.is_available,
-                (Job.worker_id == worker.id) & Job.status.in_((JobStatus.REQUESTED, JobStatus.ACCEPTED)),
-            ),
-            or_(Job.worker_id == worker.id, Job.id.not_in(rejected_ids)),
+            Job.status == JobStatus.REQUESTED,
+            where_condition,
+            Job.id.not_in(rejected_ids),
         )
         .order_by(Job.requested_at.desc())
     ).all()
 
-    candidates = [j for j in jobs if j.worker_id == worker.id or _matches_skills(j, worker)]
+    candidates = [j for j in jobs if _matches_skills(j, worker)]
 
     def sort_key(job: Job) -> tuple[int, float]:
         distance, _ = distance_and_eta(worker.last_lat, worker.last_lng, job.lat, job.lng)

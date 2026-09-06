@@ -76,6 +76,9 @@ class JobListItem(BaseModel):
     status: JobStatus
     customer_name: str
     address: str
+    landmark: str | None = None
+    lat: float | None = None
+    lng: float | None = None
     distance_km: float | None
     eta_min: int | None
     total_amount: float

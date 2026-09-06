@@ -17,7 +17,7 @@ import React, {
   useState,
 } from 'react';
 import { AppState } from 'react-native';
-import { WS_URL } from '../config';
+import { WS_URL, WS_CUSTOMER_URL } from '../config';
 import { getAccessToken } from '../api/client';
 import { useAuth } from './AuthContext';
 
@@ -36,7 +36,7 @@ const PING_INTERVAL_MS = 25000;
 const SocketContext = createContext(null);
 
 export const SocketProvider = ({ children }) => {
-  const { worker } = useAuth();
+  const { worker, customer, role } = useAuth();
   const [connected, setConnected] = useState(false);
 
   const socketRef = useRef(null);
@@ -69,14 +69,18 @@ export const SocketProvider = ({ children }) => {
     pingRef.current = null;
   };
 
+  const isCustomer = role === 'customer' || (!worker && Boolean(customer));
+  const activeUser = isCustomer ? customer : worker;
+
   const connect = useCallback(() => {
     const token = getAccessToken();
-    if (!token || closingRef.current) return;
+    if (!token || closingRef.current || !activeUser) return;
     if (socketRef.current && socketRef.current.readyState <= WebSocket.OPEN) return;
 
     // React Native's WebSocket cannot set headers, so the short-lived access
     // token travels as a query param. Never the refresh token.
-    const socket = new WebSocket(`${WS_URL}?token=${encodeURIComponent(token)}`);
+    const baseWs = isCustomer ? WS_CUSTOMER_URL : WS_URL;
+    const socket = new WebSocket(`${baseWs}?token=${encodeURIComponent(token)}`);
     socketRef.current = socket;
 
     socket.onopen = () => {
@@ -113,11 +117,11 @@ export const SocketProvider = ({ children }) => {
       reconnectRef.current.attempt = attempt + 1;
       reconnectRef.current.timer = setTimeout(connect, delay);
     };
-  }, [emit]);
+  }, [emit, activeUser, isCustomer]);
 
   // Connect while signed in, tear down on sign-out.
   useEffect(() => {
-    if (!worker) {
+    if (!activeUser) {
       closingRef.current = true;
       clearTimers();
       socketRef.current?.close();
@@ -136,15 +140,15 @@ export const SocketProvider = ({ children }) => {
       socketRef.current?.close();
       socketRef.current = null;
     };
-  }, [worker, connect]);
+  }, [activeUser, connect]);
 
   // Android silently kills sockets in the background; reconnect on resume.
   useEffect(() => {
     const subscription = AppState.addEventListener('change', (state) => {
-      if (state === 'active' && worker && !socketRef.current) connect();
+      if (state === 'active' && activeUser && !socketRef.current) connect();
     });
     return () => subscription.remove();
-  }, [worker, connect]);
+  }, [activeUser, connect]);
 
   /** Subscribe to one event type (or '*'). Returns the unsubscribe function. */
   const subscribe = useCallback((type, handler) => {

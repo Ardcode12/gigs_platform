@@ -12,23 +12,81 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { COLORS, SPACING, RADIUS, FONT_SIZE, FONT_WEIGHT, SHADOWS } from '../../theme';
 import { useT } from '../../i18n/LanguageContext';
-import { AI_DETECTION_SAMPLE } from '../data/customerMockData';
+
+const parseInputToServiceData = (text) => {
+  const lower = (text || '').toLowerCase();
+  let categoryKey = 'customer.catPlumbing';
+  let category = 'Plumbing';
+  let serviceName = 'Plumbing Inspection & Leak Repair';
+  let basePrice = 350;
+
+  if (lower.includes('electr') || lower.includes('wire') || lower.includes('switch') || lower.includes('fuse') || lower.includes('light') || lower.includes('fan')) {
+    categoryKey = 'customer.catElectrical';
+    category = 'Electrical';
+    serviceName = 'Electrical Wiring & Appliance Repair';
+    basePrice = 300;
+  } else if (lower.includes('carpent') || lower.includes('door') || lower.includes('wood') || lower.includes('furniture') || lower.includes('hinge') || lower.includes('lock')) {
+    categoryKey = 'customer.catCarpentry';
+    category = 'Carpentry';
+    serviceName = 'Door, Lock & Furniture Wood Repair';
+    basePrice = 400;
+  } else if (lower.includes('paint') || lower.includes('wall') || lower.includes('color')) {
+    categoryKey = 'customer.catPainting';
+    category = 'Painting';
+    serviceName = 'Wall Touch-up & Painting Work';
+    basePrice = 600;
+  } else if (lower.includes('clean') || lower.includes('dust') || lower.includes('wash')) {
+    categoryKey = 'customer.catCleaning';
+    category = 'Cleaning';
+    serviceName = 'Deep Cleaning & Sanitization';
+    basePrice = 500;
+  }
+
+  return {
+    userInput: text,
+    category,
+    detectedCategoryKey: categoryKey,
+    confidence: '98.5',
+    baseEstimatedTotal: basePrice + 100,
+    detectedServices: [
+      {
+        id: 's1',
+        name: serviceName,
+        desc: 'Inspection and standard repair labor by verified cooperative technician',
+        quantity: 1,
+        unit: 'job',
+        price: basePrice,
+        totalPrice: basePrice,
+      },
+      {
+        id: 's2',
+        name: 'Standard Consumables & Service Materials',
+        desc: 'Standard sealant, insulation tape, screws or seal ring',
+        quantity: 1,
+        unit: 'pack',
+        price: 100,
+        totalPrice: 100,
+      },
+    ],
+  };
+};
 
 const AIRequirementScreen = () => {
   const navigation = useNavigation();
   const t = useT();
   const route = useRoute();
   const initialText =
-    route?.params?.userInput || t('customer.searchPrompt1');
+    route?.params?.userInput || 'Water leaking under the kitchen sink pipe';
   const [inputText, setInputText] = useState(initialText);
   const [isProcessing, setIsProcessing] = useState(false);
-  const [detectedData, setDetectedData] = useState(AI_DETECTION_SAMPLE);
+  const [detectedData, setDetectedData] = useState(() => parseInputToServiceData(initialText));
 
   const handleReprocess = () => {
     setIsProcessing(true);
     setTimeout(() => {
+      setDetectedData(parseInputToServiceData(inputText));
       setIsProcessing(false);
-    }, 600);
+    }, 400);
   };
 
   const handleConfirmUnderstanding = () => {

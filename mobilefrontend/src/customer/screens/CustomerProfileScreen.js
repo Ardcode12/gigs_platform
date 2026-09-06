@@ -34,14 +34,20 @@ const CustomerProfileScreen = () => {
 
   const handleLogout = () => {
     Alert.alert(
-       t('auth.signIn'),
-       t('customer.cancelBookingBody'),
+      t('customer.logout') || 'Log Out',
+      'Are you sure you want to log out of your account?',
       [
-         { text: t('common.cancel'), style: 'cancel' },
+        { text: t('common.cancel') || 'Cancel', style: 'cancel' },
         {
-           text: t('customer.cancel'),
+          text: t('customer.logout') || 'Log Out',
           style: 'destructive',
-          onPress: signOut,
+          onPress: async () => {
+            try {
+              await signOut();
+            } catch (err) {
+              console.error('Logout error:', err);
+            }
+          },
         },
       ]
     );
@@ -111,7 +117,7 @@ const CustomerProfileScreen = () => {
             <Text style={styles.emptyAddressText}>No saved addresses yet.</Text>
           ) : (
             savedAddresses.map((addr, idx) => (
-              <View key={addr.id || idx} style={styles.addressItem}>
+              <View key={addr.id ? String(addr.id) : `addr-${idx}`} style={styles.addressItem}>
                 <View style={styles.addressHeader}>
                  <View style={styles.addressTypeBadge}>
                    <Text style={styles.addressTypeText}>{addr.title || addr.type || t('customer.serviceLocation')}</Text>
@@ -136,7 +142,7 @@ const CustomerProfileScreen = () => {
           </View>
 
           {[] .map((pm) => (
-            <View key={pm.id} style={styles.paymentMethodRow}>
+            <View key={String(pm.id)} style={styles.paymentMethodRow}>
               <MaterialCommunityIcons name={pm.icon} size={20} color={COLORS.textSecondary} />
               <View style={styles.pmInfo}>
                 <Text style={styles.pmType}>{t(pm.typeKey)}</Text>
@@ -165,7 +171,7 @@ const CustomerProfileScreen = () => {
                const isSelected = language === lang.code;
               return (
                 <TouchableOpacity
-                  key={lang}
+                  key={lang.code}
                   style={[styles.langPill, isSelected && styles.langPillActive]}
                    onPress={() => changeLanguage(lang.code)}
                 >

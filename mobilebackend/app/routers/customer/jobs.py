@@ -16,6 +16,7 @@ from app.models import (
     JobStatus,
     JobStatusEvent,
     NotificationType,
+    Society,
     Worker,
     WsEvent,
 )
@@ -24,7 +25,9 @@ from app.schemas.customer import (
     CustomerJobCreate,
     CustomerJobDetail,
     CustomerJobListItem,
+    WorkerLocationOut,
 )
+from app.services.geo import distance_and_eta
 from app.services.notify import notify, push_customer_event
 from app.services.serialize import (
     serialize_customer_job_detail,
@@ -44,8 +47,8 @@ ACTIVE_CUSTOMER_STATUSES = (
 
 
 def _generate_otp() -> str:
-    """Generate a random 4-digit OTP code for job completion verification."""
-    return "".join(secrets.choice("0123456789") for _ in range(4))
+    """Generate a random 6-digit OTP code for job completion verification."""
+    return "".join(secrets.choice("0123456789") for _ in range(6))
 
 
 def _get_customer_job(db: Session, customer_id: int, job_id: int) -> Job:
@@ -57,39 +60,46 @@ def _get_customer_job(db: Session, customer_id: int, job_id: int) -> Job:
     return job
 
 
+from app.routers.jobs import _matches_skills
+
+
 def _workers_to_alert(db: Session, job: Job) -> list[Worker]:
     """Directed job -> that worker. Broadcast -> every available worker whose skills match."""
     if job.worker_id is not None:
         worker = db.get(Worker, job.worker_id)
-        return [worker] if worker and worker.is_available else []
+        return [worker] if worker else []
 
-    service = job.service_type.lower()
     rejected = set(
         db.scalars(select(JobRejection.worker_id).where(JobRejection.job_id == job.id)).all()
     )
     available = db.scalars(select(Worker).where(Worker.is_available.is_(True))).all()
     return [
-        w
-        for w in available
+        w for w in available
         if w.id not in rejected
-        and (not w.skills or any(service in s.lower() or s.lower() in service for s in w.skills))
+        and (job.society_id is None or w.society_id == job.society_id)
+        and _matches_skills(job, w)
     ]
 
 
 @router.post("", response_model=CustomerJobDetail, status_code=http_status.HTTP_201_CREATED)
 def create_job(payload: CustomerJobCreate, customer: CurrentCustomer, db: DbSession) -> CustomerJobDetail:
     """Raise a new job request as a customer booking."""
+    society_id = None
     if payload.preferred_worker_id is not None:
         worker = db.get(Worker, payload.preferred_worker_id)
         if worker is None:
             raise HTTPException(
                 status_code=http_status.HTTP_404_NOT_FOUND, detail="Preferred worker not found"
             )
+        society_id = worker.society_id
+    else:
+        society_id = db.scalars(select(Society.id)).first()
 
     otp_code = _generate_otp()
 
     job = Job(
         customer_id=customer.id,
+        society_id=society_id,
         worker_id=payload.preferred_worker_id,
         service_type=payload.service_type,
         service_icon=payload.service_icon or "wrench",
@@ -170,6 +180,40 @@ def get_job_detail(job_id: int, customer: CurrentCustomer, db: DbSession) -> Cus
     """Get full details of a job for the customer (including OTP code)."""
     job = _get_customer_job(db, customer.id, job_id)
     return serialize_customer_job_detail(db, job)
+
+
+@router.get("/{job_id}/worker-location", response_model=WorkerLocationOut)
+def get_worker_location(
+    job_id: int, customer: CurrentCustomer, db: DbSession
+) -> WorkerLocationOut:
+    """Live GPS position of the worker assigned to this job."""
+    job = _get_customer_job(db, customer.id, job_id)
+    if job.worker is None or job.worker.last_lat is None or job.worker.last_lng is None:
+        return WorkerLocationOut(
+            worker_id=job.worker_id,
+            name=job.worker.name if job.worker else None,
+            lat=None,
+            lng=None,
+            distance_km=None,
+            eta_minutes=None,
+            updated_at=None,
+        )
+
+    distance, eta = distance_and_eta(
+        job.worker.last_lat,
+        job.worker.last_lng,
+        job.lat,
+        job.lng,
+    )
+    return WorkerLocationOut(
+        worker_id=job.worker.id,
+        name=job.worker.name,
+        lat=job.worker.last_lat,
+        lng=job.worker.last_lng,
+        distance_km=distance,
+        eta_minutes=eta,
+        updated_at=job.worker.location_updated_at,
+    )
 
 
 @router.post("/{job_id}/cancel", response_model=CustomerJobDetail)

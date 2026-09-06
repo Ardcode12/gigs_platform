@@ -1,5 +1,5 @@
-import React, { useCallback, useState } from 'react';
-import { useNavigation } from '@react-navigation/native';
+import React, { useCallback, useState, useEffect } from 'react';
+import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import {
   View,
   Text,
@@ -66,6 +66,17 @@ const HomeScreen = () => {
       [],
     ),
     [],
+  );
+
+  // Refetch when screen is focused and poll periodically
+  useFocusEffect(
+    useCallback(() => {
+      dashboard.refetch({ quiet: true });
+      const interval = setInterval(() => {
+        dashboard.refetch({ quiet: true });
+      }, 3500);
+      return () => clearInterval(interval);
+    }, [dashboard]),
   );
 
   // Anything that changes the dashboard arrives as one of these.
@@ -340,7 +351,7 @@ const HomeScreen = () => {
           </Card>
         ) : (
           history.map((job) => (
-            <Card key={job.id} style={styles.jobItem}>
+            <Card key={String(job.id)} style={styles.jobItem}>
               <TouchableOpacity
                 style={styles.jobItemRow}
                 activeOpacity={0.7}

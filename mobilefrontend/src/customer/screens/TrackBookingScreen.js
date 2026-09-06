@@ -9,12 +9,15 @@ import {
   Image,
   Alert,
   ActivityIndicator,
+  Linking,
+  Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
+import MapView, { Marker, Polyline, PROVIDER_DEFAULT } from '../../components/AppMapView';
 import { COLORS, SPACING, RADIUS, FONT_SIZE, FONT_WEIGHT, SHADOWS } from '../../theme';
 import { useT } from '../../i18n/LanguageContext';
-import { getJobDetail, getActiveJob, cancelJob } from '../../api/jobs';
+import { getJobDetail, getActiveJob, cancelJob, getWorkerLocation } from '../../api/jobs';
 
 /**
  * Map a backend status string to a human label for the stepper subtitles.
@@ -55,24 +58,28 @@ const TrackBookingScreen = () => {
   const [job, setJob] = useState(null);
   const [loading, setLoading] = useState(true);
   const [cancelling, setCancelling] = useState(false);
+  const [liveWorkerLoc, setLiveWorkerLoc] = useState(null);
   const pollRef = useRef(null);
 
   // Derive UI values only from the API response.
   const currentStep = job ? toUiStep(job.current_step) : 0;
   const otpCode = job?.otp_code || routeOtp;
   const hasWorker = Boolean(job?.worker);
+  const DEFAULT_WORKER_AVATAR = 'https://images.unsplash.com/photo-1540569014015-19a7be504e3a?w=150&auto=format&fit=crop&q=80';
   const workerInfo = job?.worker
     ? {
         id: job.worker.id,
         name: job.worker.name,
-        photo: job.worker.photo_url,
-        trade: job.service_type ? `${job.service_type} Specialist` : '',
-        coopBranch: '',
+        photo: job.worker.photo_url || DEFAULT_WORKER_AVATAR,
+        trade: job.service_type ? `${job.service_type} Specialist` : 'Verified Technician',
+        coopBranch: 'WORKMAT Cooperative',
         phone: job.worker.phone,
-         rating: job.worker.rating_avg,
-         reviewsCount: job.worker.rating_count,
+        rating: job.worker.rating_avg,
+        reviewsCount: job.worker.rating_count,
+        distance_km: liveWorkerLoc?.distance_km != null ? liveWorkerLoc.distance_km : job.worker.distance_km,
+        eta_minutes: liveWorkerLoc?.eta_minutes != null ? liveWorkerLoc.eta_minutes : job.worker.eta_minutes,
       }
-    : { name: '', photo: null, trade: '', coopBranch: '', rating: null, reviewsCount: 0 };
+    : { name: '', photo: DEFAULT_WORKER_AVATAR, trade: '', coopBranch: '', rating: null, reviewsCount: 0, distance_km: null, eta_minutes: null };
 
   const serviceType = job?.service_type || '';
   const jobStatus = job?.status || '';
@@ -116,6 +123,19 @@ const TrackBookingScreen = () => {
     }
   }, [routeJobId]);
 
+  /** Fetch live worker location */
+  const fetchWorkerLoc = useCallback(async (jobId) => {
+    if (!jobId) return;
+    try {
+      const loc = await getWorkerLocation(jobId);
+      if (loc && loc.lat != null && loc.lng != null) {
+        setLiveWorkerLoc(loc);
+      }
+    } catch {
+      // Background location update error ignored
+    }
+  }, []);
+
   // Initial fetch + poll every 3.5 s while screen is focused
   useFocusEffect(
     useCallback(() => {
@@ -125,12 +145,62 @@ const TrackBookingScreen = () => {
     }, [fetchJob]),
   );
 
+  // Poll worker location every 4s when job has worker and is active
+  useEffect(() => {
+    if (!job?.id || !job?.worker) return;
+    const activeStatuses = ['accepted', 'on_the_way', 'arrived', 'work_started'];
+    if (!activeStatuses.includes(job.status)) return;
+
+    fetchWorkerLoc(job.id);
+    const workerInterval = setInterval(() => fetchWorkerLoc(job.id), 4000);
+    return () => clearInterval(workerInterval);
+  }, [job?.id, job?.worker, job?.status, fetchWorkerLoc]);
+
   // Stop polling when job reaches a terminal state
   useEffect(() => {
     if (job && ['completed', 'cancelled', 'rejected'].includes(job.status)) {
       clearInterval(pollRef.current);
     }
   }, [job?.status]);
+
+  const mapRef = useRef(null);
+  const rawCustLat = job?.lat;
+  const rawCustLng = job?.lng;
+  const rawWorkLat = liveWorkerLoc?.lat != null ? liveWorkerLoc.lat : job?.worker?.last_lat;
+  const rawWorkLng = liveWorkerLoc?.lng != null ? liveWorkerLoc.lng : job?.worker?.last_lng;
+
+  const customerLat = rawCustLat != null && !isNaN(Number(rawCustLat)) ? Number(rawCustLat) : null;
+  const customerLng = rawCustLng != null && !isNaN(Number(rawCustLng)) ? Number(rawCustLng) : null;
+  const workerLat = rawWorkLat != null && !isNaN(Number(rawWorkLat)) ? Number(rawWorkLat) : null;
+  const workerLng = rawWorkLng != null && !isNaN(Number(rawWorkLng)) ? Number(rawWorkLng) : null;
+
+  useEffect(() => {
+    if (!mapRef.current) return;
+    if (customerLat != null && customerLng != null) {
+      if (workerLat != null && workerLng != null && typeof mapRef.current.fitToCoordinates === 'function') {
+        mapRef.current.fitToCoordinates(
+          [
+            { latitude: customerLat, longitude: customerLng },
+            { latitude: workerLat, longitude: workerLng },
+          ],
+          { edgePadding: { top: 60, right: 60, bottom: 80, left: 60 }, animated: true },
+        );
+      } else if (typeof mapRef.current.animateToRegion === 'function') {
+        mapRef.current.animateToRegion({
+          latitude: customerLat,
+          longitude: customerLng,
+          latitudeDelta: 0.02,
+          longitudeDelta: 0.02,
+        }, 800);
+      }
+    }
+  }, [customerLat, customerLng, workerLat, workerLng]);
+
+  const openExternalMap = () => {
+    if (!customerLat || !customerLng) return;
+    const url = `https://www.google.com/maps/search/?api=1&query=${customerLat},${customerLng}`;
+    Linking.openURL(url).catch(() => {});
+  };
 
   const handleCallWorker = () => {
     Alert.alert(
@@ -211,27 +281,64 @@ const TrackBookingScreen = () => {
         {/* Map / Live Location Section */}
         <View style={styles.mapSectionCard}>
           <View style={styles.mapCanvas}>
-            {/* Grid Map Road Lines */}
-            <View style={styles.mapRoadHorizontal} />
-            <View style={styles.mapRoadVertical} />
-            <View style={styles.mapDiagonalRoad} />
+            {Platform.OS !== 'web' && customerLat && customerLng ? (
+              <MapView
+                ref={mapRef}
+                provider={PROVIDER_DEFAULT}
+                style={StyleSheet.absoluteFill}
+                initialRegion={{
+                  latitude: customerLat,
+                  longitude: customerLng,
+                  latitudeDelta: 0.03,
+                  longitudeDelta: 0.03,
+                }}
+                showsUserLocation={false}
+              >
+                {/* Destination Marker (Job Location) */}
+                <Marker
+                  coordinate={{ latitude: customerLat, longitude: customerLng }}
+                  title={t('customer.yourHome') || 'Service Location'}
+                  description={job?.address || ''}
+                  pinColor={COLORS.primary}
+                />
 
-            {/* Destination Marker (Customer Home) */}
-            <View style={styles.homeMarkerBox}>
-              <View style={styles.homeMarkerPin}>
-                <MaterialCommunityIcons name="home-account" size={18} color={COLORS.white} />
-              </View>
-               <Text style={styles.homeMarkerText}>{t('customer.yourHome')}</Text>
-            </View>
-
-            {/* Moving Worker Marker */}
-            {hasWorker && (
-              <View style={styles.workerMarkerBox}>
-                <View style={styles.workerMarkerPin}>
-                  <MaterialCommunityIcons name="motorbike" size={18} color={COLORS.white} />
-                </View>
-                <View style={styles.workerPulseCircle} />
-                <Text style={styles.workerMarkerText}>{workerInfo.name ? `${workerInfo.name.split(' ')[0]}` : 'Worker'}</Text>
+                {/* Worker Marker (Live Worker Coordinates) */}
+                {hasWorker && workerLat && workerLng && (
+                  <>
+                    <Marker
+                      coordinate={{ latitude: workerLat, longitude: workerLng }}
+                      title={workerInfo.name || 'Worker'}
+                      description={`${workerInfo.trade} (${workerInfo.distance_km || '1'} km away)`}
+                      pinColor={COLORS.success}
+                    />
+                    {/* Connecting line */}
+                    <Polyline
+                      coordinates={[
+                        { latitude: workerLat, longitude: workerLng },
+                        { latitude: customerLat, longitude: customerLng },
+                      ]}
+                      strokeColor={COLORS.primary}
+                      strokeWidth={3}
+                      lineDashPattern={[6, 6]}
+                    />
+                  </>
+                )}
+              </MapView>
+            ) : (
+              <View style={styles.webFallbackWrap}>
+                <MaterialCommunityIcons name="map-marker-radius" size={36} color={COLORS.primary} />
+                <Text style={styles.webFallbackTitle} numberOfLines={2}>
+                  {job?.address || 'Service Location'}
+                </Text>
+                {customerLat && customerLng && (
+                  <Text style={styles.webFallbackCoord}>
+                    GPS: {customerLat.toFixed(5)}, {customerLng.toFixed(5)}
+                  </Text>
+                )}
+                <TouchableOpacity style={styles.openExternalMapBtn} onPress={openExternalMap} activeOpacity={0.8}>
+                  <MaterialCommunityIcons name="google-maps" size={16} color={COLORS.white} />
+                  <Text style={styles.openExternalMapText}>Open in Google Maps</Text>
+                </TouchableOpacity>
               </View>
             )}
 
@@ -246,14 +353,21 @@ const TrackBookingScreen = () => {
             {/* Floating ETA Card */}
             <View style={styles.etaFloatingCard}>
               <View style={{ flex: 1 }}>
-                <Text style={styles.etaTitle}>{t('customer.estimatedArrival')}</Text>
+                <Text style={styles.etaTitle}>
+                  {workerInfo.distance_km != null
+                    ? `${workerInfo.distance_km} km away • ~${workerInfo.eta_minutes || 5} min`
+                    : (t('customer.estimatedArrival') || 'Estimated Arrival')}
+                </Text>
                 <Text style={styles.etaTimeText} numberOfLines={1}>
                   {STATUS_LABELS[jobStatus] || 'Tracking…'}
                 </Text>
               </View>
-              <View style={styles.speedPill}>
-                <Text style={styles.speedText}>{t('customer.normalTraffic')}</Text>
-              </View>
+              <TouchableOpacity style={styles.speedPill} onPress={openExternalMap} activeOpacity={0.8}>
+                <MaterialCommunityIcons name="navigation" size={12} color={COLORS.primary} />
+                <Text style={styles.speedText}>
+                  {workerInfo.distance_km != null ? 'LIVE GPS' : 'MAP'}
+                </Text>
+              </TouchableOpacity>
             </View>
           </View>
         </View>
@@ -301,7 +415,7 @@ const TrackBookingScreen = () => {
                 style={[styles.circleIconButton, styles.callIconActive]}
                 onPress={handleCallWorker}
               >
-                <MaterialCommunityIcons name="phone-shield" size={20} color={COLORS.white} />
+                <MaterialCommunityIcons name="phone-lock" size={20} color={COLORS.white} />
               </TouchableOpacity>
             </View>
           </View>
@@ -350,7 +464,7 @@ const TrackBookingScreen = () => {
 
           <View style={styles.itemsList}>
             {serviceItems.map((item, idx) => (
-              <View key={item.id || idx} style={styles.itemRow}>
+              <View key={item.id ? String(item.id) : `item-${idx}`} style={styles.itemRow}>
                 <View style={styles.itemBullet} />
                 <Text style={styles.itemName}>{item.name}</Text>
                 <Text style={styles.itemPrice}>₹{item.price}</Text>
@@ -420,7 +534,7 @@ const TrackBookingScreen = () => {
               const isLast = idx === trackingSteps.length - 1;
 
               return (
-                <View key={step.id} style={styles.stepItemRow}>
+                <View key={String(step.id)} style={styles.stepItemRow}>
                   {/* Left Column: Icon and Line */}
                   <View style={styles.stepperIndicatorCol}>
                     <View
@@ -563,6 +677,41 @@ const styles = StyleSheet.create({
     backgroundColor: '#E6EFFD',
     position: 'relative',
     overflow: 'hidden',
+  },
+  webFallbackWrap: {
+    ...StyleSheet.absoluteFillObject,
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: SPACING.lg,
+    backgroundColor: '#F1F5F9',
+  },
+  webFallbackTitle: {
+    fontSize: FONT_SIZE.sm,
+    fontWeight: FONT_WEIGHT.bold,
+    color: COLORS.textPrimary,
+    textAlign: 'center',
+    marginTop: SPACING.xs,
+    maxWidth: '85%',
+  },
+  webFallbackCoord: {
+    fontSize: FONT_SIZE.xs,
+    color: COLORS.textSecondary,
+    marginTop: 2,
+  },
+  openExternalMapBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: COLORS.primary,
+    paddingVertical: 6,
+    paddingHorizontal: SPACING.md,
+    borderRadius: RADIUS.md,
+    marginTop: SPACING.sm,
+  },
+  openExternalMapText: {
+    fontSize: FONT_SIZE.xs,
+    fontWeight: FONT_WEIGHT.bold,
+    color: COLORS.white,
   },
   mapRoadHorizontal: {
     position: 'absolute',
