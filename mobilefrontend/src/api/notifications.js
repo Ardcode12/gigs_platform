@@ -11,3 +11,12 @@ export const markRead = (id) =>
 
 export const markAllRead = () =>
   client.post('/api/notifications/read-all').then((r) => r.data);
+
+export const getCustomerNotifications = (params = {}) =>
+  client.get('/api/customer/notifications', { params }).then((r) => r.data);
+
+export const markCustomerRead = (id) =>
+  client.post(`/api/customer/notifications/${id}/read`).then((r) => r.data);
+
+export const markAllCustomerRead = () =>
+  client.post('/api/customer/notifications/read-all').then((r) => r.data);

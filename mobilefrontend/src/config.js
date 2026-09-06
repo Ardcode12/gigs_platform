@@ -38,11 +38,11 @@ const getDevServerHost = () => {
     }
   }
 
-  return '10.190.13.187';
+  return '10.71.25.35';
 };
 
 export const API_HOST = getDevServerHost();
-export const API_PORT = 8000;
+export const API_PORT = 8002;
 
 export const API_BASE_URL = `http://${API_HOST}:${API_PORT}`;
 export const WS_URL = `ws://${API_HOST}:${API_PORT}/api/ws`;

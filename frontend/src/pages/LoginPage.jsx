@@ -4,7 +4,7 @@ import { AuthLayout } from '../components/AuthLayout.jsx';
 import { Field } from '../components/Field.jsx';
 import { Button } from '../components/Button.jsx';
 import { Alert } from '../components/Alert.jsx';
-import { MailIcon, LockIcon } from '../components/icons.jsx';
+import { LockIcon, ShieldIcon } from '../components/icons.jsx';
 import { useAuth } from '../context/AuthContext.jsx';
 import { readErrorMessage, readFieldErrors } from '../api/client.js';
 
@@ -43,8 +43,7 @@ export default function LoginPage() {
 
   function validate() {
     const errors = {};
-    if (!form.email.trim()) errors.email = 'Email is required.';
-    else if (!/^\S+@\S+\.\S+$/.test(form.email.trim())) errors.email = 'Enter a valid email address.';
+    if (!form.email.trim()) errors.email = 'Society code is required.';
     if (!form.password) errors.password = 'Password is required.';
     return errors;
   }
@@ -79,20 +78,20 @@ export default function LoginPage() {
 
   return (
     <AuthLayout
-      eyebrow="Government Access"
-      title="Sign in to the Authority Portal"
-      description="Use the official credentials issued to you by the department."
+      eyebrow="Society Access"
+      title="Sign in to the Society Portal"
+      description="Use the society code and password issued to you by the federation."
     >
       <form className="auth__form" onSubmit={handleSubmit} noValidate>
         <Alert variant="warning">{notice}</Alert>
         <Alert variant="error">{error}</Alert>
 
         <Field
-          label="Official email"
-          type="email"
-          name="email"
-          icon={MailIcon}
-          placeholder="officer@cooperative.gov.in"
+          label="Society code"
+          type="text"
+          name="societyCode"
+          icon={ShieldIcon}
+          placeholder="SUNRISE01"
           autoComplete="username"
           autoFocus
           value={form.email}
@@ -122,7 +121,7 @@ export default function LoginPage() {
               onChange={(event) => setRemember(event.target.checked)}
               disabled={submitting}
             />
-            Remember my email
+            Remember my society code
           </label>
 
           <Link to="/forgot-password">Forgot password?</Link>
@@ -133,8 +132,8 @@ export default function LoginPage() {
         </Button>
 
         <p className="auth__meta">
-          Authority accounts are provisioned by the department. Contact your administrator if you
-          need access.
+          Society accounts are registered by the federation. Contact your federation administrator
+          if you need access, or <Link to="/federation/login">sign in as a federation admin</Link>.
         </p>
       </form>
     </AuthLayout>

@@ -14,3 +14,9 @@ export const requestCall = (jobId, note) =>
 
 export const getCallRequests = (jobId) =>
   client.get(`/api/jobs/${jobId}/call-requests`).then((r) => r.data);
+
+export const getCustomerMessages = (jobId) =>
+  client.get(`/api/customer/chat/${jobId}`).then((r) => r.data);
+
+export const sendCustomerMessage = (jobId, text) =>
+  client.post(`/api/customer/chat/${jobId}`, { text }).then((r) => r.data);

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import {
   View,
@@ -16,14 +16,25 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { COLORS, SPACING, RADIUS, FONT_SIZE, FONT_WEIGHT, SHADOWS } from '../../theme';
 import { useT } from '../../i18n/LanguageContext';
-import { RECOMMENDED_WORKERS, CHAT_MESSAGES_SAMPLE } from '../data/customerMockData';
+import { getCustomerMessages, sendCustomerMessage } from '../../api/chat';
 
 const CustomerChatScreen = () => {
   const navigation = useNavigation();
   const t = useT();
-  const worker = useRoute().params?.worker || RECOMMENDED_WORKERS[0];
-  const [messages, setMessages] = useState(CHAT_MESSAGES_SAMPLE);
+  const { worker = {}, jobId } = useRoute().params ?? {};
+  const [messages, setMessages] = useState([]);
   const [inputText, setInputText] = useState('');
+
+  useEffect(() => {
+    if (!jobId) return undefined;
+    let cancelled = false;
+    getCustomerMessages(jobId).then((data) => {
+      if (!cancelled) setMessages(data || []);
+    }).catch(() => {
+      if (!cancelled) setMessages([]);
+    });
+    return () => { cancelled = true; };
+  }, [jobId]);
 
   const messageText = (message) =>
     message.textKey ? t(message.textKey) : message.text ?? '';
@@ -33,14 +44,11 @@ const CustomerChatScreen = () => {
 
   const handleSend = () => {
     if (!inputText.trim()) return;
-    const newMsg = {
-      id: `msg_${Date.now()}`,
-      sender: 'customer',
-      text: inputText.trim(),
-       time: t('customer.chatTimeNow'),
-    };
-    setMessages((currentMessages) => [...currentMessages, newMsg]);
-    setInputText('');
+    if (!jobId) return;
+    sendCustomerMessage(jobId, inputText.trim()).then((message) => {
+      setMessages((currentMessages) => [...currentMessages, message]);
+      setInputText('');
+    }).catch((err) => Alert.alert(t('common.error'), err.message));
   };
 
   const handleProtectedCall = () => {
@@ -100,7 +108,7 @@ const CustomerChatScreen = () => {
              <Text style={styles.chatStartDateText}>{t('customer.todayBooking')}</Text>
           </View>
 
-          {messages.map((item) => {
+           {messages.map((item) => {
             const isMe = item.sender === 'customer';
             return (
               <View
@@ -124,9 +132,12 @@ const CustomerChatScreen = () => {
                   </Text>
                 </View>
               </View>
-            );
-          })}
-        </ScrollView>
+             );
+           })}
+           {messages.length === 0 && (
+             <Text style={{ color: COLORS.textSecondary, textAlign: 'center' }}>{t('chat.empty')}</Text>
+           )}
+         </ScrollView>
 
         {/* Quick Clarification Chips */}
         <View style={styles.quickRepliesContainer}>

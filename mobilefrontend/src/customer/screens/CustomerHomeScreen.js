@@ -14,11 +14,6 @@ import { COLORS, SPACING, RADIUS, FONT_SIZE, FONT_WEIGHT, SHADOWS } from '../../
 import { useT } from '../../i18n/LanguageContext';
 import { useAuth } from '../../context/AuthContext';
 import { getActiveJob } from '../../api/jobs';
-import {
-  SERVICE_CATEGORIES,
-  POPULAR_SERVICES,
-  CUSTOMER_PROFILE,
-} from '../data/customerMockData';
 
 const STATUS_DISPLAY = {
   requested: { label: 'Booking Requested', icon: 'clock-outline' },
@@ -31,7 +26,6 @@ const STATUS_DISPLAY = {
 const CustomerHomeScreen = () => {
   const navigation = useNavigation();
   const t = useT();
-  const defaultAddress = CUSTOMER_PROFILE.savedAddresses.find((a) => a.isDefault) || CUSTOMER_PROFILE.savedAddresses[0];
   const { customer } = useAuth();
   const [activeJob, setActiveJob] = useState(null);
 
@@ -44,17 +38,17 @@ const CustomerHomeScreen = () => {
           const data = await getActiveJob();
           if (!cancelled) setActiveJob(data);
         } catch {
-          // API unreachable — keep null
+          if (!cancelled) setActiveJob(null);
         }
       })();
       return () => { cancelled = true; };
     }, []),
   );
 
-  const addressTitle = customer?.saved_addresses?.[0]?.title || 'Location';
+  const addressTitle = customer?.saved_addresses?.[0]?.title || '';
   const addressText =
     customer?.saved_addresses?.[0]?.address ||
-    (customer?.city ? `${customer.city}, India` : 'Set your location');
+    (customer?.city ? `${customer.city}, India` : '');
 
   return (
     <SafeAreaView style={styles.safeArea}>
@@ -206,7 +200,7 @@ const CustomerHomeScreen = () => {
           </View>
 
           <View style={styles.categoriesGrid}>
-            {SERVICE_CATEGORIES.map((cat) => (
+            {[].map((cat) => (
               <TouchableOpacity
                 key={cat.id}
                 style={styles.categoryCard}
@@ -237,7 +231,7 @@ const CustomerHomeScreen = () => {
             showsHorizontalScrollIndicator={false}
             contentContainerStyle={styles.popularServicesScroll}
           >
-            {POPULAR_SERVICES.map((item) => (
+            {[].map((item) => (
               <TouchableOpacity
                 key={item.id}
                 style={styles.popularCard}

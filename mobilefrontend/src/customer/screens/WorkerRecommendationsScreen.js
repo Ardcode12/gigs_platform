@@ -12,12 +12,11 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { COLORS, SPACING, RADIUS, FONT_SIZE, FONT_WEIGHT, SHADOWS } from '../../theme';
 import { useT } from '../../i18n/LanguageContext';
-import { RECOMMENDED_WORKERS, AI_DETECTION_SAMPLE } from '../data/customerMockData';
 
 const WorkerRecommendationsScreen = () => {
   const navigation = useNavigation();
   const t = useT();
-  const [workersList] = useState(RECOMMENDED_WORKERS);
+  const [workersList] = useState([]);
   const [activeFilter, setActiveFilter] = useState('All');
 
   const handleSelectWorker = (worker) => {
@@ -44,13 +43,13 @@ const WorkerRecommendationsScreen = () => {
             <MaterialCommunityIcons name="flash" size={18} color={COLORS.primary} />
           </View>
           <View style={styles.summaryBarTextWrapper}>
-            <Text style={styles.summaryBarTitle}>{t('customer.electricalTasks', { count: 3 })}</Text>
+            <Text style={styles.summaryBarTitle}>{t('customer.recommendedWorkers')}</Text>
             <Text style={styles.summaryBarSubtitle}>
                {t('customer.summaryTasks')}
             </Text>
           </View>
           <View style={styles.summaryBarPriceTag}>
-            <Text style={styles.summaryBarPrice}>₹{AI_DETECTION_SAMPLE.baseEstimatedTotal}</Text>
+            <Text style={styles.summaryBarPrice}>₹0</Text>
           </View>
         </View>
 

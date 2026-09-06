@@ -15,7 +15,6 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { COLORS, SPACING, RADIUS, FONT_SIZE, FONT_WEIGHT, SHADOWS } from '../../theme';
 import { useT } from '../../i18n/LanguageContext';
 import { getJobDetail, getActiveJob, getJobPayment, payInvoice } from '../../api/jobs';
-import { ONGOING_BOOKING } from '../data/customerMockData';
 
 const DIGITAL_PAYMENT_OPTIONS = [
   { id: 'upi_gpay', nameKey: 'customer.paymentGoogle', descKey: 'customer.paymentGoogleDesc', icon: 'google', popular: true },
@@ -30,11 +29,10 @@ const PaymentScreen = () => {
   const t = useT();
   const route = useRoute();
   const routeJobId = route.params?.jobId;
-  const routeAmount = route.params?.amount;
 
   const [job, setJob] = useState(null);
   const [paymentRecord, setPaymentRecord] = useState(null);
-  const [loading, setLoading] = useState(Boolean(routeJobId));
+  const [loading, setLoading] = useState(true);
   const [selectedMethod, setSelectedMethod] = useState('upi_gpay');
   const [isProcessing, setIsProcessing] = useState(false);
   const [paymentSuccess, setPaymentSuccess] = useState(false);
@@ -62,7 +60,7 @@ const PaymentScreen = () => {
           }
         }
       } catch {
-        // Fallback to route or mock values
+        // Leave payment data empty when the API cannot provide it.
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -72,19 +70,17 @@ const PaymentScreen = () => {
 
   const finalAmount =
     paymentRecord?.total_amount ??
-    job?.amounts?.total_amount ??
-    routeAmount ??
-    650;
+    job?.amounts?.total_amount;
 
   const workerName =
-    job?.worker?.name || ONGOING_BOOKING.worker.name;
+    job?.worker?.name || '';
   const workerTrade =
-    job?.service_type ? `${job.service_type} Specialist` : ONGOING_BOOKING.worker.trade;
+    job?.service_type ? `${job.service_type} Specialist` : '';
 
   const serviceItems =
     job?.services && job.services.length > 0
       ? job.services
-      : ONGOING_BOOKING.items;
+       : [];
 
   const todayStr = new Date().toLocaleDateString('en-IN', {
     day: 'numeric',
@@ -92,26 +88,41 @@ const PaymentScreen = () => {
     year: 'numeric',
   });
 
-  const invoiceNum = `INV-WM-${job?.id ? String(job.id).padStart(4, '0') : '2026-9812'}`;
+  const invoiceNum = job?.id ? `INV-WM-${String(job.id).padStart(4, '0')}` : '';
 
   const handlePayNow = async () => {
+    if (!paymentRecord?.id) {
+      Alert.alert(t('error.generic'), t('notif.empty'));
+      return;
+    }
     setIsProcessing(true);
     try {
-      if (paymentRecord?.id) {
-        await payInvoice(paymentRecord.id);
-      }
+      await payInvoice(paymentRecord.id);
       // Simulate gateway animation delay
       await new Promise((resolve) => setTimeout(resolve, 1000));
       setPaymentSuccess(true);
     } catch (err) {
-      // If already paid or network blip, still allow completion
-      Alert.alert('Payment Confirmation', 'Payment recorded successfully.', [
-        { text: 'OK', onPress: () => setPaymentSuccess(true) },
-      ]);
+      Alert.alert('Payment Error', err.message);
     } finally {
       setIsProcessing(false);
     }
   };
+
+  if (loading) {
+    return (
+      <SafeAreaView style={[styles.safeArea, { justifyContent: 'center', alignItems: 'center' }]}>
+        <ActivityIndicator size="large" color={COLORS.primary} />
+      </SafeAreaView>
+    );
+  }
+
+  if (!job || !paymentRecord) {
+    return (
+      <SafeAreaView style={[styles.safeArea, { justifyContent: 'center', alignItems: 'center' }]}>
+        <Text style={{ color: COLORS.textSecondary }}>{t('notif.empty')}</Text>
+      </SafeAreaView>
+    );
+  }
 
 
   return (
@@ -129,7 +140,7 @@ const PaymentScreen = () => {
         {/* Amount to Pay Banner */}
         <View style={styles.amountBanner}>
            <Text style={styles.amountBannerLabel}>{t('customer.finalDue')}</Text>
-          <Text style={styles.amountBannerValue}>₹{finalAmount}</Text>
+            <Text style={styles.amountBannerValue}>{finalAmount == null ? '₹0' : `₹${finalAmount}`}</Text>
           <View style={styles.coopDirectTag}>
             <MaterialCommunityIcons name="handshake" size={14} color={COLORS.success} />
              <Text style={styles.coopDirectText}>{t('customer.directWorker')}</Text>
@@ -226,7 +237,7 @@ const PaymentScreen = () => {
              <Text style={styles.successTitle}>{t('customer.paymentSuccessful')}</Text>
             <Text style={styles.successAmount}>₹{finalAmount}</Text>
             <Text style={styles.successSub}>
-               {t('customer.transactionId', { id: 'WM-TXN-2026-981249' })}
+                {paymentRecord?.id ? t('customer.transactionId', { id: `WM-TXN-${paymentRecord.id}` }) : ''}
             </Text>
              <Text style={styles.successTime}>{t('customer.paymentVia', { date: '04 Sep 2026, 04:12 PM' })}</Text>
 

@@ -14,7 +14,6 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { COLORS, SPACING, RADIUS, FONT_SIZE, FONT_WEIGHT, SHADOWS } from '../../theme';
 import { useT } from '../../i18n/LanguageContext';
-import { ONGOING_BOOKING } from '../data/customerMockData';
 import { getJobDetail, getActiveJob, cancelJob } from '../../api/jobs';
 
 /**
@@ -51,51 +50,40 @@ const TrackBookingScreen = () => {
   const navigation = useNavigation();
   const t = useT();
   const route = useRoute();
-  const { jobId: routeJobId, otp: routeOtp, workerData: routeWorker } = route.params ?? {};
+  const { jobId: routeJobId, otp: routeOtp } = route.params ?? {};
 
   const [job, setJob] = useState(null);
   const [loading, setLoading] = useState(true);
   const [cancelling, setCancelling] = useState(false);
   const pollRef = useRef(null);
 
-  // Derive UI values from the real job, with sensible fallbacks
-  const currentStep = job ? toUiStep(job.current_step) : 1;
-  const otpCode = job?.otp_code || routeOtp || ONGOING_BOOKING.otpCode;
-  const hasWorker = Boolean(job?.worker || routeWorker);
+  // Derive UI values only from the API response.
+  const currentStep = job ? toUiStep(job.current_step) : 0;
+  const otpCode = job?.otp_code || routeOtp;
+  const hasWorker = Boolean(job?.worker);
   const workerInfo = job?.worker
     ? {
         id: job.worker.id,
         name: job.worker.name,
-        photo: job.worker.photo_url || ONGOING_BOOKING.worker.photo,
-        trade: job.service_type ? `${job.service_type} Specialist` : 'Cooperative Technician',
-        coopBranch: 'WORKMAT Cooperative Member',
+        photo: job.worker.photo_url,
+        trade: job.service_type ? `${job.service_type} Specialist` : '',
+        coopBranch: '',
         phone: job.worker.phone,
-        rating: job.worker.rating_avg || 4.9,
-        reviewsCount: job.worker.rating_count || 38,
+         rating: job.worker.rating_avg,
+         reviewsCount: job.worker.rating_count,
       }
-    : routeWorker
-      ? {
-          id: routeWorker.id,
-          name: routeWorker.name,
-          photo: routeWorker.photo,
-          trade: routeWorker.trade || 'Cooperative Technician',
-          coopBranch: routeWorker.coopBranch || 'WORKMAT Cooperative',
-          phone: routeWorker.phone || '9876543210',
-          rating: routeWorker.rating || 4.8,
-          reviewsCount: routeWorker.reviewsCount || 24,
-        }
-      : ONGOING_BOOKING.worker;
+    : { name: '', photo: null, trade: '', coopBranch: '', rating: null, reviewsCount: 0 };
 
-  const serviceType = job?.service_type || ONGOING_BOOKING.serviceType;
-  const jobStatus = job?.status || 'requested';
-  const baseAmount = job?.amounts?.base_amount ?? ONGOING_BOOKING.pricing.baseAmount;
+  const serviceType = job?.service_type || '';
+  const jobStatus = job?.status || '';
+  const baseAmount = job?.amounts?.base_amount ?? 0;
   const approvedExtraAmount = job?.amounts?.extra_amount ?? 0;
   const pendingExtraAmount = job?.amounts?.pending_extra_amount ?? 0;
   const totalAmount = job?.amounts?.total_amount ?? (baseAmount + approvedExtraAmount);
-  const jobIdDisplay = job?.id ? `WM-${job.id}` : ONGOING_BOOKING.bookingId;
+  const jobIdDisplay = job?.id ? `WM-${job.id}` : '';
   const serviceItems = job?.services && job.services.length > 0
     ? job.services
-    : ONGOING_BOOKING.items;
+    : [];
 
   // Build dynamic step descriptions from the live job
   const trackingSteps = [
@@ -120,9 +108,9 @@ const TrackBookingScreen = () => {
       } else {
         data = await getActiveJob();
       }
-      if (data) setJob(data);
+      setJob(data || null);
     } catch {
-      // Network blip — keep last known state
+      setJob(null);
     } finally {
       setLoading(false);
     }
@@ -188,6 +176,14 @@ const TrackBookingScreen = () => {
       <SafeAreaView style={[styles.safeArea, { justifyContent: 'center', alignItems: 'center' }]}>
         <ActivityIndicator size="large" color={COLORS.primary} />
         <Text style={{ color: COLORS.textSecondary, marginTop: SPACING.md }}>Loading booking…</Text>
+      </SafeAreaView>
+    );
+  }
+
+  if (!job) {
+    return (
+      <SafeAreaView style={[styles.safeArea, { justifyContent: 'center', alignItems: 'center' }]}>
+        <Text style={{ color: COLORS.textSecondary }}>{t('booking.title')}</Text>
       </SafeAreaView>
     );
   }
@@ -288,10 +284,10 @@ const TrackBookingScreen = () => {
               <View style={styles.workerRatingRow}>
                 <MaterialCommunityIcons name="star" size={14} color="#EAB308" />
                 <Text style={styles.workerRatingText}>
-                  {typeof workerInfo.rating === 'number' ? workerInfo.rating.toFixed(1) : '4.9'} ({workerInfo.reviewsCount} jobs)
+                  {typeof workerInfo.rating === 'number' ? workerInfo.rating.toFixed(1) : ''} ({workerInfo.reviewsCount || 0} jobs)
                 </Text>
               </View>
-              <Text style={styles.coopBranch}>{workerInfo.coopBranch}</Text>
+               <Text style={styles.coopBranch}>{workerInfo.coopBranch}</Text>
             </View>
             <View style={styles.contactButtonsRow}>
               <TouchableOpacity

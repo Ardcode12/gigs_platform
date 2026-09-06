@@ -137,7 +137,7 @@ const BookingHistoryScreen = () => {
 
               <View style={styles.metaRow}>
                 <MaterialCommunityIcons name="account-outline" size={16} color={COLORS.textSecondary} />
-                <Text style={styles.metaText}>Technician: {item.worker?.name || 'Cooperative Worker'}</Text>
+                <Text style={styles.metaText}>Technician: {item.worker?.name || ''}</Text>
               </View>
 
               <View style={styles.metaRow}>
@@ -234,7 +234,7 @@ const BookingHistoryScreen = () => {
 
               <Text style={styles.invoiceSectionTitle}>{t('invoice.serviceProvided')}</Text>
               <Text style={styles.invoiceServiceType}>{selectedInvoice.service_type}</Text>
-              <Text style={styles.invoiceWorker}>{t('booking.technician', { name: selectedInvoice.worker?.name || 'Cooperative Worker' })}</Text>
+                 <Text style={styles.invoiceWorker}>{t('booking.technician', { name: selectedInvoice.worker?.name || '' })}</Text>
 
               <View style={styles.divider} />
 

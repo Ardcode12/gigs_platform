@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigation } from '@react-navigation/native';
 import {
   View,
@@ -11,18 +11,21 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { COLORS, SPACING, RADIUS, FONT_SIZE, FONT_WEIGHT, SHADOWS } from '../../theme';
 import { useT } from '../../i18n/LanguageContext';
-import { NOTIFICATIONS_SAMPLE } from '../data/customerMockData';
+import { getCustomerNotifications, markCustomerRead, markAllCustomerRead } from '../../api/notifications';
 
 const NotificationsScreen = () => {
   const navigation = useNavigation();
   const t = useT();
-  const [notifications, setNotifications] = useState(NOTIFICATIONS_SAMPLE);
+  const [notifications, setNotifications] = useState([]);
+
+  useEffect(() => {
+    getCustomerNotifications().then((data) => setNotifications(data?.items || [])).catch(() => setNotifications([]));
+  }, []);
 
   const handleNotificationPress = (item) => {
     // Mark as read
-    setNotifications(
-      notifications.map((n) => (n.id === item.id ? { ...n, unread: false } : n))
-    );
+    markCustomerRead(item.id).catch(() => {});
+    setNotifications(notifications.map((n) => (n.id === item.id ? { ...n, is_read: true } : n)));
 
     // Route to appropriate screen based on requirement:
     // 1. Booking confirmation -> TrackBooking
@@ -32,26 +35,17 @@ const NotificationsScreen = () => {
     // 5. Payment confirmation -> BookingHistory or Payment
     // 6. Invoice -> BookingHistory
     // 7. Rating reminder -> RatingFeedback
-    if (item.screen && navigation.navigate) {
-      navigation.navigate(item.screen);
-    }
+    const screen = item.data?.screen;
+    if (screen && navigation.navigate) navigation.navigate(screen, item.data);
   };
 
   const markAllRead = () => {
-    setNotifications(notifications.map((n) => ({ ...n, unread: false })));
+    markAllCustomerRead().catch(() => {});
+    setNotifications(notifications.map((n) => ({ ...n, is_read: true })));
   };
 
   const notificationCopy = (item) => {
-    const values = {
-      extra_amount: ['customer.notif.extra.title', 'customer.notif.extra.body', { name: 'Ramesh Kumar', amount: '₹100' }],
-      worker_message: ['customer.notif.message.title', 'customer.notif.message.body', { name: 'Ramesh', minutes: 15 }],
-      worker_arrival: ['customer.notif.arrival.title', 'customer.notif.arrival.body', { name: 'Ramesh Kumar', address: 'Flat 402, Green Glen Layout' }],
-      booking_confirmed: ['customer.notif.confirmed.title', 'customer.notif.confirmed.body', { id: 'WM-9812', time: '3:45 PM' }],
-      payment_confirmation: ['customer.notif.payment.title', 'customer.notif.payment.body', { amount: '₹450' }],
-      invoice: ['customer.notif.invoice.title', 'customer.notif.invoice.body', { id: 'WM-8102' }],
-      rating_reminder: ['customer.notif.rating.title', 'customer.notif.rating.body', { name: 'Rajesh' }],
-    }[item.type];
-    return values ? { title: t(values[0], values[2]), body: t(values[1], values[2]) } : { title: item.title, body: item.body };
+    return { title: item.title || '', body: item.body || '' };
   };
 
   return (
@@ -70,24 +64,27 @@ const NotificationsScreen = () => {
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
          <Text style={styles.sectionHeaderTitle}>{t('customer.recentUpdates')}</Text>
 
-        <View style={styles.listContainer}>
-          {notifications.map((item) => (
+         <View style={styles.listContainer}>
+           {notifications.length === 0 && (
+             <Text style={{ color: COLORS.textSecondary, textAlign: 'center' }}>{t('notif.empty')}</Text>
+           )}
+           {notifications.map((item) => (
             <TouchableOpacity
               key={item.id}
-              style={[styles.notificationCard, item.unread && styles.unreadCard]}
+               style={[styles.notificationCard, !item.is_read && styles.unreadCard]}
               onPress={() => handleNotificationPress(item)}
               activeOpacity={0.85}
             >
-              <View style={[styles.iconCircle, { backgroundColor: item.color + '18' }]}>
-                <MaterialCommunityIcons name={item.icon} size={22} color={item.color} />
+               <View style={[styles.iconCircle, { backgroundColor: COLORS.primaryLight }]}>
+                 <MaterialCommunityIcons name="bell-outline" size={22} color={COLORS.primary} />
               </View>
 
               <View style={styles.contentWrap}>
                 <View style={styles.cardTopRow}>
-                  <Text style={[styles.itemTitle, item.unread && styles.itemTitleUnread]}>
+                   <Text style={[styles.itemTitle, !item.is_read && styles.itemTitleUnread]}>
                      {notificationCopy(item).title}
                   </Text>
-                  <Text style={styles.itemTime}>{item.time}</Text>
+                   <Text style={styles.itemTime}>{item.created_at ? new Date(item.created_at).toLocaleString() : ''}</Text>
                 </View>
 
                 <Text style={styles.itemBody} numberOfLines={2}>
@@ -100,7 +97,7 @@ const NotificationsScreen = () => {
                 </View>
               </View>
 
-              {item.unread && <View style={styles.unreadDot} />}
+               {!item.is_read && <View style={styles.unreadDot} />}
             </TouchableOpacity>
           ))}
         </View>

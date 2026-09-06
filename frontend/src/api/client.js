@@ -17,6 +17,8 @@ export const tokenStore = {
 };
 
 export const api = axios.create({
+  // Relative by default so Vite's proxy (see vite.config.js) forwards to the API
+  // on one origin. An absolute localhost URL here would bypass that proxy.
   baseURL: import.meta.env.VITE_API_BASE_URL ?? '/api',
   headers: { 'Content-Type': 'application/json' },
 });
@@ -71,7 +73,10 @@ api.interceptors.response.use(
         refreshPromise ??
         api
           .post('/auth/refresh', { refreshToken })
-          .then((res) => res.data.data.session)
+          .then((res) => ({
+            accessToken: res.data.access_token,
+            refreshToken: res.data.refresh_token,
+          }))
           .finally(() => {
             refreshPromise = null;
           });

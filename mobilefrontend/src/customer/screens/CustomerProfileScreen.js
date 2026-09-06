@@ -16,22 +16,20 @@ import { COLORS, SPACING, RADIUS, FONT_SIZE, FONT_WEIGHT, SHADOWS } from '../../
 import { useT, useLanguageState } from '../../i18n/LanguageContext';
 import { LANGUAGES } from '../../i18n';
 import { useAuth } from '../../context/AuthContext';
-import { CUSTOMER_PROFILE } from '../data/customerMockData';
 
 const CustomerProfileScreen = () => {
   const navigation = useNavigation();
   const t = useT();
   const { language, changeLanguage } = useLanguageState();
-  const [profile] = useState(CUSTOMER_PROFILE);
   const { customer, signOut } = useAuth();
   const [pushNotif, setPushNotif] = useState(true);
   const [selectedLanguage, setSelectedLanguage] = useState('English');
 
-  const displayName = customer?.name || 'Customer';
-  const displayPhone = customer?.phone || 'No phone number';
-  const displayEmail = customer?.email || 'No email provided';
-  const displayCity = customer?.city || 'Noida';
-  const memberId = customer?.id ? `WM-CUST-${String(customer.id).padStart(4, '0')}` : 'WM-CUST-0001';
+  const displayName = customer?.name || '';
+  const displayPhone = customer?.phone || '';
+  const displayEmail = customer?.email || '';
+  const displayCity = customer?.city || '';
+  const memberId = customer?.id ? `WM-CUST-${String(customer.id).padStart(4, '0')}` : '';
   const savedAddresses = customer?.saved_addresses || [];
 
   const handleLogout = () => {
@@ -137,11 +135,7 @@ const CustomerProfileScreen = () => {
             </TouchableOpacity>
           </View>
 
-          {[
-            { id: 'pm_1', type: 'UPI AutoPay / GPay', detail: 'Linked to Mobile / UPI', icon: 'cellphone-nfc', isDefault: true },
-            { id: 'pm_2', type: 'Credit / Debit Card', detail: '•••• •••• •••• 4021', icon: 'credit-card', isDefault: false },
-            { id: 'pm_3', type: 'Cash on Completion', detail: 'Direct payout to technician', icon: 'cash', isDefault: false },
-          ].map((pm) => (
+          {[] .map((pm) => (
             <View key={pm.id} style={styles.paymentMethodRow}>
               <MaterialCommunityIcons name={pm.icon} size={20} color={COLORS.textSecondary} />
               <View style={styles.pmInfo}>
