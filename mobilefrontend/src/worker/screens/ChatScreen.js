@@ -69,6 +69,15 @@ const ChatScreen = () => {
     if (event.payload?.job_id === jobId) thread.refetch();
   });
 
+  // Polling fallback to guarantee chat sync even if socket disconnects or reconnects
+  useEffect(() => {
+    if (!jobId) return undefined;
+    const interval = setInterval(() => {
+      thread.refetch({ quiet: true });
+    }, 3500);
+    return () => clearInterval(interval);
+  }, [jobId, thread]);
+
   const job = thread.data?.job;
   const messages = thread.data?.messages ?? [];
 

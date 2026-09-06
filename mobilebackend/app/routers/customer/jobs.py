@@ -16,6 +16,7 @@ from app.models import (
     JobStatus,
     JobStatusEvent,
     NotificationType,
+    Society,
     Worker,
     WsEvent,
 )
@@ -70,23 +71,33 @@ def _workers_to_alert(db: Session, job: Job) -> list[Worker]:
         db.scalars(select(JobRejection.worker_id).where(JobRejection.job_id == job.id)).all()
     )
     available = db.scalars(select(Worker).where(Worker.is_available.is_(True))).all()
-    return [w for w in available if w.id not in rejected and _matches_skills(job, w)]
+    return [
+        w for w in available
+        if w.id not in rejected
+        and (job.society_id is None or w.society_id == job.society_id)
+        and _matches_skills(job, w)
+    ]
 
 
 @router.post("", response_model=CustomerJobDetail, status_code=http_status.HTTP_201_CREATED)
 def create_job(payload: CustomerJobCreate, customer: CurrentCustomer, db: DbSession) -> CustomerJobDetail:
     """Raise a new job request as a customer booking."""
+    society_id = None
     if payload.preferred_worker_id is not None:
         worker = db.get(Worker, payload.preferred_worker_id)
         if worker is None:
             raise HTTPException(
                 status_code=http_status.HTTP_404_NOT_FOUND, detail="Preferred worker not found"
             )
+        society_id = worker.society_id
+    else:
+        society_id = db.scalars(select(Society.id)).first()
 
     otp_code = _generate_otp()
 
     job = Job(
         customer_id=customer.id,
+        society_id=society_id,
         worker_id=payload.preferred_worker_id,
         service_type=payload.service_type,
         service_icon=payload.service_icon or "wrench",

@@ -39,8 +39,28 @@ const CustomerChatScreen = () => {
   const messageText = (message) =>
     message.textKey ? t(message.textKey) : message.text ?? '';
 
-  const messageTime = (message) =>
-    message.timeKey ? t(message.timeKey) : message.time ?? '';
+  // Backend sends `sent_at` (ISO timestamp). Format it to HH:MM.
+  const messageTime = (message) => {
+    if (message.timeKey) return t(message.timeKey);
+    if (message.sent_at) {
+      try {
+        const d = new Date(message.sent_at);
+        return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+      } catch { return ''; }
+    }
+    return message.time ?? '';
+  };
+
+  // Poll every 3 seconds for new messages
+  useEffect(() => {
+    if (!jobId) return undefined;
+    const interval = setInterval(() => {
+      getCustomerMessages(jobId).then((data) => {
+        if (data) setMessages(data);
+      }).catch(() => {});
+    }, 3000);
+    return () => clearInterval(interval);
+  }, [jobId]);
 
   const handleSend = () => {
     if (!inputText.trim()) return;
@@ -71,13 +91,19 @@ const CustomerChatScreen = () => {
           style={styles.workerMetaHeader}
           onPress={() => navigation.navigate('WorkerProfile', { worker })}
         >
-          <Image source={{ uri: worker.photo }} style={styles.headerAvatar} />
+          {worker.photo_url || worker.photo ? (
+            <Image source={{ uri: worker.photo_url || worker.photo }} style={styles.headerAvatar} />
+          ) : (
+            <View style={[styles.headerAvatar, { backgroundColor: COLORS.primaryLight, alignItems: 'center', justifyContent: 'center' }]}>
+              <MaterialCommunityIcons name="account-hard-hat" size={24} color={COLORS.primary} />
+            </View>
+          )}
           <View>
             <View style={styles.headerNameRow}>
-              <Text style={styles.headerWorkerName}>{worker.name}</Text>
+              <Text style={styles.headerWorkerName}>{worker.name || 'Worker'}</Text>
               <MaterialCommunityIcons name="check-decagram" size={14} color={COLORS.primary} />
             </View>
-             <Text style={styles.headerStatusText}>{t('customer.online')} • South Coop #14</Text>
+             <Text style={styles.headerStatusText}>{t('customer.online')}</Text>
           </View>
         </TouchableOpacity>
 
@@ -112,7 +138,7 @@ const CustomerChatScreen = () => {
             const isMe = item.sender === 'customer';
             return (
               <View
-                key={item.id}
+                key={String(item.id)}
                 style={[
                   styles.messageBubbleWrapper,
                   isMe ? styles.messageBubbleMe : styles.messageBubbleWorker,
@@ -142,9 +168,9 @@ const CustomerChatScreen = () => {
         {/* Quick Clarification Chips */}
         <View style={styles.quickRepliesContainer}>
           <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-             {['customer.quickParts', 'customer.quickReach', 'customer.quickPhoto', 'customer.quickLadders'].map((key, idx) => (
+             {['customer.quickParts', 'customer.quickReach', 'customer.quickPhoto', 'customer.quickLadders'].map((key) => (
               <TouchableOpacity
-                key={idx}
+                key={key}
                 style={styles.quickChip}
                onPress={() => setInputText(t(key))}
               >

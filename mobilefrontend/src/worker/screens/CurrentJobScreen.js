@@ -265,8 +265,8 @@ const CurrentJobScreen = () => {
             <MaterialCommunityIcons name="wrench" size={18} color={COLORS.textSecondary} />
            <Text style={styles.sectionLabelText}>{t('job.servicesAndAmount')}</Text>
           </View>
-          {job.services.map((service) => (
-            <View key={service.id} style={styles.serviceRow}>
+          {job.services.map((service, index) => (
+            <View key={service.id ? String(service.id) : `svc-${index}`} style={styles.serviceRow}>
               <View style={styles.serviceDot} />
               <Text style={styles.serviceName}>{service.name}</Text>
               <Text style={styles.servicePrice}>{formatRupees(service.price)}</Text>

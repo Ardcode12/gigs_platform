@@ -87,9 +87,6 @@ class CustomerServiceLine(BaseModel):
 
 
 class CustomerJobCreate(BaseModel):
-    society_id: int | None = Field(default=None, description="Society that should receive this request")
-    category_id: int | None = None
-    subcategory_id: int | None = None
     service_type: str = Field(description="e.g. Plumbing, Electrical, Cleaning")
     service_icon: str = Field(default="wrench", description="Material Community Icon name")
     work_details: str | None = None
@@ -104,43 +101,6 @@ class CustomerJobCreate(BaseModel):
     )
 
 
-class ServiceCategoryOut(BaseModel):
-    id: int
-    slug: str
-    name: str
-    icon: str
-
-    class Config:
-        from_attributes = True
-
-
-class ServiceSubcategoryOut(BaseModel):
-    id: int
-    category_id: int
-    slug: str
-    name: str
-    icon: str
-    base_amount: float
-
-    class Config:
-        from_attributes = True
-
-
-class AvailableWorkerOut(BaseModel):
-    id: int
-    society_id: int
-    society_name: str
-    name: str
-    city: str | None = None
-    skills: list[str]
-    photo_url: str | None = None
-    rating_avg: float
-    rating_count: int
-    completed_jobs: int
-    last_lat: float | None = None
-    last_lng: float | None = None
-
-
 class AssignedWorkerOut(BaseModel):
     id: int
     name: str
@@ -148,8 +108,35 @@ class AssignedWorkerOut(BaseModel):
     photo_url: str | None = None
     rating_avg: float
     rating_count: int
+    skills: list[str] = Field(default_factory=list)
+    completed_jobs: int = 0
     last_lat: float | None = None
     last_lng: float | None = None
+    distance_km: float | None = None
+    eta_minutes: int | None = None
+    location_updated_at: datetime | None = None
+
+    class Config:
+        from_attributes = True
+
+
+class RecommendedWorkerOut(BaseModel):
+    id: int
+    worker_code: str
+    name: str
+    phone: str
+    city: str | None = None
+    photo_url: str | None = None
+    skills: list[str] = Field(default_factory=list)
+    rating_avg: float
+    rating_count: int
+    completed_jobs: int = 0
+    is_available: bool = True
+    distance_km: float | None = None
+    eta_minutes: int | None = None
+    last_lat: float | None = None
+    last_lng: float | None = None
+    location_updated_at: datetime | None = None
 
     class Config:
         from_attributes = True
@@ -162,6 +149,9 @@ class CustomerJobListItem(BaseModel):
     status: JobStatus
     worker: AssignedWorkerOut | None = None
     address: str
+    landmark: str | None = None
+    lat: float | None = None
+    lng: float | None = None
     total_amount: float
     requested_at: datetime
     accepted_at: datetime | None = None

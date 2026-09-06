@@ -111,7 +111,7 @@ const CustomerProfileScreen = () => {
             <Text style={styles.emptyAddressText}>No saved addresses yet.</Text>
           ) : (
             savedAddresses.map((addr, idx) => (
-              <View key={addr.id || idx} style={styles.addressItem}>
+              <View key={addr.id ? String(addr.id) : `addr-${idx}`} style={styles.addressItem}>
                 <View style={styles.addressHeader}>
                  <View style={styles.addressTypeBadge}>
                    <Text style={styles.addressTypeText}>{addr.title || addr.type || t('customer.serviceLocation')}</Text>
@@ -136,7 +136,7 @@ const CustomerProfileScreen = () => {
           </View>
 
           {[] .map((pm) => (
-            <View key={pm.id} style={styles.paymentMethodRow}>
+            <View key={String(pm.id)} style={styles.paymentMethodRow}>
               <MaterialCommunityIcons name={pm.icon} size={20} color={COLORS.textSecondary} />
               <View style={styles.pmInfo}>
                 <Text style={styles.pmType}>{t(pm.typeKey)}</Text>
@@ -165,7 +165,7 @@ const CustomerProfileScreen = () => {
                const isSelected = language === lang.code;
               return (
                 <TouchableOpacity
-                  key={lang}
+                  key={lang.code}
                   style={[styles.langPill, isSelected && styles.langPillActive]}
                    onPress={() => changeLanguage(lang.code)}
                 >

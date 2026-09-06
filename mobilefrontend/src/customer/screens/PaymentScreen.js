@@ -296,7 +296,7 @@ const PaymentScreen = () => {
 
                <Text style={styles.receiptSectionHeader}>{t('customer.itemsCharges')}</Text>
               {serviceItems.map((it, idx) => (
-                <View key={idx} style={styles.receiptItemRow}>
+                <View key={it.id ? String(it.id) : `svc-item-${idx}`} style={styles.receiptItemRow}>
                    <Text style={styles.receiptItemName}>{it.name || t(it.nameKey)}</Text>
                   <Text style={styles.receiptItemPrice}>₹{it.price}</Text>
                 </View>

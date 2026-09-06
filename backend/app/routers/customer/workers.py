@@ -8,8 +8,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core.deps import CurrentCustomer, DbSession
-from app.models import Job, Worker
-from app.routers.jobs import _matches_skills
+from app.models import Worker
 from app.schemas.customer import RecommendedWorkerOut
 from app.services.geo import distance_and_eta
 
@@ -45,8 +44,9 @@ def get_recommended_workers(
     for worker in all_workers:
         # Check skill match if service_type is specified
         if svc:
-            dummy_job = Job(service_type=service_type, work_details=None, worker_id=None)
-            if not _matches_skills(dummy_job, worker):
+            skills = [s.lower() for s in (worker.skills or [])]
+            # Match if any skill keyword matches or contains service_type
+            if skills and not any(svc in s or s in svc for s in skills):
                 continue
 
         # Calculate live distance & ETA if coordinates are present

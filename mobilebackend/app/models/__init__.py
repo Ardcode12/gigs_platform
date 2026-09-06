@@ -6,6 +6,7 @@ all modules are imported — importing this package is what makes that happen.
 
 from app.models.chat import CallRequest, ChatMessage, ChatMessageTranslation
 from app.models.customer import Customer
+from app.models.authority import FederationUser, GpsRequest, SocietyComplaint, SocietyRate, WelfareEnrollment, WorkerAdvance
 from app.models.enums import (
     ALLOWED_TRANSITIONS,
     JOB_PROGRESS_STEPS,
@@ -27,6 +28,7 @@ from app.models.payment import Payment
 from app.models.report import JobReport
 from app.models.rating import Rating
 from app.models.society import Society
+from app.models.service_catalog import ServiceCategory, ServiceSubcategory
 from app.models.worker import Worker
 
 __all__ = [
@@ -37,6 +39,12 @@ __all__ = [
     "ChatMessage",
     "ChatMessageTranslation",
     "Customer",
+    "GpsRequest",
+    "FederationUser",
+    "SocietyComplaint",
+    "SocietyRate",
+    "WelfareEnrollment",
+    "WorkerAdvance",
     "ExtraAmountRequest",
     "ExtraAmountStatus",
     "Job",
@@ -55,6 +63,8 @@ __all__ = [
     "JobReport",
     "Rating",
     "Society",
+    "ServiceCategory",
+    "ServiceSubcategory",
     "Worker",
     "WsEvent",
 ]

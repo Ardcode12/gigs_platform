@@ -118,16 +118,7 @@ const JobLocationScreen = () => {
           <View style={styles.webFallback}>
             <MaterialCommunityIcons name="map-outline" size={40} color={COLORS.textTertiary} />
             <Text style={styles.webFallbackText}>
-              {t('worker.webMapHint')}
-            </Text>
-          </View>
-        ) : Platform.OS === 'android' ? (
-          <View style={styles.androidMapFallback}>
-            <MaterialCommunityIcons name="map-marker-radius" size={48} color={COLORS.primary} />
-            <Text style={styles.androidMapTitle}>{t('worker.androidMapTitle')}</Text>
-            <Text style={styles.androidMapAddress}>{target.address}</Text>
-            <Text style={styles.androidMapHint}>
-              {t('worker.androidMapHint')}
+              {t('worker.webMapHint') || 'Map preview is available on Android / iOS devices'}
             </Text>
           </View>
         ) : (
@@ -152,7 +143,7 @@ const JobLocationScreen = () => {
 
             {!!coords && (
               <>
-                <Marker coordinate={coords} title={t('shared.you')} pinColor={COLORS.primary} />
+                <Marker coordinate={coords} title={t('shared.you') || 'You'} pinColor={COLORS.primary} />
                 {/* A straight line, not a route — it shows direction, not the road. */}
                 <Polyline
                   coordinates={[coords, { latitude: target.lat, longitude: target.lng }]}

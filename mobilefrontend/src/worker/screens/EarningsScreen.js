@@ -251,7 +251,7 @@ const EarningsScreen = () => {
           ) : (
             payments.map((payment, index) => (
               <View
-                key={payment.id}
+                key={payment.id ? String(payment.id) : `pay-${index}`}
                 style={[
                   styles.paymentRow,
                   index === payments.length - 1 && { borderBottomWidth: 0 },

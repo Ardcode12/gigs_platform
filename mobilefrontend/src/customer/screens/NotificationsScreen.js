@@ -70,7 +70,7 @@ const NotificationsScreen = () => {
            )}
            {notifications.map((item) => (
             <TouchableOpacity
-              key={item.id}
+              key={String(item.id)}
                style={[styles.notificationCard, !item.is_read && styles.unreadCard]}
               onPress={() => handleNotificationPress(item)}
               activeOpacity={0.85}

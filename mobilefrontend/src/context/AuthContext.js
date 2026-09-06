@@ -15,7 +15,7 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as authApi from '../api/auth';
-import { loadTokens, setSessionExpiredHandler } from '../api/client';
+import { loadTokens, setSessionExpiredHandler, setUserRole } from '../api/client';
 
 export const ROLES = { WORKER: 'worker', CUSTOMER: 'customer' };
 
@@ -36,6 +36,7 @@ export const AuthProvider = ({ children }) => {
   const signOut = useCallback(async () => {
     await authApi.logout();
     await AsyncStorage.removeItem(ROLE_KEY);
+    setUserRole(null);
     setRole(null);
     setWorker(null);
     setCustomer(null);
@@ -46,6 +47,7 @@ export const AuthProvider = ({ children }) => {
   useEffect(() => {
     setSessionExpiredHandler(() => {
       AsyncStorage.removeItem(ROLE_KEY);
+      setUserRole(null);
       setRole(null);
       setWorker(null);
       setCustomer(null);
@@ -64,6 +66,7 @@ export const AuthProvider = ({ children }) => {
         if (storedRole === ROLES.CUSTOMER && access) {
           const me = await authApi.getCustomerMe();
           if (!cancelled) {
+            setUserRole(ROLES.CUSTOMER);
             setCustomer(me);
             setRole(ROLES.CUSTOMER);
           }
@@ -73,6 +76,7 @@ export const AuthProvider = ({ children }) => {
         if (storedRole === ROLES.WORKER && access) {
           const me = await authApi.getMe();
           if (!cancelled) {
+            setUserRole(ROLES.WORKER);
             setWorker(me);
             setRole(ROLES.WORKER);
           }
@@ -94,6 +98,7 @@ export const AuthProvider = ({ children }) => {
   const signIn = useCallback(async (identifier, password) => {
     const data = await authApi.login(identifier, password);
     await AsyncStorage.setItem(ROLE_KEY, ROLES.WORKER);
+    setUserRole(ROLES.WORKER);
     setWorker(data.worker);
     setCustomer(null);
     setRole(ROLES.WORKER);
@@ -105,6 +110,7 @@ export const AuthProvider = ({ children }) => {
   const signInCustomer = useCallback(async (identifier, password) => {
     const data = await authApi.customerLogin(identifier, password);
     await AsyncStorage.setItem(ROLE_KEY, ROLES.CUSTOMER);
+    setUserRole(ROLES.CUSTOMER);
     setCustomer(data.customer);
     setWorker(null);
     setMustChangePassword(false);
@@ -116,6 +122,7 @@ export const AuthProvider = ({ children }) => {
   const signUpCustomer = useCallback(async (payload) => {
     const data = await authApi.customerSignup(payload);
     await AsyncStorage.setItem(ROLE_KEY, ROLES.CUSTOMER);
+    setUserRole(ROLES.CUSTOMER);
     setCustomer(data.customer);
     setWorker(null);
     setMustChangePassword(false);

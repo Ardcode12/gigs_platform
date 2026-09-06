@@ -13,14 +13,14 @@ import Constants from 'expo-constants';
  * Automatically resolve the machine IP whether on Web, Android, or iOS:
  * 1. On Web: uses the browser's current hostname.
  * 2. On Mobile (Expo): extracts the Metro server host via expo-constants or NativeModules.
- * 3. Fallback: current active Wi-Fi LAN IP (10.190.13.187).
+ * 3. Fallback: current active Wi-Fi LAN IP (192.168.137.1).
  */
 const getDevServerHost = () => {
   if (Platform.OS === 'web' && typeof window !== 'undefined' && window.location.hostname) {
     return window.location.hostname;
   }
 
-  // Expo Constants hostUri (e.g. "10.190.13.187:8081")
+  // Expo Constants hostUri (e.g. "192.168.137.1:8081")
   const hostUri = Constants?.expoConfig?.hostUri || Constants?.manifest2?.extra?.expoGo?.debuggerHost || Constants?.manifest?.debuggerHost;
   if (hostUri) {
     const host = hostUri.split(':')[0];
@@ -38,11 +38,11 @@ const getDevServerHost = () => {
     }
   }
 
-  return '10.71.25.35';
+  return '192.168.137.1';
 };
 
 export const API_HOST = getDevServerHost();
-export const API_PORT = 8002;
+export const API_PORT = 8000;
 
 export const API_BASE_URL = `http://${API_HOST}:${API_PORT}`;
 export const WS_URL = `ws://${API_HOST}:${API_PORT}/api/ws`;

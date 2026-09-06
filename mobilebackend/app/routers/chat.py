@@ -25,6 +25,7 @@ from app.models import (
     ChatMessageTranslation,
     JobStatus,
     MessageSender,
+    NotificationType,
     WsEvent,
 )
 from app.schemas.chat import (
@@ -34,7 +35,7 @@ from app.schemas.chat import (
     ChatMessageOut,
 )
 from app.services.access import get_job_for_worker
-from app.services.notify import push_event
+from app.services.notify import notify_customer, push_customer_event, push_event
 from app.services.translation import detect_language, translate_texts
 
 router = APIRouter(prefix="/api/jobs", tags=["chat"])
@@ -174,10 +175,24 @@ def send_message(
     db.commit()
     db.refresh(message)
 
-    # No notification row: the worker wrote this, so telling them about it would be
-    # noise. The event exists only so their other signed-in devices catch up.
+    # Push to worker's other devices
     push_event(
         worker.id,
+        WsEvent.CHAT_MESSAGE,
+        {"job_id": job.id, "message_id": message.id, "sender": MessageSender.WORKER.value},
+    )
+
+    # Deliver to customer live + notification
+    notify_customer(
+        db,
+        job.customer_id,
+        NotificationType.CHAT,
+        title=f"Message from {worker.name}",
+        body=payload.text[:120],
+        data={"job_id": job.id, "message_id": message.id, "sender": MessageSender.WORKER.value},
+    )
+    push_customer_event(
+        job.customer_id,
         WsEvent.CHAT_MESSAGE,
         {"job_id": job.id, "message_id": message.id, "sender": MessageSender.WORKER.value},
     )

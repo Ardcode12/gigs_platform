@@ -18,7 +18,10 @@ import { RECOMMENDED_WORKERS } from '../data/customerMockData';
 const WorkerProfileScreen = () => {
   const navigation = useNavigation();
   const t = useT();
-  const worker = useRoute().params?.worker || RECOMMENDED_WORKERS[0];
+  const routeParams = useRoute().params ?? {};
+  const worker = routeParams.worker || RECOMMENDED_WORKERS[0];
+  const service_type = routeParams.service_type || (worker.skills && worker.skills[0]) || 'General Repair';
+  const estimatedAmount = routeParams.estimatedAmount || worker.estimatedAmount || 500;
 
   const handleProtectedCall = () => {
     Alert.alert(
@@ -153,7 +156,11 @@ const WorkerProfileScreen = () => {
 
         <TouchableOpacity
           style={styles.bookWorkerButton}
-          onPress={() => navigation.navigate('ConfirmBooking', { worker })}
+          onPress={() => navigation.navigate('ConfirmBooking', {
+            worker,
+            service_type,
+            estimatedAmount,
+          })}
           activeOpacity={0.85}
         >
            <Text style={styles.bookWorkerButtonText}>{t('customer.bookWorker')}</Text>

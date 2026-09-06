@@ -18,7 +18,7 @@ import argparse
 import sys
 from datetime import datetime, timedelta
 
-from sqlalchemy import delete, func, select
+from sqlalchemy import delete, func, select, text
 
 from app.core.config import settings
 from app.core.security import hash_password
@@ -83,6 +83,25 @@ def _events(job: Job, statuses: list[tuple[JobStatus, datetime]]) -> list[JobSta
 
 
 def wipe(db) -> None:
+    for table_name in (
+        "chat_message_translations",
+        "worker_kyc_refs",
+        "authority_documents",
+        "authority_inspections",
+        "authority_audit_logs",
+        "gps_requests",
+        "society_complaints",
+        "society_rates",
+        "welfare_enrollments",
+        "worker_advances",
+        "otp_verifications",
+        "login_history",
+    ):
+        try:
+            db.execute(text(f"DELETE FROM {table_name}"))
+        except Exception:
+            pass
+
     for model in _WIPE_ORDER:
         db.execute(delete(model))
     db.commit()
@@ -220,6 +239,7 @@ def seed(db) -> None:
     # -- 1. open requests, broadcast to whoever is available (spec #3) ------
     request_one = Job(
         customer_id=priya.id,
+        society_id=society.id,
         worker_id=None,
         service_type="Plumbing",
         service_icon="water-pump",
@@ -237,6 +257,7 @@ def seed(db) -> None:
     )
     request_two = Job(
         customer_id=neha.id,
+        society_id=society.id,
         worker_id=None,
         service_type="Water Tank Cleaning",
         service_icon="water",
@@ -253,6 +274,7 @@ def seed(db) -> None:
     # rejecting a broadcast one only hides it from that worker.
     request_directed = Job(
         customer_id=rahul.id,
+        society_id=society.id,
         worker_id=ramesh.id,
         service_type="Plumbing",
         service_icon="water-pump",
@@ -290,6 +312,7 @@ def seed(db) -> None:
     accepted_at = NOW - timedelta(hours=1, minutes=10)
     active = Job(
         customer_id=amit.id,
+        society_id=society.id,
         worker_id=ramesh.id,
         service_type="Plumbing",
         service_icon="pipe-leak",
@@ -482,6 +505,7 @@ def seed(db) -> None:
 
         job = Job(
             customer_id=customer.id,
+            society_id=society.id,
             worker_id=ramesh.id,
             service_type=service,
             service_icon=icon,
@@ -554,6 +578,7 @@ def seed(db) -> None:
     # "declined" paths have data behind them too.
     rejected = Job(
         customer_id=rahul.id,
+        society_id=society.id,
         worker_id=ramesh.id,
         service_type="Plumbing",
         service_icon="water-pump",

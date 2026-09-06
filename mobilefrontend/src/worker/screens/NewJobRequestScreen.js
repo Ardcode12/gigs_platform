@@ -56,7 +56,7 @@ const NewJobRequestScreen = () => {
   });
 
   const job = request.data;
-  const isOffer = job?.status === JOB_STATUS.REQUESTED;
+  const isOffer = job?.status?.toLowerCase() === JOB_STATUS.REQUESTED;
 
   const handleAccept = async () => {
     setActing('accept');
@@ -65,7 +65,8 @@ const NewJobRequestScreen = () => {
       navigation.replace('CurrentJob', { jobId });
     } catch (error) {
       // 409 here means another worker claimed it first — worth saying plainly.
-      Alert.alert(t('worker.couldNotAccept'), error.message, [
+      const msg = error.message || 'This job was already accepted by another worker';
+      Alert.alert(t('worker.couldNotAccept'), msg, [
         { text: t('common.ok'), onPress: () => navigation.goBack() },
       ]);
     } finally {
@@ -284,8 +285,8 @@ const NewJobRequestScreen = () => {
             <MaterialCommunityIcons name="wrench" size={18} color={COLORS.textSecondary} />
             <Text style={styles.sectionLabelText}>{t('worker.requiredServices')}</Text>
           </View>
-          {job.services.map((service) => (
-            <View key={service.id} style={styles.serviceRow}>
+          {job.services.map((service, index) => (
+            <View key={service.id ? String(service.id) : `svc-${index}`} style={styles.serviceRow}>
               <View style={styles.serviceDot} />
               <Text style={styles.serviceName}>{service.name}</Text>
               <Text style={styles.servicePrice}>{formatRupees(service.price)}</Text>

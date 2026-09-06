@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import {
   View,
@@ -7,167 +7,210 @@ import {
   TouchableOpacity,
   StyleSheet,
   ScrollView,
+  ActivityIndicator,
+  RefreshControl,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { COLORS, SPACING, RADIUS, FONT_SIZE, FONT_WEIGHT, SHADOWS } from '../../theme';
 import { useT } from '../../i18n/LanguageContext';
-import { SERVICE_CATEGORIES } from '../data/customerMockData';
+import { getServiceCategories, searchServices } from '../../api/jobs';
 
-const SUGGESTED_NATURAL_PROMPTS = [
-  'customer.searchPrompt1', 'customer.searchPrompt2', 'customer.searchPrompt3',
-  'customer.searchPrompt4', 'customer.searchPrompt5', 'customer.searchPrompt6',
-];
-
+/**
+ * Service search screen — ALL data comes from the live backend.
+ * No hardcoded worker counts, no mock arrays.
+ */
 const SearchServiceScreen = () => {
   const navigation = useNavigation();
   const t = useT();
   const initialCategory = useRoute().params?.category || '';
+
   const [searchQuery, setSearchQuery] = useState(initialCategory);
-  const [selectedCategory, setSelectedCategory] = useState(initialCategory);
-  const [naturalText, setNaturalText] = useState(
-    t('customer.searchPrompt1')
-  );
+  const [categories, setCategories] = useState([]);
+  const [searchResults, setSearchResults] = useState(null); // null = not yet searched
+  const [loading, setLoading] = useState(true);
+  const [searching, setSearching] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
+  const [error, setError] = useState(null);
 
-  const filteredCategories = SERVICE_CATEGORIES.filter((c) =>
-    t(c.nameKey).toLowerCase().includes(searchQuery.toLowerCase()) ||
-    t(c.descKey).toLowerCase().includes(searchQuery.toLowerCase())
-  );
+  // Load all categories on mount
+  const loadCategories = useCallback(async () => {
+    try {
+      setError(null);
+      const data = await getServiceCategories();
+      setCategories(Array.isArray(data) ? data : []);
+    } catch (err) {
+      setError(err.message || 'Failed to load services. Please try again.');
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  }, []);
 
-  const handleApplyPrompt = (prompt) => {
-    setNaturalText(prompt);
+  useEffect(() => { loadCategories(); }, [loadCategories]);
+
+  // Debounced search
+  useEffect(() => {
+    if (!searchQuery.trim()) {
+      setSearchResults(null);
+      return;
+    }
+    const timer = setTimeout(async () => {
+      setSearching(true);
+      try {
+        const res = await searchServices({ q: searchQuery.trim() });
+        setSearchResults(res);
+      } catch {
+        setSearchResults(null);
+      } finally {
+        setSearching(false);
+      }
+    }, 400);
+    return () => clearTimeout(timer);
+  }, [searchQuery]);
+
+  const handleCategoryPress = (cat) => {
+    navigation.navigate('WorkerRecommendations', { category: cat.name, service_type: cat.key });
   };
 
-  const handleProceedToAi = () => {
-    navigation.navigate('AIRequirement', { userInput: naturalText });
+  const onRefresh = () => {
+    setRefreshing(true);
+    loadCategories();
   };
+
+  // What to show in the category list
+  const displayCategories = searchResults ? searchResults.categories : categories;
 
   return (
     <SafeAreaView style={styles.safeArea}>
       {/* Header */}
       <View style={styles.headerRow}>
-        <TouchableOpacity
-          style={styles.backButton}
-          onPress={() => navigation.goBack()}
-        >
+        <TouchableOpacity style={styles.backButton} onPress={() => navigation.goBack()}>
           <MaterialCommunityIcons name="arrow-left" size={24} color={COLORS.textPrimary} />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>{t('customer.searchDescribe')}</Text>
+        <Text style={styles.headerTitle}>Find a Service</Text>
         <View style={{ width: 40 }} />
       </View>
 
-      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
-        {/* Natural Language AI Requirement Box */}
-        <View style={styles.naturalCard}>
-          <View style={styles.naturalHeaderRow}>
-            <View style={styles.aiBadge}>
-              <MaterialCommunityIcons name="auto-fix" size={16} color={COLORS.white} />
-              <Text style={styles.aiBadgeText}>{t('customer.aiNatural')}</Text>
-            </View>
-            <Text style={styles.naturalHelper}>{t('customer.instantBreakdown')}</Text>
-          </View>
-
-          <Text style={styles.naturalLabel}>
-            {t('customer.describeLanguage')}
-          </Text>
-
-          <View style={styles.textAreaWrapper}>
-            <TextInput
-              style={styles.textAreaInput}
-              multiline
-              numberOfLines={4}
-              placeholder={t('search.describePlaceholder')}
-              placeholderTextColor={COLORS.textTertiary}
-              value={naturalText}
-              onChangeText={setNaturalText}
-            />
-            {naturalText.length > 0 && (
-              <TouchableOpacity
-                onPress={() => setNaturalText('')}
-                style={styles.clearIcon}
-              >
-                <MaterialCommunityIcons name="close-circle" size={18} color={COLORS.textTertiary} />
-              </TouchableOpacity>
-            )}
-          </View>
-
-          {/* Suggested Prompts */}
-          <Text style={styles.suggestionsHeader}>
-            <MaterialCommunityIcons name="lightbulb-on-outline" size={14} color={COLORS.textSecondary} />{' '}
-             {t('customer.commonRequirement')}
-          </Text>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.promptsScroll}>
-            {SUGGESTED_NATURAL_PROMPTS.map((promptKey, idx) => {
-              const prompt = t(promptKey);
-              return (
-              <TouchableOpacity
-                key={idx}
-                style={[
-                  styles.promptChip,
-                  naturalText === prompt && styles.promptChipActive,
-                ]}
-                onPress={() => handleApplyPrompt(prompt)}
-              >
-                <Text
-                  style={[
-                    styles.promptChipText,
-                    naturalText === prompt && styles.promptChipTextActive,
-                  ]}
-                  numberOfLines={1}
-                >
-                  {prompt}
-                </Text>
-              </TouchableOpacity>
-              );
-            })}
-          </ScrollView>
-
-          {/* AI Analyse Button */}
-          <TouchableOpacity
-            style={styles.aiAnalyseButton}
-            onPress={handleProceedToAi}
-            activeOpacity={0.85}
-          >
-            <MaterialCommunityIcons name="sparkles" size={20} color={COLORS.white} />
-             <Text style={styles.aiAnalyseButtonText}>{t('customer.analyze')}</Text>
-            <MaterialCommunityIcons name="arrow-right" size={20} color={COLORS.white} />
+      {/* Search Bar */}
+      <View style={styles.searchBarWrapper}>
+        <MaterialCommunityIcons name="magnify" size={22} color={COLORS.textSecondary} />
+        <TextInput
+          style={styles.searchBarInput}
+          placeholder="Search plumber, electrician, AC repair…"
+          placeholderTextColor={COLORS.textTertiary}
+          value={searchQuery}
+          onChangeText={setSearchQuery}
+          autoFocus={!!initialCategory}
+        />
+        {searching ? (
+          <ActivityIndicator size="small" color={COLORS.primary} />
+        ) : searchQuery.length > 0 ? (
+          <TouchableOpacity onPress={() => { setSearchQuery(''); setSearchResults(null); }}>
+            <MaterialCommunityIcons name="close-circle" size={18} color={COLORS.textTertiary} />
           </TouchableOpacity>
-        </View>
+        ) : null}
+      </View>
 
-        {/* Standard Search Bar */}
-        <View style={styles.sectionHeadingRow}>
-          <Text style={styles.sectionHeading}>{t('customer.browseSkills')}</Text>
-        </View>
+      <ScrollView
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={styles.scrollContent}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={COLORS.primary} />}
+      >
+        {/* AI Helper Banner */}
+        <TouchableOpacity
+          style={styles.aiBanner}
+          onPress={() => navigation.navigate('AIRequirement', { userInput: searchQuery })}
+          activeOpacity={0.9}
+        >
+          <View style={styles.aiIconBubble}>
+            <MaterialCommunityIcons name="robot" size={22} color={COLORS.white} />
+          </View>
+          <View style={styles.aiBannerTextWrap}>
+            <Text style={styles.aiBannerTitle}>Describe requirement to AI</Text>
+            <Text style={styles.aiBannerDesc}>
+              {searchQuery ? `Break down "${searchQuery}" with AI` : 'Get instant itemized cost estimate & worker matching'}
+            </Text>
+          </View>
+          <MaterialCommunityIcons name="chevron-right" size={22} color={COLORS.primary} />
+        </TouchableOpacity>
 
-        <View style={styles.searchBarWrapper}>
-          <MaterialCommunityIcons name="magnify" size={22} color={COLORS.textSecondary} />
-          <TextInput
-            style={styles.searchBarInput}
-             placeholder={t('customer.categorySearch')}
-            placeholderTextColor={COLORS.textTertiary}
-            value={searchQuery}
-            onChangeText={setSearchQuery}
-          />
-          {searchQuery.length > 0 && (
-            <TouchableOpacity onPress={() => setSearchQuery('')}>
-              <MaterialCommunityIcons name="close-circle" size={18} color={COLORS.textTertiary} />
+        {/* Error state */}
+        {error && (
+          <View style={styles.errorBox}>
+            <MaterialCommunityIcons name="alert-circle-outline" size={20} color={COLORS.danger} />
+            <Text style={styles.errorText}>{error}</Text>
+            <TouchableOpacity onPress={loadCategories} style={styles.retryBtn}>
+              <Text style={styles.retryText}>Retry</Text>
             </TouchableOpacity>
-          )}
-        </View>
+          </View>
+        )}
 
-        {/* Categories List */}
-        <View style={styles.categoriesList}>
-          {filteredCategories.map((cat) => {
-            const categoryName = t(cat.nameKey);
-            const isSelected = selectedCategory === categoryName;
-            return (
+        {/* Loading skeleton */}
+        {loading && !error && (
+          <View style={styles.loadingBox}>
+            <ActivityIndicator size="large" color={COLORS.primary} />
+            <Text style={styles.loadingText}>Loading services…</Text>
+          </View>
+        )}
+
+        {/* Search results — matching workers */}
+        {searchResults && searchResults.workers.length > 0 && (
+          <View style={styles.sectionBlock}>
+            <Text style={styles.sectionHeading}>
+              Matching Workers ({searchResults.workers.length})
+            </Text>
+            {searchResults.workers.map((w) => (
+              <View key={String(w.id)} style={styles.workerCard}>
+                <View style={styles.workerAvatarBox}>
+                  <MaterialCommunityIcons name="account-hard-hat" size={24} color={COLORS.primary} />
+                </View>
+                <View style={styles.workerInfo}>
+                  <Text style={styles.workerName}>{w.name}</Text>
+                  <Text style={styles.workerSkills} numberOfLines={1}>
+                    {(w.skills || []).slice(0, 3).join(' • ')}
+                  </Text>
+                  <View style={styles.workerMeta}>
+                    {w.rating_avg > 0 && (
+                      <View style={styles.ratingPill}>
+                        <MaterialCommunityIcons name="star" size={11} color="#EAB308" />
+                        <Text style={styles.ratingText}>{w.rating_avg.toFixed(1)}</Text>
+                      </View>
+                    )}
+                    {w.distance_km != null && (
+                      <Text style={styles.distanceText}>{w.distance_km.toFixed(1)} km</Text>
+                    )}
+                    <View style={[styles.availDot, { backgroundColor: w.is_available ? COLORS.success : COLORS.textMuted }]} />
+                    <Text style={styles.availText}>{w.is_available ? 'Available' : 'Busy'}</Text>
+                  </View>
+                </View>
+              </View>
+            ))}
+          </View>
+        )}
+
+        {/* Categories */}
+        {!loading && !error && (
+          <View style={styles.sectionBlock}>
+            <Text style={styles.sectionHeading}>
+              {searchResults ? `Categories (${displayCategories.length})` : 'All Services'}
+            </Text>
+
+            {displayCategories.length === 0 && (
+              <View style={styles.emptyBox}>
+                <MaterialCommunityIcons name="magnify-close" size={40} color={COLORS.textMuted} />
+                <Text style={styles.emptyTitle}>No services found</Text>
+                <Text style={styles.emptyText}>
+                  Try a different keyword — e.g. "plumber", "AC repair" or "painting"
+                </Text>
+              </View>
+            )}
+
+            {displayCategories.map((cat) => (
               <TouchableOpacity
-                key={cat.id}
-                style={[styles.categoryItem, isSelected && styles.categoryItemActive]}
-                onPress={() => {
-                  setSelectedCategory(categoryName);
-                  navigation.navigate('WorkerRecommendations', { category: categoryName });
-                }}
+                key={cat.key}
+                style={styles.categoryItem}
+                onPress={() => handleCategoryPress(cat)}
                 activeOpacity={0.8}
               >
                 <View style={[styles.categoryIconCircle, { backgroundColor: cat.bg }]}>
@@ -176,25 +219,33 @@ const SearchServiceScreen = () => {
 
                 <View style={styles.categoryItemDetails}>
                   <View style={styles.categoryTitleRow}>
-                    <Text style={styles.categoryTitleText}>{t(cat.nameKey)}</Text>
-                    <View style={styles.verifiedCountPill}>
-                      <Text style={styles.verifiedCountText}>{t('customer.nearbyWorkers', { count: cat.workerCount })}</Text>
+                    <Text style={styles.categoryTitleText}>{cat.name}</Text>
+                    {/* Real count from database — NEVER hardcoded */}
+                    <View style={[styles.workerCountPill, cat.available_workers > 0 && styles.workerCountPillActive]}>
+                      <MaterialCommunityIcons
+                        name={cat.available_workers > 0 ? 'check-circle' : 'clock-outline'}
+                        size={10}
+                        color={cat.available_workers > 0 ? COLORS.success : COLORS.textMuted}
+                      />
+                      <Text style={[styles.workerCountText, cat.available_workers > 0 && styles.workerCountTextActive]}>
+                        {cat.available_workers > 0
+                          ? `${cat.available_workers} available`
+                          : cat.total_workers > 0
+                            ? `${cat.total_workers} workers`
+                            : 'No workers yet'}
+                      </Text>
                     </View>
                   </View>
                   <Text style={styles.categoryDescription} numberOfLines={1}>
-                    {t(cat.descKey)}
+                    {cat.description}
                   </Text>
                 </View>
 
-                <MaterialCommunityIcons
-                  name="chevron-right"
-                  size={24}
-                  color={COLORS.textTertiary}
-                />
+                <MaterialCommunityIcons name="chevron-right" size={24} color={COLORS.textTertiary} />
               </TouchableOpacity>
-            );
-          })}
-        </View>
+            ))}
+          </View>
+        )}
       </ScrollView>
     </SafeAreaView>
   );
@@ -227,149 +278,147 @@ const styles = StyleSheet.create({
     fontWeight: FONT_WEIGHT.bold,
     color: COLORS.textPrimary,
   },
-  scrollContent: {
-    padding: SPACING.lg,
-    paddingBottom: 60,
-  },
-  naturalCard: {
-    backgroundColor: COLORS.white,
-    borderRadius: RADIUS.xl,
-    padding: SPACING.lg,
-    borderWidth: 1.5,
-    borderColor: '#BFDBFE',
-    marginBottom: SPACING.xl,
-    ...SHADOWS.md,
-  },
-  naturalHeaderRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: SPACING.sm,
-  },
-  aiBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: COLORS.primary,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: RADIUS.full,
-    gap: 4,
-  },
-  aiBadgeText: {
-    fontSize: 10,
-    fontWeight: FONT_WEIGHT.extrabold,
-    color: COLORS.white,
-    letterSpacing: 0.5,
-  },
-  naturalHelper: {
-    fontSize: FONT_SIZE.xs,
-    color: COLORS.primary,
-    fontWeight: FONT_WEIGHT.semibold,
-  },
-  naturalLabel: {
-    fontSize: FONT_SIZE.sm,
-    fontWeight: FONT_WEIGHT.semibold,
-    color: COLORS.textPrimary,
-    marginBottom: SPACING.sm,
-    lineHeight: 20,
-  },
-  textAreaWrapper: {
-    borderWidth: 1.2,
-    borderColor: COLORS.border,
-    borderRadius: RADIUS.lg,
-    backgroundColor: COLORS.background,
-    padding: SPACING.md,
-    position: 'relative',
-  },
-  textAreaInput: {
-    fontSize: FONT_SIZE.md,
-    color: COLORS.textPrimary,
-    minHeight: 80,
-    textAlignVertical: 'top',
-    lineHeight: 22,
-  },
-  clearIcon: {
-    position: 'absolute',
-    top: 10,
-    right: 10,
-  },
-  suggestionsHeader: {
-    fontSize: FONT_SIZE.xs,
-    fontWeight: FONT_WEIGHT.semibold,
-    color: COLORS.textSecondary,
-    marginTop: SPACING.md,
-    marginBottom: SPACING.xs,
-  },
-  promptsScroll: {
-    flexDirection: 'row',
-    marginVertical: SPACING.xs,
-  },
-  promptChip: {
-    backgroundColor: COLORS.background,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: RADIUS.full,
-    marginRight: SPACING.sm,
-    maxWidth: 240,
-  },
-  promptChipActive: {
-    backgroundColor: COLORS.primaryLight,
-    borderColor: COLORS.primary,
-  },
-  promptChipText: {
-    fontSize: 11,
-    color: COLORS.textSecondary,
-  },
-  promptChipTextActive: {
-    color: COLORS.primary,
-    fontWeight: FONT_WEIGHT.bold,
-  },
-  aiAnalyseButton: {
-    backgroundColor: COLORS.primary,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: SPACING.md,
-    borderRadius: RADIUS.lg,
-    marginTop: SPACING.md,
-    gap: 8,
-    ...SHADOWS.sm,
-  },
-  aiAnalyseButtonText: {
-    fontSize: FONT_SIZE.sm,
-    fontWeight: FONT_WEIGHT.bold,
-    color: COLORS.white,
-  },
-  sectionHeadingRow: {
-    marginBottom: SPACING.sm,
-  },
-  sectionHeading: {
-    fontSize: FONT_SIZE.md,
-    fontWeight: FONT_WEIGHT.bold,
-    color: COLORS.textPrimary,
-  },
   searchBarWrapper: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: COLORS.white,
-    borderWidth: 1.2,
-    borderColor: COLORS.border,
-    borderRadius: RADIUS.lg,
-    paddingHorizontal: SPACING.md,
-    height: 48,
-    marginBottom: SPACING.md,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.border,
+    paddingHorizontal: SPACING.lg,
+    height: 52,
+    gap: SPACING.sm,
   },
   searchBarInput: {
     flex: 1,
     fontSize: FONT_SIZE.sm,
     color: COLORS.textPrimary,
-    marginLeft: SPACING.xs,
   },
-  categoriesList: {
+  scrollContent: {
+    padding: SPACING.lg,
+    paddingBottom: 60,
+  },
+  sectionBlock: {
+    marginBottom: SPACING.xl,
+  },
+  sectionHeading: {
+    fontSize: FONT_SIZE.md,
+    fontWeight: FONT_WEIGHT.bold,
+    color: COLORS.textPrimary,
+    marginBottom: SPACING.md,
+  },
+  loadingBox: {
+    alignItems: 'center',
+    paddingVertical: SPACING.xxl,
+    gap: SPACING.md,
+  },
+  loadingText: {
+    fontSize: FONT_SIZE.sm,
+    color: COLORS.textSecondary,
+  },
+  errorBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FEF2F2',
+    borderRadius: RADIUS.md,
+    padding: SPACING.md,
+    marginBottom: SPACING.lg,
     gap: SPACING.sm,
   },
+  errorText: {
+    flex: 1,
+    fontSize: FONT_SIZE.sm,
+    color: COLORS.danger,
+  },
+  retryBtn: {
+    paddingHorizontal: SPACING.md,
+    paddingVertical: SPACING.xs,
+    backgroundColor: COLORS.danger,
+    borderRadius: RADIUS.sm,
+  },
+  retryText: {
+    fontSize: FONT_SIZE.xs,
+    color: COLORS.white,
+    fontWeight: FONT_WEIGHT.bold,
+  },
+  emptyBox: {
+    alignItems: 'center',
+    paddingVertical: SPACING.xxl,
+    gap: SPACING.sm,
+  },
+  emptyTitle: {
+    fontSize: FONT_SIZE.md,
+    fontWeight: FONT_WEIGHT.bold,
+    color: COLORS.textPrimary,
+  },
+  emptyText: {
+    fontSize: FONT_SIZE.sm,
+    color: COLORS.textSecondary,
+    textAlign: 'center',
+    paddingHorizontal: SPACING.lg,
+    lineHeight: 20,
+  },
+  // Worker search results
+  workerCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: COLORS.white,
+    borderRadius: RADIUS.lg,
+    padding: SPACING.md,
+    marginBottom: SPACING.sm,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    ...SHADOWS.sm,
+  },
+  workerAvatarBox: {
+    width: 44,
+    height: 44,
+    borderRadius: RADIUS.full,
+    backgroundColor: COLORS.primaryLight,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: SPACING.md,
+  },
+  workerInfo: { flex: 1 },
+  workerName: {
+    fontSize: FONT_SIZE.sm,
+    fontWeight: FONT_WEIGHT.bold,
+    color: COLORS.textPrimary,
+  },
+  workerSkills: {
+    fontSize: FONT_SIZE.xs,
+    color: COLORS.textSecondary,
+    marginTop: 2,
+  },
+  workerMeta: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 4,
+    gap: 6,
+  },
+  ratingPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 2,
+  },
+  ratingText: {
+    fontSize: 10,
+    fontWeight: FONT_WEIGHT.bold,
+    color: COLORS.textSecondary,
+  },
+  distanceText: {
+    fontSize: 10,
+    color: COLORS.textMuted,
+  },
+  availDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+  },
+  availText: {
+    fontSize: 10,
+    color: COLORS.textSecondary,
+  },
+  // Category list
   categoryItem: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -378,48 +427,91 @@ const styles = StyleSheet.create({
     padding: SPACING.md,
     borderWidth: 1,
     borderColor: COLORS.border,
+    marginBottom: SPACING.sm,
     ...SHADOWS.sm,
   },
-  categoryItemActive: {
-    borderColor: COLORS.primary,
-    backgroundColor: COLORS.primaryLight,
-  },
   categoryIconCircle: {
-    width: 48,
-    height: 48,
+    width: 52,
+    height: 52,
     borderRadius: RADIUS.xl,
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: SPACING.md,
   },
-  categoryItemDetails: {
-    flex: 1,
-  },
+  categoryItemDetails: { flex: 1 },
   categoryTitleRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginBottom: 2,
+    marginBottom: 3,
   },
   categoryTitleText: {
     fontSize: FONT_SIZE.md,
     fontWeight: FONT_WEIGHT.bold,
     color: COLORS.textPrimary,
+    flex: 1,
   },
-  verifiedCountPill: {
+  workerCountPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
     backgroundColor: COLORS.background,
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: RADIUS.sm,
+    paddingHorizontal: 7,
+    paddingVertical: 3,
+    borderRadius: RADIUS.full,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    gap: 3,
   },
-  verifiedCountText: {
+  workerCountPillActive: {
+    backgroundColor: '#F0FDF4',
+    borderColor: '#86EFAC',
+  },
+  workerCountText: {
     fontSize: 9,
     color: COLORS.textSecondary,
     fontWeight: FONT_WEIGHT.medium,
   },
+  workerCountTextActive: {
+    color: COLORS.success,
+    fontWeight: FONT_WEIGHT.bold,
+  },
   categoryDescription: {
     fontSize: FONT_SIZE.xs,
     color: COLORS.textSecondary,
+  },
+  aiBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#EEF2FF',
+    borderRadius: RADIUS.xl,
+    padding: SPACING.md,
+    borderWidth: 1,
+    borderColor: '#C7D2FE',
+    marginBottom: SPACING.md,
+    gap: SPACING.md,
+    ...SHADOWS.sm,
+  },
+  aiIconBubble: {
+    width: 42,
+    height: 42,
+    borderRadius: RADIUS.full,
+    backgroundColor: COLORS.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  aiBannerTextWrap: {
+    flex: 1,
+  },
+  aiBannerTitle: {
+    fontSize: FONT_SIZE.sm,
+    fontWeight: FONT_WEIGHT.bold,
+    color: COLORS.primaryDark || COLORS.primary,
+  },
+  aiBannerDesc: {
+    fontSize: 11,
+    color: COLORS.textSecondary,
+    lineHeight: 15,
+    marginTop: 2,
   },
 });
 

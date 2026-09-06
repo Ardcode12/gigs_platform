@@ -32,6 +32,14 @@ export const requestExtraAmount = (jobId, amount, reason) =>
     .then((r) => r.data);
 
 /**
+ * Fetch recommended workers matching a service with real-time distance and ETA.
+ * @param {Object} params - { service_type, lat, lng, radius_km, sort_by, only_available }
+ * @returns {Promise<Array>} List of RecommendedWorkerOut
+ */
+export const getRecommendedWorkers = (params = {}) =>
+  client.get('/api/customer/workers/recommendations', { params }).then((r) => r.data);
+
+/**
  * Create a new job/booking.
  * @param {Object} payload — matches CustomerJobCreate schema:
  *   { service_type, service_icon?, work_details?, address, landmark?,
@@ -116,3 +124,22 @@ export const getJobPayment = (jobId) =>
  */
 export const payInvoice = (paymentId) =>
   client.post(`/api/customer/payments/${paymentId}/pay`).then((r) => r.data);
+
+// -- Service discovery endpoints (real counts, never mocked) ----------------
+
+/**
+ * Fetch all service categories with the actual number of workers per category.
+ * Never returns hardcoded counts — all numbers come from the live database.
+ * @returns {Promise<Array>} ServiceCategoryOut[]
+ */
+export const getServiceCategories = () =>
+  client.get('/api/customer/services').then((r) => r.data);
+
+/**
+ * Free-text search over service categories and matching workers.
+ * @param {Object} params - { q: string, lat?: number, lng?: number }
+ * @returns {Promise<Object>} ServiceSearchResult { query, categories[], workers[] }
+ */
+export const searchServices = (params = {}) =>
+  client.get('/api/customer/services/search', { params }).then((r) => r.data);
+

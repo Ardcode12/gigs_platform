@@ -56,13 +56,35 @@ CANONICAL_CATEGORIES = [
 ]
 
 
+from app.routers.jobs import _stem_trade
+
+
 def _skill_matches(skill: str, category_key: str) -> bool:
-    """Loose case-insensitive match between a worker skill and a category key."""
-    s = skill.lower()
-    k = category_key.lower()
-    # Also check individual words so "Senior Electrician" matches "Electrician"
-    k_words = k.split()
-    return k in s or s in k or any(w in s for w in k_words if len(w) > 3)
+    """Robust match between a worker skill and a category key using trade root stemming."""
+    s = skill.lower().strip()
+    k = category_key.lower().strip()
+    if not s or not k:
+        return False
+    if k in s or s in k:
+        return True
+
+    s_words = [w for w in s.replace("-", " ").replace("_", " ").split() if len(w) >= 3]
+    k_words = [w for w in k.replace("-", " ").replace("_", " ").split() if len(w) >= 3]
+
+    s_stems = [_stem_trade(w) for w in s_words]
+    k_stems = [_stem_trade(w) for w in k_words]
+
+    s_full_stem = _stem_trade(s)
+    k_full_stem = _stem_trade(k)
+
+    if s_full_stem and k_full_stem and s_full_stem == k_full_stem:
+        return True
+
+    for ks in k_stems:
+        if any(ks == ss or (len(ks) >= 4 and ks[:4] == ss[:4]) for ss in s_stems):
+            return True
+
+    return any(w in s for w in k_words if len(w) > 3)
 
 
 @router.get("", response_model=list[ServiceCategoryOut])

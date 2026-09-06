@@ -1,5 +1,5 @@
 import React, { useCallback, useState } from 'react';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import {
   View,
   Text,
@@ -17,8 +17,8 @@ import LoadingState from '../../components/LoadingState';
 import EmptyState from '../../components/EmptyState';
 import useApi from '../../hooks/useApi';
 import { useSocketEvent, WS_EVENTS } from '../../context/SocketContext';
-import { getHistory, getCurrentJob } from '../../api/jobs';
-import { formatRupees, formatDistance, formatTime, dayLabel } from '../../utils/format';
+import { getHistory, getCurrentJob, getRequests } from '../../api/jobs';
+import { formatRupees, formatDistance, formatEta, formatTime, timeAgo, dayLabel } from '../../utils/format';
 import {
   JOB_STATUS,
   JOB_STEPS,
@@ -30,6 +30,7 @@ import { useT } from '../../i18n/LanguageContext';
 
 const FILTERS = [
   { key: 'all', label: 'All' },
+  { key: 'requests', label: 'Requests' },
   { key: 'active', label: 'Active' },
   { key: 'completed', label: 'Completed' },
 ];
@@ -42,36 +43,60 @@ const JobsScreen = () => {
   const jobs = useApi(
     useCallback(
       () =>
-        Promise.all([getHistory({ limit: 100 }), getCurrentJob()]).then(([history, current]) => ({
-          history,
-          current,
-        })),
+        Promise.all([getRequests(), getHistory({ limit: 100 }), getCurrentJob()]).then(
+          ([requests, history, current]) => ({
+            requests: Array.isArray(requests) ? requests : [],
+            history: Array.isArray(history) ? history : [],
+            current,
+          }),
+        ),
       [],
     ),
     [],
   );
 
-  useSocketEvent([WS_EVENTS.JOB_UPDATE, WS_EVENTS.PAYMENT_UPDATE], () => jobs.refetch());
+  // Poll for new requests & status changes while screen is focused
+  useFocusEffect(
+    useCallback(() => {
+      jobs.refetch({ quiet: true });
+      const interval = setInterval(() => {
+        jobs.refetch({ quiet: true });
+      }, 3500);
+      return () => clearInterval(interval);
+    }, [jobs]),
+  );
 
+  useSocketEvent(
+    [WS_EVENTS.NEW_JOB_REQUEST, WS_EVENTS.JOB_UPDATE, WS_EVENTS.PAYMENT_UPDATE],
+    () => jobs.refetch(),
+  );
+
+  const requests = jobs.data?.requests ?? [];
   const history = jobs.data?.history ?? [];
   const current = jobs.data?.current ?? null;
 
   const completed = history.filter((job) => job.status === JOB_STATUS.COMPLETED);
   const activeCount = current ? 1 : 0;
 
-  // "Active" is a client-side view of the history list: the API filters by one
-  // status at a time, and active spans four of them.
+  // Filter selection: requests | completed | active | all
   const visible =
-    filter === 'completed'
-      ? completed
-      : filter === 'active'
-        ? history.filter((job) => ACTIVE_STATUSES.includes(job.status))
-        : history;
+    filter === 'requests'
+      ? requests
+      : filter === 'completed'
+        ? completed
+        : filter === 'active'
+          ? history.filter((job) => ACTIVE_STATUSES.includes(job.status))
+          : history;
 
-  const openJob = (job) =>
-    navigation.navigate(job.status === JOB_STATUS.COMPLETED ? 'JobRequest' : 'CurrentJob', {
-      jobId: job.id,
-    });
+  const openJob = (job) => {
+    if (job.status === JOB_STATUS.REQUESTED) {
+      navigation.navigate('JobRequest', { jobId: job.id });
+    } else if (job.status === JOB_STATUS.COMPLETED) {
+      navigation.navigate('JobRequest', { jobId: job.id });
+    } else {
+      navigation.navigate('CurrentJob', { jobId: job.id });
+    }
+  };
 
   const chrome = (children) => (
     <View style={styles.container}>
@@ -108,20 +133,25 @@ const JobsScreen = () => {
 
       {/* Quick Stats */}
       <View style={styles.statsBar}>
-        <View style={styles.statItem}>
+        <TouchableOpacity style={styles.statItem} onPress={() => setFilter('requests')}>
+          <Text style={[styles.statNum, requests.length > 0 && { color: COLORS.primary }]}>{requests.length}</Text>
+          <Text style={styles.statText}>{t('worker.requests') || 'Requests'}</Text>
+        </TouchableOpacity>
+        <View style={styles.statDivider} />
+        <TouchableOpacity style={styles.statItem} onPress={() => setFilter('active')}>
           <Text style={styles.statNum}>{activeCount}</Text>
           <Text style={styles.statText}>{t('worker.active')}</Text>
-        </View>
+        </TouchableOpacity>
         <View style={styles.statDivider} />
-        <View style={styles.statItem}>
+        <TouchableOpacity style={styles.statItem} onPress={() => setFilter('completed')}>
           <Text style={styles.statNum}>{completed.length}</Text>
           <Text style={styles.statText}>{t('worker.completed')}</Text>
-        </View>
+        </TouchableOpacity>
         <View style={styles.statDivider} />
-        <View style={styles.statItem}>
+        <TouchableOpacity style={styles.statItem} onPress={() => setFilter('all')}>
           <Text style={styles.statNum}>{history.length}</Text>
           <Text style={styles.statText}>{t('worker.total')}</Text>
-        </View>
+        </TouchableOpacity>
       </View>
 
       {/* Filters */}
@@ -134,7 +164,7 @@ const JobsScreen = () => {
             activeOpacity={0.8}
           >
             <Text style={[styles.filterText, filter === item.key && styles.filterTextActive]}>
-              {t(`worker.${item.key}`)}
+              {item.key === 'requests' ? `${t('worker.requests') || 'Requests'} (${requests.length})` : t(`worker.${item.key}`)}
             </Text>
           </TouchableOpacity>
         ))}
@@ -152,8 +182,81 @@ const JobsScreen = () => {
           />
         }
       >
+        {/* Pending Requests Section — shown in All or Requests views */}
+        {requests.length > 0 && (filter === 'all' || filter === 'requests') && (
+          <View style={{ marginBottom: SPACING.lg }}>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: SPACING.sm }}>
+              <Text style={styles.sectionTitle}>
+                {t('worker.newRequests') || 'New Requests'} ({requests.length})
+              </Text>
+              <TouchableOpacity onPress={() => navigation.navigate('JobRequests')}>
+                <Text style={{ color: COLORS.primary, fontWeight: FONT_WEIGHT.bold, fontSize: FONT_SIZE.sm }}>
+                  {t('common.viewAll') || 'View All'}
+                </Text>
+              </TouchableOpacity>
+            </View>
+
+            {requests.map((req) => (
+              <TouchableOpacity
+                key={String(req.id)}
+                activeOpacity={0.85}
+                onPress={() => navigation.navigate('JobRequest', { jobId: req.id })}
+              >
+                <Card style={[styles.activeJobCard, { borderColor: COLORS.primary, borderWidth: 1.5, marginBottom: SPACING.md }]}>
+                  <View style={styles.activeJobHeader}>
+                    <StatusBadge
+                      label="NEW REQUEST"
+                      color="primary"
+                      size="sm"
+                    />
+                    <Text style={styles.jobTime}>{timeAgo(req.requested_at)}</Text>
+                  </View>
+                  <View style={styles.activeJobBody}>
+                    <View style={[styles.jobIconCircle, { backgroundColor: COLORS.primaryLight }]}>
+                      <MaterialCommunityIcons
+                        name={req.service_icon || 'wrench'}
+                        size={24}
+                        color={COLORS.primary}
+                      />
+                    </View>
+                    <View style={{ flex: 1, marginLeft: SPACING.md }}>
+                      <Text style={styles.jobService}>{req.service_type}</Text>
+                      <Text style={styles.jobCustomer}>{req.customer_name}</Text>
+                      <View style={styles.jobLocRow}>
+                        <MaterialCommunityIcons
+                          name="map-marker"
+                          size={14}
+                          color={COLORS.textSecondary}
+                        />
+                        <Text style={styles.jobLoc} numberOfLines={1}>
+                          {req.address}
+                        </Text>
+                        {!!formatDistance(req.distance_km) && (
+                          <Text style={styles.jobDist}>· {formatDistance(req.distance_km)}</Text>
+                        )}
+                      </View>
+                    </View>
+                    <Text style={styles.jobAmount}>{formatRupees(req.total_amount)}</Text>
+                  </View>
+                  <View style={styles.activeJobFooter}>
+                    <Text style={{ fontSize: FONT_SIZE.xs, color: COLORS.primary, fontWeight: FONT_WEIGHT.semibold }}>
+                      {formatEta(req.eta_min) ? `~${formatEta(req.eta_min)} away` : 'Nearby'}
+                    </Text>
+                    <View style={styles.tapView}>
+                      <Text style={[styles.tapText, { color: COLORS.primary, fontWeight: FONT_WEIGHT.bold }]}>
+                        {t('worker.reviewRequest') || 'Review & Accept'}
+                      </Text>
+                      <MaterialCommunityIcons name="arrow-right" size={16} color={COLORS.primary} />
+                    </View>
+                  </View>
+                </Card>
+              </TouchableOpacity>
+            ))}
+          </View>
+        )}
+
         {/* Active Job Section */}
-        {!!current && filter !== 'completed' && (
+        {!!current && filter !== 'completed' && filter !== 'requests' && (
           <>
              <Text style={styles.sectionTitle}>{t('worker.activeJob')}</Text>
 
@@ -214,10 +317,12 @@ const JobsScreen = () => {
           </>
         )}
 
-        {/* History */}
-        <Text style={[styles.sectionTitle, !!current && { marginTop: SPACING.xl }]}>
-          {filter === 'completed' ? t('worker.completedJobs') : filter === 'active' ? t('worker.inProgress') : t('worker.history')}
-        </Text>
+        {/* Section Title for Main List */}
+        {filter !== 'requests' && (
+          <Text style={[styles.sectionTitle, (!!current || (requests.length > 0 && filter === 'all')) && { marginTop: SPACING.xl }]}>
+            {filter === 'completed' ? t('worker.completedJobs') : filter === 'active' ? t('worker.inProgress') : t('worker.history')}
+          </Text>
+        )}
 
         {visible.length === 0 ? (
           <Card style={styles.emptyCard}>
@@ -228,16 +333,18 @@ const JobsScreen = () => {
             />
             <Text style={styles.emptyTitle}>{t('worker.nothingYet')}</Text>
             <Text style={styles.emptyText}>
-              {filter === 'completed'
-                ? t('worker.finishedListed')
-                : t('worker.acceptedFinished')}
+              {filter === 'requests'
+                ? (t('worker.noRequests') || 'No open job requests at this moment.')
+                : filter === 'completed'
+                  ? t('worker.finishedListed')
+                  : t('worker.acceptedFinished')}
             </Text>
           </Card>
         ) : (
           visible.map((job) => {
             const done = job.status === JOB_STATUS.COMPLETED;
             return (
-              <TouchableOpacity key={job.id} activeOpacity={0.85} onPress={() => openJob(job)}>
+              <TouchableOpacity key={String(job.id)} activeOpacity={0.85} onPress={() => openJob(job)}>
                 <Card style={styles.completedCard}>
                   <View style={styles.completedRow}>
                     <View

@@ -167,11 +167,14 @@ def list_requests(worker: CurrentWorker, db: DbSession) -> list[JobListItem]:
         # If offline, still deliver directed requests specifically sent to this worker
         where_condition = (Job.worker_id == worker.id)
 
+    society_condition = or_(Job.society_id.is_(None), Job.society_id == worker.society_id)
+
     jobs = db.scalars(
         select(Job)
         .where(
             Job.status == JobStatus.REQUESTED,
             where_condition,
+            society_condition,
             Job.id.not_in(rejected_ids),
         )
         .order_by(Job.requested_at.desc())
@@ -266,13 +269,13 @@ def accept_job(job_id: int, worker: CurrentWorker, db: DbSession) -> JobDetail:
         .with_for_update(of=Job)
     ).first()
 
-    if job is None or (job.worker_id not in (None, worker.id)):
+    if job is None:
         raise HTTPException(status_code=http_status.HTTP_404_NOT_FOUND, detail="Job not found")
-    if job.status != JobStatus.REQUESTED:
-        # Almost always "someone else got there first".
+
+    if (job.worker_id is not None and job.worker_id != worker.id) or job.status != JobStatus.REQUESTED:
         raise HTTPException(
             status_code=http_status.HTTP_409_CONFLICT,
-            detail="This job is no longer available",
+            detail="This job was already accepted by another worker",
         )
 
     job.worker_id = worker.id
@@ -282,8 +285,18 @@ def accept_job(job_id: int, worker: CurrentWorker, db: DbSession) -> JobDetail:
     db.commit()
     db.refresh(job)
 
-    # Other devices signed in as this worker should drop the request from their list.
+    # Broadcast to this worker and other available workers in society so their lists drop the request immediately
     push_event(worker.id, WsEvent.JOB_UPDATE, {"job_id": job.id, "status": job.status.value})
+
+    other_worker_ids = db.scalars(
+        select(Worker.id).where(
+            Worker.id != worker.id,
+            Worker.is_available.is_(True),
+            or_(Worker.society_id == worker.society_id, Worker.society_id.is_(None)),
+        )
+    ).all()
+    for other_id in other_worker_ids:
+        push_event(other_id, WsEvent.JOB_UPDATE, {"job_id": job.id, "status": job.status.value})
 
     # Notify customer live that a worker accepted their request
     notify_customer(
@@ -326,6 +339,7 @@ def reject_job(
         message = "Request dismissed"
 
     db.commit()
+    push_event(worker.id, WsEvent.JOB_UPDATE, {"job_id": job.id, "status": "rejected"})
     return MessageResponse(message=message)
 
 

@@ -117,7 +117,7 @@ const BookingHistoryScreen = () => {
             </View>
           ) : (
           completedList.map((item) => (
-            <View key={item.id} style={styles.historyCard}>
+            <View key={String(item.id)} style={styles.historyCard}>
               <View style={styles.cardHeader}>
                 <View>
                   <View style={styles.statusRow}>
@@ -144,6 +144,13 @@ const BookingHistoryScreen = () => {
                 <MaterialCommunityIcons name="calendar-clock" size={16} color={COLORS.textSecondary} />
                 <Text style={styles.metaText}>{fmtDate(item.completed_at || item.requested_at)}</Text>
               </View>
+
+              {!!item.address && (
+                <View style={styles.metaRow}>
+                  <MaterialCommunityIcons name="map-marker-outline" size={16} color={COLORS.textSecondary} />
+                  <Text style={styles.metaText} numberOfLines={1}>{item.address}</Text>
+                </View>
+              )}
 
               <View style={styles.divider} />
 
@@ -178,7 +185,7 @@ const BookingHistoryScreen = () => {
             </View>
           ) : (
           cancelledList.map((item) => (
-            <View key={item.id} style={styles.historyCard}>
+            <View key={String(item.id)} style={styles.historyCard}>
               <View style={styles.cardHeader}>
                 <View>
                   <View style={styles.statusRow}>
@@ -240,7 +247,7 @@ const BookingHistoryScreen = () => {
 
                <Text style={styles.invoiceSectionTitle}>{t('invoice.tasksCompleted')}</Text>
               {(selectedInvoice.services || []).map((it, i) => (
-                <View key={i} style={styles.invoiceItemRow}>
+                <View key={it.id ? String(it.id) : `inv-task-${i}-${typeof it === 'string' ? it : it.name || ''}`} style={styles.invoiceItemRow}>
                   <MaterialCommunityIcons name="check" size={14} color={COLORS.success} />
                   <Text style={styles.invoiceItemText}>{it.name || it}</Text>
                 </View>
