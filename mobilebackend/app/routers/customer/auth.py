@@ -311,3 +311,9 @@ def change_password(
     db.commit()
 
     return MessageResponse(message="Password changed")
+
+
+@router.post("/logout", response_model=MessageResponse)
+def customer_logout() -> MessageResponse:
+    """Drop customer session."""
+    return MessageResponse(message="Logged out")

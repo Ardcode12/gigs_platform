@@ -25,7 +25,9 @@ from app.schemas.customer import (
     CustomerJobCreate,
     CustomerJobDetail,
     CustomerJobListItem,
+    WorkerLocationOut,
 )
+from app.services.geo import distance_and_eta
 from app.services.notify import notify, push_customer_event
 from app.services.serialize import (
     serialize_customer_job_detail,
@@ -45,8 +47,8 @@ ACTIVE_CUSTOMER_STATUSES = (
 
 
 def _generate_otp() -> str:
-    """Generate a random 4-digit OTP code for job completion verification."""
-    return "".join(secrets.choice("0123456789") for _ in range(4))
+    """Generate a random 6-digit OTP code for job completion verification."""
+    return "".join(secrets.choice("0123456789") for _ in range(6))
 
 
 def _get_customer_job(db: Session, customer_id: int, job_id: int) -> Job:
@@ -178,6 +180,40 @@ def get_job_detail(job_id: int, customer: CurrentCustomer, db: DbSession) -> Cus
     """Get full details of a job for the customer (including OTP code)."""
     job = _get_customer_job(db, customer.id, job_id)
     return serialize_customer_job_detail(db, job)
+
+
+@router.get("/{job_id}/worker-location", response_model=WorkerLocationOut)
+def get_worker_location(
+    job_id: int, customer: CurrentCustomer, db: DbSession
+) -> WorkerLocationOut:
+    """Live GPS position of the worker assigned to this job."""
+    job = _get_customer_job(db, customer.id, job_id)
+    if job.worker is None or job.worker.last_lat is None or job.worker.last_lng is None:
+        return WorkerLocationOut(
+            worker_id=job.worker_id,
+            name=job.worker.name if job.worker else None,
+            lat=None,
+            lng=None,
+            distance_km=None,
+            eta_minutes=None,
+            updated_at=None,
+        )
+
+    distance, eta = distance_and_eta(
+        job.worker.last_lat,
+        job.worker.last_lng,
+        job.lat,
+        job.lng,
+    )
+    return WorkerLocationOut(
+        worker_id=job.worker.id,
+        name=job.worker.name,
+        lat=job.worker.last_lat,
+        lng=job.worker.last_lng,
+        distance_km=distance,
+        eta_minutes=eta,
+        updated_at=job.worker.location_updated_at,
+    )
 
 
 @router.post("/{job_id}/cancel", response_model=CustomerJobDetail)

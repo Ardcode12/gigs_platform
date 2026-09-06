@@ -142,6 +142,16 @@ class RecommendedWorkerOut(BaseModel):
         from_attributes = True
 
 
+class WorkerLocationOut(BaseModel):
+    worker_id: int | None = None
+    name: str | None = None
+    lat: float | None = None
+    lng: float | None = None
+    distance_km: float | None = None
+    eta_minutes: int | None = None
+    updated_at: datetime | None = None
+
+
 class CustomerJobListItem(BaseModel):
     id: int
     service_type: str

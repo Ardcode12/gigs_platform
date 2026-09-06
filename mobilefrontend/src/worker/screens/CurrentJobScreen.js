@@ -1,4 +1,4 @@
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useState, useEffect } from 'react';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import {
   View,
@@ -23,6 +23,7 @@ import RatingStars from '../../components/RatingStars';
 import LoadingState from '../../components/LoadingState';
 import EmptyState from '../../components/EmptyState';
 import useApi from '../../hooks/useApi';
+import useLocation from '../../hooks/useLocation';
 import { useSocketEvent, WS_EVENTS } from '../../context/SocketContext';
 import { getJob, getCurrentJob, updateJobStatus } from '../../api/jobs';
 import { requestCall } from '../../api/chat';
@@ -52,6 +53,14 @@ const CurrentJobScreen = () => {
   );
 
   const job = request.data;
+  const { watchLocation } = useLocation({ reportToServer: true });
+
+  // Stream real-time GPS coordinates to backend while job is active
+  useEffect(() => {
+    if (!job || ['completed', 'cancelled', 'rejected'].includes(job.status)) return undefined;
+    const cleanup = watchLocation();
+    return cleanup;
+  }, [job?.id, job?.status, watchLocation]);
 
   useSocketEvent(
     [WS_EVENTS.JOB_UPDATE, WS_EVENTS.EXTRA_AMOUNT_DECISION, WS_EVENTS.PAYMENT_UPDATE],
@@ -174,11 +183,11 @@ const CurrentJobScreen = () => {
         {/* Customer Card */}
         <Card style={styles.card}>
           <View style={styles.customerRow}>
-            <Avatar name={job.customer.name} uri={job.customer.photo_url} size={52} />
+            <Avatar name={job?.customer?.name || 'Customer'} uri={job?.customer?.photo_url} size={52} />
             <View style={{ flex: 1, marginLeft: SPACING.md }}>
-              <Text style={styles.customerName}>{job.customer.name}</Text>
+              <Text style={styles.customerName}>{job?.customer?.name || 'Customer'}</Text>
               <View style={styles.ratingRow}>
-                <RatingStars rating={job.customer.rating_avg} size={14} showValue />
+                <RatingStars rating={job?.customer?.rating_avg || 5.0} size={14} showValue />
               </View>
             </View>
             <View style={styles.headerActions}>

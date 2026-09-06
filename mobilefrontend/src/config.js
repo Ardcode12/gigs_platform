@@ -10,11 +10,11 @@ import { Platform, NativeModules } from 'react-native';
 import Constants from 'expo-constants';
 
 /**
- * Automatically resolve the machine IP whether on Web, Android, or iOS:
- * 1. On Web: uses the browser's current hostname.
- * 2. On Mobile (Expo): extracts the Metro server host via expo-constants or NativeModules.
- * 3. Fallback: current active Wi-Fi LAN IP (192.168.137.1).
+ * Set your machine's local Wi-Fi / Hotspot IP here if auto-detection falls back.
+ * (e.g. '192.168.137.1' or your current LAN IP from `ipconfig`)
  */
+export const MANUAL_DEV_IP = '10.169.114.187';
+
 const getDevServerHost = () => {
   if (Platform.OS === 'web' && typeof window !== 'undefined' && window.location.hostname) {
     return window.location.hostname;
@@ -38,7 +38,7 @@ const getDevServerHost = () => {
     }
   }
 
-  return '192.168.137.1';
+  return MANUAL_DEV_IP;
 };
 
 export const API_HOST = getDevServerHost();
@@ -46,6 +46,7 @@ export const API_PORT = 8000;
 
 export const API_BASE_URL = `http://${API_HOST}:${API_PORT}`;
 export const WS_URL = `ws://${API_HOST}:${API_PORT}/api/ws`;
+export const WS_CUSTOMER_URL = `ws://${API_HOST}:${API_PORT}/api/ws/customer`;
 
 /** Rough city driving speed, used only for the "N min away" fallback label. */
 export const AVG_SPEED_KMPH = 22;

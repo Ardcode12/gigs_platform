@@ -10,9 +10,10 @@ from fastapi import APIRouter, HTTPException, status as http_status
 from sqlalchemy import select
 
 from app.core.deps import CurrentWorker, DbSession
-from app.models import ExtraAmountRequest, ExtraAmountStatus, JobStatus
+from app.models import ExtraAmountRequest, ExtraAmountStatus, Job, JobStatus, NotificationType
 from app.schemas.job import ExtraAmountCreate, ExtraAmountOut
 from app.services.access import get_job_for_worker
+from app.services.notify import notify, notify_customer
 
 router = APIRouter(prefix="/api/jobs", tags=["extra-amount"])
 
@@ -79,5 +80,60 @@ def create_extra_request(
     db.add(request)
     db.commit()
     db.refresh(request)
+
+    return ExtraAmountOut.model_validate(request)
+
+
+@router.post(
+    "/{job_id}/pre-accept-extra",
+    response_model=ExtraAmountOut,
+    status_code=http_status.HTTP_201_CREATED,
+)
+def create_pre_accept_extra_request(
+    job_id: int, payload: ExtraAmountCreate, worker: CurrentWorker, db: DbSession
+) -> ExtraAmountOut:
+    """Worker proposes an extra amount BEFORE accepting a job request."""
+    job = db.get(Job, job_id)
+    if job is None:
+        raise HTTPException(status_code=http_status.HTTP_404_NOT_FOUND, detail="Job not found")
+
+    if job.status != JobStatus.REQUESTED:
+        raise HTTPException(
+            status_code=http_status.HTTP_409_CONFLICT,
+            detail="Pre-accept extra price can only be proposed on a new requested job",
+        )
+
+    outstanding = db.scalars(
+        select(ExtraAmountRequest).where(
+            ExtraAmountRequest.job_id == job.id,
+            ExtraAmountRequest.status == ExtraAmountStatus.PENDING,
+        )
+    ).first()
+    if outstanding is not None:
+        raise HTTPException(
+            status_code=http_status.HTTP_409_CONFLICT,
+            detail=f"An extra amount proposal of ₹{float(outstanding.amount):.0f} is already pending customer approval",
+        )
+
+    job.worker_id = worker.id
+
+    request = ExtraAmountRequest(
+        job_id=job.id,
+        amount=payload.amount,
+        reason=f"[Pre-Accept Quote] {payload.reason.strip()}",
+        status=ExtraAmountStatus.PENDING,
+    )
+    db.add(request)
+    db.commit()
+    db.refresh(request)
+
+    notify_customer(
+        db,
+        job.customer_id,
+        NotificationType.EXTRA_AMOUNT,
+        title=f"Pre-accept price quote from {worker.name}",
+        body=f"{worker.name} proposed an extra ₹{payload.amount:.0f} for {job.service_type}: {payload.reason}",
+        data={"job_id": job.id, "extra_amount_request_id": request.id},
+    )
 
     return ExtraAmountOut.model_validate(request)

@@ -11,12 +11,19 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { COLORS, SPACING, RADIUS, FONT_SIZE, FONT_WEIGHT, SHADOWS } from '../../theme';
 import { useT } from '../../i18n/LanguageContext';
-import { AI_DETECTION_SAMPLE } from '../data/customerMockData';
 
 const CostEstimateScreen = () => {
   const navigation = useNavigation();
   const t = useT();
-  const aiData = useRoute().params?.aiData || AI_DETECTION_SAMPLE;
+  const routeParams = useRoute().params ?? {};
+  const aiData = routeParams.aiData || {
+    service_type: 'General Service',
+    category: 'General Repair',
+    baseEstimatedTotal: 450,
+    detectedServices: [
+      { name: 'Standard Inspection & Labor', price: 450, quantity: 1, totalPrice: 450 }
+    ],
+  };
 
   const handleProceedToWorkers = () => {
     let resolvedCategory = aiData?.category || aiData?.service_type;

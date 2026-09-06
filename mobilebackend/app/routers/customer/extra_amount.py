@@ -7,7 +7,15 @@ from fastapi import APIRouter, HTTPException, status as http_status
 from sqlalchemy import select
 
 from app.core.deps import CurrentCustomer, DbSession
-from app.models import ExtraAmountRequest, ExtraAmountStatus, Job, NotificationType
+from app.models import (
+    ExtraAmountRequest,
+    ExtraAmountStatus,
+    Job,
+    JobStatus,
+    JobStatusEvent,
+    NotificationType,
+    WsEvent,
+)
 from app.schemas.customer import CustomerExtraAmountDecision
 from app.schemas.job import ExtraAmountOut
 from app.services.notify import notify, push_customer_event
@@ -68,6 +76,25 @@ def decide_extra_amount(
     )
     request.decided_at = datetime.now(timezone.utc)
 
+    # If this was a pre-acceptance extra quote and customer approved, mark job ACCEPTED
+    if job.status == JobStatus.REQUESTED:
+        if payload.approve:
+            job.status = JobStatus.ACCEPTED
+            job.accepted_at = datetime.now(timezone.utc)
+            db.add(
+                JobStatusEvent(
+                    job_id=job.id,
+                    status=JobStatus.ACCEPTED,
+                    note="Accepted after customer approved pre-accept extra quote",
+                )
+            )
+            from app.routers.jobs import issue_job_otp
+
+            issue_job_otp(job, "arrival")
+        else:
+            # If rejected, unassign candidate worker so job remains open for other workers
+            job.worker_id = None
+
     # Notify worker of the decision
     if job.worker_id is not None:
         amount = float(request.amount)
@@ -97,7 +124,7 @@ def decide_extra_amount(
     # Broadcast event back to customer UI for live screen refresh
     push_customer_event(
         customer.id,
-        "extra_amount_decision",
+        WsEvent.EXTRA_AMOUNT_DECISION,
         {
             "job_id": job.id,
             "request_id": request.id,

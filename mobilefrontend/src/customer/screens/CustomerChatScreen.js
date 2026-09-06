@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import {
   View,
@@ -11,30 +11,59 @@ import {
   KeyboardAvoidingView,
   Platform,
   Alert,
+  ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { COLORS, SPACING, RADIUS, FONT_SIZE, FONT_WEIGHT, SHADOWS } from '../../theme';
 import { useT } from '../../i18n/LanguageContext';
 import { getCustomerMessages, sendCustomerMessage } from '../../api/chat';
+import { getActiveJob } from '../../api/jobs';
+import { useSocketEvent, WS_EVENTS } from '../../context/SocketContext';
 
 const CustomerChatScreen = () => {
   const navigation = useNavigation();
   const t = useT();
-  const { worker = {}, jobId } = useRoute().params ?? {};
+  const routeParams = useRoute().params ?? {};
+  const [jobId, setJobId] = useState(routeParams.jobId || null);
+  const [worker, setWorker] = useState(routeParams.worker || null);
+  const [loadingActiveJob, setLoadingActiveJob] = useState(!routeParams.jobId);
   const [messages, setMessages] = useState([]);
   const [inputText, setInputText] = useState('');
+  const scrollViewRef = useRef(null);
 
   useEffect(() => {
-    if (!jobId) return undefined;
-    let cancelled = false;
-    getCustomerMessages(jobId).then((data) => {
-      if (!cancelled) setMessages(data || []);
-    }).catch(() => {
-      if (!cancelled) setMessages([]);
-    });
-    return () => { cancelled = true; };
+    if (!jobId) {
+      setLoadingActiveJob(true);
+      getActiveJob()
+        .then((active) => {
+          if (active) {
+            setJobId(active.id);
+            if (active.worker) setWorker(active.worker);
+          }
+        })
+        .catch(() => {})
+        .finally(() => setLoadingActiveJob(false));
+    }
   }, [jobId]);
+
+  const fetchMessages = useCallback(() => {
+    if (!jobId) return;
+    getCustomerMessages(jobId).then((data) => {
+      if (data) setMessages(data);
+    }).catch(() => {});
+  }, [jobId]);
+
+  useEffect(() => {
+    fetchMessages();
+  }, [fetchMessages]);
+
+  // WebSocket real-time delivery
+  useSocketEvent([WS_EVENTS.CHAT_MESSAGE], (event) => {
+    if (!event.payload?.job_id || event.payload?.job_id === jobId) {
+      fetchMessages();
+    }
+  });
 
   const messageText = (message) =>
     message.textKey ? t(message.textKey) : message.text ?? '';
@@ -51,23 +80,21 @@ const CustomerChatScreen = () => {
     return message.time ?? '';
   };
 
-  // Poll every 3 seconds for new messages
+  // Poll every 3 seconds for new messages as fallback
   useEffect(() => {
     if (!jobId) return undefined;
-    const interval = setInterval(() => {
-      getCustomerMessages(jobId).then((data) => {
-        if (data) setMessages(data);
-      }).catch(() => {});
-    }, 3000);
+    const interval = setInterval(fetchMessages, 3000);
     return () => clearInterval(interval);
-  }, [jobId]);
+  }, [jobId, fetchMessages]);
 
   const handleSend = () => {
     if (!inputText.trim()) return;
     if (!jobId) return;
-    sendCustomerMessage(jobId, inputText.trim()).then((message) => {
+    const textToSend = inputText.trim();
+    setInputText('');
+    sendCustomerMessage(jobId, textToSend).then((message) => {
       setMessages((currentMessages) => [...currentMessages, message]);
-      setInputText('');
+      setTimeout(() => scrollViewRef.current?.scrollToEnd({ animated: true }), 100);
     }).catch((err) => Alert.alert(t('common.error'), err.message));
   };
 
@@ -108,7 +135,7 @@ const CustomerChatScreen = () => {
         </TouchableOpacity>
 
         <TouchableOpacity style={styles.callHeaderButton} onPress={handleProtectedCall}>
-          <MaterialCommunityIcons name="phone-shield" size={20} color={COLORS.white} />
+          <MaterialCommunityIcons name="phone-lock" size={20} color={COLORS.white} />
         </TouchableOpacity>
       </View>
 
@@ -120,96 +147,118 @@ const CustomerChatScreen = () => {
         </Text>
       </View>
 
-      <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        style={styles.chatContainer}
-      >
-        {/* Messages List */}
-        <ScrollView
-          style={styles.messagesScrollView}
-          contentContainerStyle={styles.messagesContent}
-          showsVerticalScrollIndicator={false}
-        >
-          <View style={styles.chatStartDateWrapper}>
-             <Text style={styles.chatStartDateText}>{t('customer.todayBooking')}</Text>
-          </View>
-
-           {messages.map((item) => {
-            const isMe = item.sender === 'customer';
-            return (
-              <View
-                key={String(item.id)}
-                style={[
-                  styles.messageBubbleWrapper,
-                  isMe ? styles.messageBubbleMe : styles.messageBubbleWorker,
-                ]}
-              >
-                <View
-                  style={[
-                    styles.messageBubble,
-                    isMe ? styles.bubbleMeColor : styles.bubbleWorkerColor,
-                  ]}
-                  >
-                  <Text style={[styles.messageText, isMe ? styles.textMe : styles.textWorker]}>
-                    {messageText(item)}
-                  </Text>
-                  <Text style={[styles.messageTime, isMe ? styles.timeMe : styles.timeWorker]}>
-                    {messageTime(item)}
-                  </Text>
-                </View>
-              </View>
-             );
-           })}
-           {messages.length === 0 && (
-             <Text style={{ color: COLORS.textSecondary, textAlign: 'center' }}>{t('chat.empty')}</Text>
-           )}
-         </ScrollView>
-
-        {/* Quick Clarification Chips */}
-        <View style={styles.quickRepliesContainer}>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-             {['customer.quickParts', 'customer.quickReach', 'customer.quickPhoto', 'customer.quickLadders'].map((key) => (
-              <TouchableOpacity
-                key={key}
-                style={styles.quickChip}
-               onPress={() => setInputText(t(key))}
-              >
-                 <Text style={styles.quickChipText}>{t(key)}</Text>
-              </TouchableOpacity>
-            ))}
-          </ScrollView>
+      {loadingActiveJob ? (
+        <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+          <ActivityIndicator size="large" color={COLORS.primary} />
+          <Text style={{ marginTop: 12, color: COLORS.textSecondary }}>{t('common.loading') || 'Loading conversation…'}</Text>
         </View>
-
-        {/* Input Bar */}
-        <View style={styles.inputBar}>
-          <TouchableOpacity style={styles.attachButton}>
-            <MaterialCommunityIcons name="camera-outline" size={22} color={COLORS.textSecondary} />
-          </TouchableOpacity>
-
-          <TextInput
-            style={styles.chatTextInput}
-             placeholder={t('customer.chatPlaceholder')}
-            placeholderTextColor={COLORS.textTertiary}
-            value={inputText}
-            onChangeText={setInputText}
-          />
-
+      ) : !jobId ? (
+        <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', padding: 32 }}>
+          <MaterialCommunityIcons name="chat-processing-outline" size={56} color={COLORS.textTertiary} />
+          <Text style={{ fontSize: 16, fontWeight: '700', color: COLORS.textPrimary, marginTop: 16, textAlign: 'center' }}>
+            {t('customer.noActiveChat') || 'No Active Booking Conversation'}
+          </Text>
+          <Text style={{ fontSize: 13, color: COLORS.textSecondary, marginTop: 8, textAlign: 'center', lineHeight: 18 }}>
+            {t('customer.noActiveChatBody') || 'Book a service or view an active booking to message your assigned worker.'}
+          </Text>
           <TouchableOpacity
-            style={[
-              styles.sendButton,
-              inputText.trim().length > 0 && styles.sendButtonActive,
-            ]}
-            onPress={handleSend}
-            disabled={!inputText.trim()}
+            style={{ marginTop: 20, backgroundColor: COLORS.primary, paddingHorizontal: 20, paddingVertical: 10, borderRadius: 8 }}
+            onPress={() => navigation.navigate('CustomerHome')}
           >
-            <MaterialCommunityIcons
-              name="send"
-              size={18}
-              color={inputText.trim() ? COLORS.white : COLORS.textTertiary}
-            />
+            <Text style={{ color: COLORS.white, fontWeight: '600' }}>{t('customer.findServices') || 'Find Services'}</Text>
           </TouchableOpacity>
         </View>
-      </KeyboardAvoidingView>
+      ) : (
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          style={styles.chatContainer}
+        >
+          {/* Messages List */}
+          <ScrollView
+            ref={scrollViewRef}
+            style={styles.messagesScrollView}
+            contentContainerStyle={styles.messagesContent}
+            showsVerticalScrollIndicator={false}
+            onContentSizeChange={() => scrollViewRef.current?.scrollToEnd({ animated: false })}
+          >
+            <View style={styles.chatStartDateWrapper}>
+               <Text style={styles.chatStartDateText}>{t('customer.todayBooking')}</Text>
+            </View>
+
+             {messages.map((item) => {
+              const isMe = item.sender === 'customer';
+              return (
+                <View
+                  key={String(item.id)}
+                  style={[
+                    styles.messageRow,
+                    isMe ? styles.messageRowMe : styles.messageRowThem,
+                  ]}
+                >
+                  {!isMe && (
+                    <View style={styles.msgAvatarCircle}>
+                      <MaterialCommunityIcons name="account-hard-hat" size={16} color={COLORS.primary} />
+                    </View>
+                  )}
+                  <View
+                    style={[
+                      styles.messageBubble,
+                      isMe ? styles.messageBubbleMe : styles.messageBubbleThem,
+                    ]}
+                  >
+                    <Text
+                      style={[
+                        styles.messageText,
+                        isMe ? styles.messageTextMe : styles.messageTextThem,
+                      ]}
+                    >
+                      {messageText(item)}
+                    </Text>
+                    <Text
+                      style={[
+                        styles.messageTime,
+                        isMe ? styles.messageTimeMe : styles.messageTimeThem,
+                      ]}
+                    >
+                      {messageTime(item)}
+                    </Text>
+                  </View>
+                </View>
+              );
+            })}
+          </ScrollView>
+
+          {/* Input Bar */}
+          <View style={styles.inputBar}>
+            <TouchableOpacity style={styles.attachButton}>
+              <MaterialCommunityIcons name="camera-outline" size={22} color={COLORS.textSecondary} />
+            </TouchableOpacity>
+
+            <TextInput
+              style={styles.chatTextInput}
+               placeholder={t('customer.chatPlaceholder')}
+              placeholderTextColor={COLORS.textTertiary}
+              value={inputText}
+              onChangeText={setInputText}
+            />
+
+            <TouchableOpacity
+              style={[
+                styles.sendButton,
+                inputText.trim().length > 0 && styles.sendButtonActive,
+              ]}
+              onPress={handleSend}
+              disabled={!inputText.trim()}
+            >
+              <MaterialCommunityIcons
+                name="send"
+                size={18}
+                color={inputText.trim() ? COLORS.white : COLORS.textTertiary}
+              />
+            </TouchableOpacity>
+          </View>
+        </KeyboardAvoidingView>
+      )}
     </SafeAreaView>
   );
 };

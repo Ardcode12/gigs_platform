@@ -17,7 +17,7 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 import MapView, { Marker, Polyline, PROVIDER_DEFAULT } from '../../components/AppMapView';
 import { COLORS, SPACING, RADIUS, FONT_SIZE, FONT_WEIGHT, SHADOWS } from '../../theme';
 import { useT } from '../../i18n/LanguageContext';
-import { getJobDetail, getActiveJob, cancelJob } from '../../api/jobs';
+import { getJobDetail, getActiveJob, cancelJob, getWorkerLocation } from '../../api/jobs';
 
 /**
  * Map a backend status string to a human label for the stepper subtitles.
@@ -58,6 +58,7 @@ const TrackBookingScreen = () => {
   const [job, setJob] = useState(null);
   const [loading, setLoading] = useState(true);
   const [cancelling, setCancelling] = useState(false);
+  const [liveWorkerLoc, setLiveWorkerLoc] = useState(null);
   const pollRef = useRef(null);
 
   // Derive UI values only from the API response.
@@ -75,8 +76,8 @@ const TrackBookingScreen = () => {
         phone: job.worker.phone,
         rating: job.worker.rating_avg,
         reviewsCount: job.worker.rating_count,
-        distance_km: job.worker.distance_km,
-        eta_minutes: job.worker.eta_minutes,
+        distance_km: liveWorkerLoc?.distance_km != null ? liveWorkerLoc.distance_km : job.worker.distance_km,
+        eta_minutes: liveWorkerLoc?.eta_minutes != null ? liveWorkerLoc.eta_minutes : job.worker.eta_minutes,
       }
     : { name: '', photo: DEFAULT_WORKER_AVATAR, trade: '', coopBranch: '', rating: null, reviewsCount: 0, distance_km: null, eta_minutes: null };
 
@@ -122,6 +123,19 @@ const TrackBookingScreen = () => {
     }
   }, [routeJobId]);
 
+  /** Fetch live worker location */
+  const fetchWorkerLoc = useCallback(async (jobId) => {
+    if (!jobId) return;
+    try {
+      const loc = await getWorkerLocation(jobId);
+      if (loc && loc.lat != null && loc.lng != null) {
+        setLiveWorkerLoc(loc);
+      }
+    } catch {
+      // Background location update error ignored
+    }
+  }, []);
+
   // Initial fetch + poll every 3.5 s while screen is focused
   useFocusEffect(
     useCallback(() => {
@@ -131,6 +145,17 @@ const TrackBookingScreen = () => {
     }, [fetchJob]),
   );
 
+  // Poll worker location every 4s when job has worker and is active
+  useEffect(() => {
+    if (!job?.id || !job?.worker) return;
+    const activeStatuses = ['accepted', 'on_the_way', 'arrived', 'work_started'];
+    if (!activeStatuses.includes(job.status)) return;
+
+    fetchWorkerLoc(job.id);
+    const workerInterval = setInterval(() => fetchWorkerLoc(job.id), 4000);
+    return () => clearInterval(workerInterval);
+  }, [job?.id, job?.worker, job?.status, fetchWorkerLoc]);
+
   // Stop polling when job reaches a terminal state
   useEffect(() => {
     if (job && ['completed', 'cancelled', 'rejected'].includes(job.status)) {
@@ -139,21 +164,34 @@ const TrackBookingScreen = () => {
   }, [job?.status]);
 
   const mapRef = useRef(null);
-  const customerLat = job?.lat;
-  const customerLng = job?.lng;
-  const workerLat = job?.worker?.last_lat;
-  const workerLng = job?.worker?.last_lng;
+  const rawCustLat = job?.lat;
+  const rawCustLng = job?.lng;
+  const rawWorkLat = liveWorkerLoc?.lat != null ? liveWorkerLoc.lat : job?.worker?.last_lat;
+  const rawWorkLng = liveWorkerLoc?.lng != null ? liveWorkerLoc.lng : job?.worker?.last_lng;
+
+  const customerLat = rawCustLat != null && !isNaN(Number(rawCustLat)) ? Number(rawCustLat) : null;
+  const customerLng = rawCustLng != null && !isNaN(Number(rawCustLng)) ? Number(rawCustLng) : null;
+  const workerLat = rawWorkLat != null && !isNaN(Number(rawWorkLat)) ? Number(rawWorkLat) : null;
+  const workerLng = rawWorkLng != null && !isNaN(Number(rawWorkLng)) ? Number(rawWorkLng) : null;
 
   useEffect(() => {
-    if (mapRef.current && customerLat && customerLng) {
-      if (workerLat && workerLng && typeof mapRef.current.fitToCoordinates === 'function') {
+    if (!mapRef.current) return;
+    if (customerLat != null && customerLng != null) {
+      if (workerLat != null && workerLng != null && typeof mapRef.current.fitToCoordinates === 'function') {
         mapRef.current.fitToCoordinates(
           [
             { latitude: customerLat, longitude: customerLng },
             { latitude: workerLat, longitude: workerLng },
           ],
-          { edgePadding: { top: 50, right: 50, bottom: 80, left: 50 }, animated: true },
+          { edgePadding: { top: 60, right: 60, bottom: 80, left: 60 }, animated: true },
         );
+      } else if (typeof mapRef.current.animateToRegion === 'function') {
+        mapRef.current.animateToRegion({
+          latitude: customerLat,
+          longitude: customerLng,
+          latitudeDelta: 0.02,
+          longitudeDelta: 0.02,
+        }, 800);
       }
     }
   }, [customerLat, customerLng, workerLat, workerLng]);
@@ -377,7 +415,7 @@ const TrackBookingScreen = () => {
                 style={[styles.circleIconButton, styles.callIconActive]}
                 onPress={handleCallWorker}
               >
-                <MaterialCommunityIcons name="phone-shield" size={20} color={COLORS.white} />
+                <MaterialCommunityIcons name="phone-lock" size={20} color={COLORS.white} />
               </TouchableOpacity>
             </View>
           </View>

@@ -185,9 +185,9 @@ const ChatScreen = () => {
         <MaterialCommunityIcons name="arrow-left" size={24} color={COLORS.textPrimary} />
       </TouchableOpacity>
       <View style={styles.headerCenter}>
-        <Avatar name={job?.customer.name ?? '?'} uri={job?.customer.photo_url} size={40} />
+        <Avatar name={job?.customer?.name ?? '?'} uri={job?.customer?.photo_url} size={40} />
         <View style={{ marginLeft: SPACING.sm }}>
-          <Text style={styles.headerName}>{job?.customer.name ?? t('chat.customer')}</Text>
+          <Text style={styles.headerName}>{job?.customer?.name ?? t('chat.customer')}</Text>
           <Text style={styles.headerStatus}>{job?.service_type ?? t('chat.customer')}</Text>
         </View>
       </View>

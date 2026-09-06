@@ -20,11 +20,6 @@ import { useT } from '../../i18n/LanguageContext';
 import { useAuth } from '../../context/AuthContext';
 import { createJob } from '../../api/jobs';
 import useLocation from '../../hooks/useLocation';
-import {
-  RECOMMENDED_WORKERS,
-  CUSTOMER_PROFILE,
-  AI_DETECTION_SAMPLE,
-} from '../data/customerMockData';
 
 const ConfirmBookingScreen = () => {
   const navigation = useNavigation();
@@ -82,8 +77,8 @@ const ConfirmBookingScreen = () => {
   // Reverse geocode live GPS coordinates when available
   useEffect(() => {
     if (coords?.latitude && coords?.longitude) {
-      if (!selectedLat) setSelectedLat(coords.latitude);
-      if (!selectedLng) setSelectedLng(coords.longitude);
+      if (selectedLat == null) setSelectedLat(coords.latitude);
+      if (selectedLng == null) setSelectedLng(coords.longitude);
       Location.reverseGeocodeAsync({
         latitude: coords.latitude,
         longitude: coords.longitude,
@@ -105,11 +100,11 @@ const ConfirmBookingScreen = () => {
         })
         .catch(() => {});
     }
-  }, [coords]);
+  }, [coords, selectedLat, selectedLng]);
 
   const defaultSaved = customer?.saved_addresses?.[0];
-  const activeLat = selectedLat ?? (coords?.latitude || defaultSaved?.lat || 28.6270);
-  const activeLng = selectedLng ?? (coords?.longitude || defaultSaved?.lng || 77.3720);
+  const activeLat = selectedLat ?? (coords?.latitude ?? (defaultSaved?.lat ?? 13.0827));
+  const activeLng = selectedLng ?? (coords?.longitude ?? (defaultSaved?.lng ?? 80.2707));
 
   const displayAddress = customAddress
     ? customAddress
@@ -117,7 +112,7 @@ const ConfirmBookingScreen = () => {
       ? defaultSaved.address
       : resolvedAddress
         ? resolvedAddress
-        : (customer?.city ? `${customer.city}, Active Location` : 'Sector 62, Noida');
+        : (customer?.city ? `${customer.city}, Service Location` : 'Current Service Address');
 
   const displayLandmark = customLandmark || defaultSaved?.landmark || (resolvedAddress ? 'GPS Location' : 'Near Current GPS Position');
   const displayType = customAddress ? 'Custom Service Address' : (defaultSaved?.title || 'Current Location');
@@ -128,9 +123,19 @@ const ConfirmBookingScreen = () => {
     setEditingAddress(true);
   };
 
-  const handleSaveAddress = () => {
-    if (tempAddress.trim()) {
-      setCustomAddress(tempAddress.trim());
+  const handleSaveAddress = async () => {
+    const trimmed = tempAddress.trim();
+    if (trimmed) {
+      setCustomAddress(trimmed);
+      try {
+        const geoResults = await Location.geocodeAsync(trimmed);
+        if (geoResults && geoResults.length > 0) {
+          setSelectedLat(geoResults[0].latitude);
+          setSelectedLng(geoResults[0].longitude);
+        }
+      } catch (err) {
+        // Geocode network fallback if offline
+      }
     }
     setCustomLandmark(tempLandmark.trim());
     setEditingAddress(false);

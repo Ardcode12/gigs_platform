@@ -108,6 +108,7 @@ const interpolate = (template, vars) =>
  * both preferable to an empty label on a button someone needs to press.
  */
 export const t = (key, vars) => {
+  if (!key) return '';
   const dict = DICTS[active] ?? DICTS[DEFAULT_LANGUAGE];
 
   let template = lookup(dict, key, vars);

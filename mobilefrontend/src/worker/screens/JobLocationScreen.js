@@ -42,29 +42,49 @@ const JobLocationScreen = () => {
   }, [navigation]);
 
   const job = useApi(useCallback(() => getJob(jobId), [jobId]), [jobId]);
-  const { coords, request: requestLocation, loading: locating, error: locationError } = useLocation();
+  const { coords, request: requestLocation, watchLocation, loading: locating, error: locationError } = useLocation({ reportToServer: true });
 
-  // Ask on arrival: without a fix there is no distance, and no "you are here" pin.
+  // Stream live position while looking at the map
   useEffect(() => {
     requestLocation();
-  }, [requestLocation]);
+    const cleanup = watchLocation();
+    return cleanup;
+  }, [requestLocation, watchLocation]);
 
   const detail = job.data;
   const target = detail?.location;
+  const targetLat = target?.lat != null ? Number(target.lat) : null;
+  const targetLng = target?.lng != null ? Number(target.lng) : null;
+  const currentCoords = coords
+    ? { latitude: Number(coords.latitude), longitude: Number(coords.longitude) }
+    : null;
+
+  // Animate to job location as soon as target coordinates arrive
+  useEffect(() => {
+    if (!targetLat || !targetLng || !mapRef.current) return;
+    if (!currentCoords && typeof mapRef.current.animateToRegion === 'function') {
+      mapRef.current.animateToRegion({
+        latitude: targetLat,
+        longitude: targetLng,
+        latitudeDelta: 0.02,
+        longitudeDelta: 0.02,
+      }, 500);
+    }
+  }, [targetLat, targetLng, currentCoords]);
 
   // Once both pins are known, frame them together.
   useEffect(() => {
-    if (!target || !coords || !mapRef.current) return;
+    if (!targetLat || !targetLng || !currentCoords || !mapRef.current) return;
     if (typeof mapRef.current.fitToCoordinates === 'function') {
       mapRef.current.fitToCoordinates(
         [
-          { latitude: target.lat, longitude: target.lng },
-          coords,
+          { latitude: targetLat, longitude: targetLng },
+          currentCoords,
         ],
         { edgePadding: { top: 90, right: 70, bottom: 240, left: 70 }, animated: true },
       );
     }
-  }, [target, coords]);
+  }, [targetLat, targetLng, currentCoords]);
 
   const openNavigation = () => {
     if (!target) return;
@@ -127,26 +147,26 @@ const JobLocationScreen = () => {
             provider={PROVIDER_DEFAULT}
             style={StyleSheet.absoluteFill}
             initialRegion={{
-              latitude: target.lat,
-              longitude: target.lng,
+              latitude: targetLat,
+              longitude: targetLng,
               latitudeDelta: 0.03,
               longitudeDelta: 0.03,
             }}
             showsUserLocation={false}
           >
             <Marker
-              coordinate={{ latitude: target.lat, longitude: target.lng }}
+              coordinate={{ latitude: targetLat, longitude: targetLng }}
               title={detail.customer.name}
               description={target.address}
               pinColor={COLORS.danger}
             />
 
-            {!!coords && (
+            {!!currentCoords && (
               <>
-                <Marker coordinate={coords} title={t('shared.you') || 'You'} pinColor={COLORS.primary} />
+                <Marker coordinate={currentCoords} title={t('shared.you') || 'You'} pinColor={COLORS.primary} />
                 {/* A straight line, not a route — it shows direction, not the road. */}
                 <Polyline
-                  coordinates={[coords, { latitude: target.lat, longitude: target.lng }]}
+                  coordinates={[currentCoords, { latitude: targetLat, longitude: targetLng }]}
                   strokeColor={COLORS.primary}
                   strokeWidth={3}
                   lineDashPattern={[6, 6]}

@@ -317,6 +317,19 @@ const WorkerRecommendationsScreen = () => {
               </View>
             );
           })}
+
+        {!loading && workersList.length === 0 && (
+          <View style={styles.emptyContainer}>
+            <MaterialCommunityIcons name="account-search-outline" size={56} color={COLORS.textTertiary} />
+            <Text style={styles.emptyTitle}>No workers currently available.</Text>
+            <Text style={styles.emptySubtitle}>
+              Try adjusting your filter or check back in a few minutes as more workers become available.
+            </Text>
+            <TouchableOpacity style={styles.retryButton} onPress={onRefresh} activeOpacity={0.85}>
+              <Text style={styles.retryButtonText}>{t('common.tryAgain') || 'Refresh List'}</Text>
+            </TouchableOpacity>
+          </View>
+        )}
       </ScrollView>
     </SafeAreaView>
   );
@@ -727,6 +740,43 @@ const styles = StyleSheet.create({
     fontWeight: FONT_WEIGHT.bold,
     color: COLORS.white,
     marginRight: 2,
+  },
+  emptyContainer: {
+    padding: SPACING.xl,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: COLORS.white,
+    borderRadius: RADIUS.lg,
+    marginTop: SPACING.md,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  emptyTitle: {
+    fontSize: FONT_SIZE.md,
+    fontWeight: FONT_WEIGHT.bold,
+    color: COLORS.textPrimary,
+    marginTop: SPACING.md,
+    textAlign: 'center',
+  },
+  emptySubtitle: {
+    fontSize: FONT_SIZE.xs,
+    color: COLORS.textSecondary,
+    marginTop: SPACING.xs,
+    textAlign: 'center',
+    lineHeight: 18,
+    paddingHorizontal: SPACING.md,
+  },
+  retryButton: {
+    marginTop: SPACING.md,
+    backgroundColor: COLORS.primary,
+    paddingHorizontal: SPACING.lg,
+    paddingVertical: SPACING.sm,
+    borderRadius: RADIUS.md,
+  },
+  retryButtonText: {
+    color: COLORS.white,
+    fontWeight: FONT_WEIGHT.bold,
+    fontSize: FONT_SIZE.sm,
   },
 });
 
